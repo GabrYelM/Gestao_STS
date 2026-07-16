@@ -1,7 +1,10 @@
 __pycache__/
 .env
 
-ARQUIVOS ORIGINAIS/
 *.csv
 *.sqlite
 *.db
+
+ARQUIVOS ORIGINAIS/
+.venv
+node_modules/
