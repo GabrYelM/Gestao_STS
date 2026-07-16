@@ -1,0 +1,7 @@
+__pycache__/
+.env
+
+ARQUIVOS ORIGINAIS/
+*.csv
+*.sqlite
+*.db
