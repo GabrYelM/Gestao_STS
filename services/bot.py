@@ -20,29 +20,49 @@ def bot_setup_page():
     return p, browser, page
 
 def buscaAG04(mes, ano, page):
+    # Pelo o que pesquisei, seria mehor nao usar o page.wait_for_load_state("networkidle") porque ela poderia
+    # deixar lento o código já que as funções já esperam automaticamente o carregamento da página.
+
+    # Usei o Enter para ir para a próxima etapa, tudo funciona bem até clicar em "Aplicar", ele clica automaticamente por causa do "Enter"
+    # Ele fica "Carregando" infinitamente e não carrega o relatório, não alterei mais nada, só fiquei rodando, e do nada tudo parou de funcionar, nem a página carregava mais
+    # Acho que deve ser por acessar muitas vezes a página, deve voltar ao normal mais tarde.
     print("Coletando relatório mensal...")
     page.goto("http://bisaude.prodam/sites/siga/Relatrio/Forms/current.aspx")
     page.get_by_text("Agendamentos").click()
-    page.wait_for_load_state("networkidle")
+
     page.get_by_text("AG-04 Perda Secundária por Executante").click()
-    page.wait_for_load_state("networkidle")
+
     page.get_by_title("Parâmetro de relatório Data Agendada.Número Ano").click()
-    page.wait_for_load_state("networkidle")
-    page.get_by_text(ano).click()
-    page.wait_for_timeout(200)
-    page.get_by_text("Data Agendada.Número Ano").click()
-    page.wait_for_load_state("networkidle")
+    page.get_by_text(ano).click(timeout=5000)
+    page.keyboard.press("Enter")
+
     page.get_by_title("Parâmetro de relatório Data Agendada.Nome Mes").click()
-    page.get_by_text(mes).click()
-    page.get_by_title("Data Agendada.Número Ano").click()
+    page.get_by_text(mes).click(timeout=5000)
+    page.keyboard.press("Enter")
+    
+    page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde do Executante.H1 - Nome Nível 2").click()
+    page.get_by_text("COORD REGIONAL DE SAUDE SUDESTE").click(timeout=5000)
+    page.keyboard.press("Enter")
 
+    page.get_by_title("Parâmetro de relatório Digite $$ para todos ou parte do nome do Estabelecimento para pesquisa").fill("$$")
+    page.keyboard.press("Enter")
 
+    page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde do Executante.H1 - Nome Estabelecimento").click()
+    page.get_by_text("All", exact=True).click(timeout=5000)
+    page.keyboard.press("Enter")
 
+    
+    page.get_by_title("Parâmetro de relatório Digite $$ para todos ou parte do nome do procedimento para pesquisa").fill("$$")
+    page.keyboard.press("Enter")
 
+    page.get_by_title("Parâmetro de relatório Procedimento.Nome Procedimento").click()
+    page.get_by_text("All", exact=True).click(timeout=5000)
+    page.keyboard.press("Enter")
 
+    page.wait_for_load_state("networkidle")
 
-
-
+    """ page.get_by_text("Ações").click()
+    page.get_by_text("Exportar").click() """
 
     input("pressione enter no terminal para finalizar")
     
