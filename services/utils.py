@@ -21,7 +21,11 @@ def bot_setup_page():
     print("-------Login com sucesso-------")
     return p, browser, page
 
-def download_bi(page, click_timeout=1000, timeout_geral=1000):
+def download_bi(page, click_timeout=60000, timeout_geral=1000):
+    page.wait_for_load_state('networkidle')
+    page.get_by_text("Ações").first.click(timeout=click_timeout)
+    page.get_by_text("Exportar").click(timeout=click_timeout)
+
     with page.expect_download() as info_download:
         page.get_by_text("CSV ponto e vírgula").click(timeout=click_timeout)
 
