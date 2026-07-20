@@ -1,7 +1,53 @@
 {% extends "base.html" %}
 
-{% block title %}asdasd{% endblock %}
+{% block title %}Página Inicial{% endblock %}
 
 {% block content %}
-<a>asasas</a>
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="display-5 fw-bold text-primary">Painel de Gestão STS</h1>
+            <p class="lead">Sistema automatizado para coleta, manipulação e gestão de dados de produção da região.</p>
+            <hr>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm border-0 bg-light">
+                <div class="card-body text-center">
+                    <h2 class="mb-3">📑</h2>
+                    <h5 class="card-title">Gerar Relatórios de Produção</h5>
+                    <p class="card-text text-muted">Exporte e gere relatórios detalhados e consolidados do período selecionado.</p>
+                    <a href="#" class="btn btn-primary w-100">Gerar Relatório</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm border-0 bg-light">
+                <div class="card-body text-center">
+                    <h2 class="mb-3">📊</h2>
+                    <h5 class="card-title">Dashboards e Indicadores</h5>
+                    <p class="card-text text-muted">Visualize os dados de forma consolidada com gráficos e filtros avançados.</p>
+                    <a href="#" class="btn btn-outline-primary w-100">Ver Dashboards</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="alert alert-warning d-flex align-items-center shadow-sm" role="alert">
+                <span class="me-3 fs-4">🔒</span>
+                <div>
+                    <h6 class="alert-heading mb-1"><strong>Aviso de Privacidade e Segurança (LGPD)</strong></h6>
+                    <p class="mb-0 small">Nenhum dado real ou sensível de pacientes deve ser exportado deste ambiente. O acesso para edição e inserção de dados é estritamente controlado. Todo o processamento ocorre no servidor local.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
