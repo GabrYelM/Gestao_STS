@@ -44,6 +44,11 @@ def buscaAG04(mes, ano, page):
     page.get_by_text("COORD REGIONAL DE SAUDE SUDESTE").click(timeout=5000)
     page.keyboard.press("Enter")
 
+    page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde do Executante.H1 - Nome Nível 3").click()
+    page.get_by_text("SUDESTE - STS PENHA").click()
+    page.get_by_text("All").click()
+    page.keyboard.press("Enter")
+
     page.get_by_title("Parâmetro de relatório Digite $$ para todos ou parte do nome do Estabelecimento para pesquisa").fill("$$")
     page.keyboard.press("Enter")
 
