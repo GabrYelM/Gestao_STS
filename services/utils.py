@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+import calendar
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
@@ -36,3 +37,20 @@ def download_bi(page, click_timeout=60000, timeout_geral=1000):
 
     os.makedirs("C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS", exist_ok=True)
     download.save_as(save_path)
+
+def obter_inicio_e_fim_do_mes(nome_mes, ano_texto):
+    meses_pt = {
+        "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4,
+        "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8,
+        "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
+    }
+    
+    numero_mes = meses_pt.get(nome_mes)
+    ano = int(ano_texto)
+
+    ultimo_dia = calendar.monthrange(ano, numero_mes)[1]
+
+    data_inicio = f"01/{str(numero_mes).zfill(2)}/{ano}"
+    data_fim = f"{ultimo_dia}/{str(numero_mes).zfill(2)}/{ano}"
+    
+    return data_inicio, data_fim
