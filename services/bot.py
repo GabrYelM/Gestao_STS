@@ -1,10 +1,10 @@
 from playwright.sync_api import sync_playwright
-from utils import bot_setup_page, download_bi, obter_inicio_e_fim_do_mes
+from services.utils import bot_setup_page, download_bi, obter_inicio_e_fim_do_mes
 
 click_timeout = 1000
 timeout_geral = 1000
 
-def buscaAG04(mes, ano, page, click_timeout=1000, timeout_geral=1000):
+def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
 
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
@@ -323,7 +323,6 @@ def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     download_bi(page)
     input("Pressione enter no terminal para finalizar")
 
-
 def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
 
@@ -397,13 +396,81 @@ def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     download_bi(page)
     input("Pressione enter no terminal para finalizar")
 
+def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
+    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+
+    print("Coletando relatório mensal...")
+    page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
+
+    page.get_by_text("Contrato de Gestão").first.click()
+
+    with page.expect_popup() as info_new_page:
+        page.get_by_text("CG06 - Lista nominal de gestantes com exames realizados").click()
+        page.wait_for_timeout(timeout_geral)
+
+    page = info_new_page.value
+    page.wait_for_load_state()
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Data Previsão Parto - Início").fill(inicio)
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Data Previsão Parto - Fim").fill(fim)
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Coordenadoria Regional").select_option("COORD REGIONAL DE SAUDE SUDESTE")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Supervisão Técnica").select_option("SUDESTE - STS PENHA")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde").select_option("(Todas as opções)")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    download_bi(page)
+    input("Pressione enter no terminal para finalizar")
+
+def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
+    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+
+    print("Coletando relatório mensal...")
+    page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
+
+    page.get_by_text("Gestantes - Acolhimento / Risco").first.click()
+
+    with page.expect_popup() as info_new_page:
+        page.get_by_text("GAC02 - Gestantes ativas").click()
+        page.wait_for_timeout(timeout_geral)
+
+    page = info_new_page.value
+    page.wait_for_load_state()
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Coordenadoria Regional").select_option("COORD REGIONAL DE SAUDE SUDESTE")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Supervisão Técnica").select_option("SUDESTE - STS PENHA")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde").select_option("(Todas as opções)")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    download_bi(page)
+    input("Pressione enter no terminal para finalizar")
+
 if __name__ == '__main__':
     p, context, page = bot_setup_page()
     ano = ["2026"]
     mes = ["Janeiro"]
 
     try:
-        buscaCG05(mes, ano, page, click_timeout, timeout_geral)
+        buscaGAC02(mes, ano, page, click_timeout, timeout_geral)
     finally:
         print("-------Fechando-------")
         context.close()
