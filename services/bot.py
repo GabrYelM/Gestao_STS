@@ -203,10 +203,6 @@ def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     page.get_by_title("Parâmetro de relatório Digite $$ para todos ou parte do nome do procedimento para pesquisa").fill("$$")
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    page.wait_for_timeout(timeout_geral)
-    page.locator("input[value='Aplicar']").click(timeout=click_timeout)
-    page.wait_for_load_state("networkidle", timeout=180000)
-
     download_bi(page)
     input("Pressione enter no terminal para finalizar")
 
@@ -340,35 +336,65 @@ def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
         page.get_by_text("CG01 - Gestantes com sete ou mais consultas").click()
         page.wait_for_timeout(timeout_geral)
 
-    new_page = info_new_page.value
-    new_page.wait_for_load_state()
+    page = info_new_page.value
+    page.wait_for_load_state()
 
-    new_page.wait_for_timeout(timeout_geral)
-    new_page.get_by_title("Parâmetro de relatório Data Previsão Parto - Início").fill(inicio)
-    new_page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Data Previsão Parto - Início").fill(inicio)
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    new_page.wait_for_timeout(timeout_geral)
-    new_page.get_by_title("Parâmetro de relatório Data Previsão Parto - Fim").fill(fim)
-    new_page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Data Previsão Parto - Fim").fill(fim)
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    new_page.wait_for_timeout(timeout_geral)
-    new_page.get_by_title("Parâmetro de relatório Coordenadoria Regional").select_option("COORD REGIONAL DE SAUDE SUDESTE")
-    new_page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Coordenadoria Regional").select_option("COORD REGIONAL DE SAUDE SUDESTE")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    new_page.wait_for_timeout(timeout_geral)
-    new_page.get_by_title("Parâmetro de relatório Supervisão Técnica").select_option("SUDESTE - STS PENHA")
-    new_page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Supervisão Técnica").select_option("SUDESTE - STS PENHA")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
 
-    new_page.wait_for_timeout(timeout_geral)
-    new_page.get_by_title("Parâmetro de relatório Tipo de Visualização").select_option("Estabelecimento")
-    new_page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Tipo de Visualização").select_option("Estabelecimento")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    new_page.wait_for_timeout(timeout_geral)
-    new_page.locator("input[value='Aplicar']").click(timeout=click_timeout)
-    new_page.wait_for_load_state("networkidle", timeout=180000)
+    download_bi(page)
+    input("Pressione enter no terminal para finalizar")
 
-    download_bi(new_page)
+def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
+    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+
+    print("Coletando relatório mensal...")
+    page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
+
+    page.get_by_text("Contrato de Gestão").first.click()
+
+    page.get_by_text("CG05 - Lista nominal de gestantes com total de consultas de PN.rdl").click()
+    page.wait_for_timeout(timeout_geral)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Data Previsão Parto - Início").fill(inicio)
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Data Previsão Parto - Fim").fill(fim)
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Coordenadoria Regional").select_option("COORD REGIONAL DE SAUDE SUDESTE")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Supervisão Técnica").select_option("SUDESTE - STS PENHA")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    page.wait_for_timeout(timeout_geral)
+    page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde").select_option("(Todas as opções)")
+    page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
+
+    download_bi(page)
     input("Pressione enter no terminal para finalizar")
 
 if __name__ == '__main__':
@@ -377,7 +403,7 @@ if __name__ == '__main__':
     mes = ["Janeiro"]
 
     try:
-        buscaCG01(mes, ano, page, click_timeout, timeout_geral)
+        buscaCG05(mes, ano, page, click_timeout, timeout_geral)
     finally:
         print("-------Fechando-------")
         context.close()

@@ -23,6 +23,9 @@ def bot_setup_page():
     return p, browser, page
 
 def download_bi(page, click_timeout=60000, timeout_geral=1000):
+    page.wait_for_timeout(timeout_geral)
+    page.locator("input[value='Aplicar']").click(timeout=click_timeout)
+    
     page.wait_for_load_state('networkidle', timeout=0)
     page.get_by_text("Ações").first.click(timeout=click_timeout)
     page.get_by_text("Exportar").click(timeout=click_timeout)
