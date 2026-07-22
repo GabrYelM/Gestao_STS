@@ -1,1 +1,4 @@
-# faza conexão com o database
+# faz a conexão com o database
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()

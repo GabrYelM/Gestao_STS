@@ -1,6 +1,4 @@
 from flask import Flask, render_template, jsonify
-import sqlite3
-import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 import services.utils as su
 import services.bot as sb
