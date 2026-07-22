@@ -58,8 +58,6 @@ def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
 
     download_bi(page)
 
-    input("Pressione enter no terminal para finalizar")
-
 def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
@@ -122,7 +120,6 @@ def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     '''quando for chamar esta função rodar em um laço de acordo com os meses e anos, deve ser gerado mes a mes'''
@@ -135,12 +132,12 @@ def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Número Ano").click()
-    page.get_by_text(ano).click(timeout=click_timeout)
+    page.get_by_text(ano[0]).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Mes").click()
-    page.get_by_text(mes).click(timeout=click_timeout)
+    page.get_by_text(mes[0]).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
@@ -172,7 +169,6 @@ def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_load_state("networkidle", timeout=180000)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -204,7 +200,6 @@ def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -264,7 +259,6 @@ def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_load_state("networkidle", timeout=180000)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -321,7 +315,6 @@ def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_load_state("networkidle", timeout=180000)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -360,7 +353,6 @@ def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -394,7 +386,6 @@ def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -432,7 +423,6 @@ def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -462,7 +452,6 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     download_bi(page)
-    input("Pressione enter no terminal para finalizar")
 
 if __name__ == '__main__':
     p, context, page = bot_setup_page()
@@ -470,7 +459,9 @@ if __name__ == '__main__':
     mes = ["Janeiro"]
 
     try:
-        buscaGAC02(mes, ano, page, click_timeout, timeout_geral)
+        buscaAT03(mes[0], ano[0], page, click_timeout, timeout_geral)
+        input("Pressione enter no terminal para finalizar")
+
     finally:
         print("-------Fechando-------")
         context.close()

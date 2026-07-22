@@ -12,7 +12,7 @@ def bot_setup_page():
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()
 
-    browser = p.chromium.launch(headless=False, channel="msedge", slow_mo=3000)
+    browser = p.chromium.launch(headless=True, channel="msedge", slow_mo=3000)
     context = browser.new_context(http_credentials={'username': usuario, 'password': senha}, accept_downloads=True)
     page = context.new_page()
 
@@ -40,6 +40,8 @@ def download_bi(page, click_timeout=60000, timeout_geral=1000):
 
     os.makedirs("C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS", exist_ok=True)
     download.save_as(save_path)
+
+    print(f"-------Relatório {nome_original} Gerado")
 
 def obter_inicio_e_fim_do_mes(nome_mes, ano_texto):
     meses_pt = {
