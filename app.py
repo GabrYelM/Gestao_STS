@@ -1,17 +1,15 @@
 from flask import Flask, render_template, jsonify
+import sqlite3
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
-from services.utils import bot_setup_page 
-from services.bot import (
-    buscaAG04, buscaAT02, buscaAT03, buscaFE02, 
-    buscaVG02, buscaVG04, buscaCG01, buscaCG05, 
-    buscaCG06, buscaGAC02
-)
+import services.utils as su
+import services.bot as sb
 
 app = Flask(__name__)
 executor = ThreadPoolExecutor(max_workers=10)
 
 def executar_bot(funcao_busca, mes, ano):
-    p, context, page = bot_setup_page()
+    p, context, page = su.bot_setup_page()
     funcao_busca(mes, ano, page, 1000, 1000)
     context.close()
     p.stop()
@@ -23,9 +21,9 @@ def index():
 @app.route("/gerar_relatorios", methods=["POST"])
 def gerar_relatorios():
     funcoes = [
-        buscaAG04, buscaAT02, buscaAT03, buscaFE02, 
-        buscaVG02, buscaVG04, buscaCG01, buscaCG05, 
-        buscaCG06, buscaGAC02
+        sb.buscaAG04, sb.buscaAT02, sb.buscaAT03, sb.buscaFE02, 
+        sb.buscaVG02, sb.buscaVG04, sb.buscaCG01, sb.buscaCG05, 
+        sb.buscaCG06, sb.buscaGAC02
     ]
 
     for func in funcoes:
