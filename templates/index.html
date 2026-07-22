@@ -13,14 +13,13 @@
     </div>
 
     <div class="row g-4">
-        
         <div class="col-md-6">
             <div class="card h-100 shadow-sm border-0 bg-light">
                 <div class="card-body text-center">
                     <h2 class="mb-3">📑</h2>
                     <h5 class="card-title">Gerar Relatórios de Produção</h5>
                     <p class="card-text text-muted">Exporte e gere relatórios detalhados e consolidados do período selecionado.</p>
-                    <a href="#" id="btn-gerar" class="btn btn-primary w-100">Gerar Relatório</a>
+                    <a href="/gerar_relatorios" class="btn btn-primary w-100">Gerar Relatório</a>
                 </div>
             </div>
         </div>
@@ -35,7 +34,6 @@
                 </div>
             </div>
         </div>
-
     </div>
 
     <div class="row mt-5">
@@ -50,37 +48,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    const btnGerar = document.getElementById('btn-gerar');
-
-    if (btnGerar) {
-        btnGerar.addEventListener('click', function(e) {
-            e.preventDefault();
-
-            btnGerar.innerHTML = "⏳ Processando...";
-            btnGerar.classList.add('disabled');
-
-            fetch('/gerar_relatorios', {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-
-                alert(data.mensagem);
-                
-                btnGerar.innerHTML = "Gerar Relatório";
-                btnGerar.classList.remove('disabled');
-            })
-            .catch(error => {
-                alert("Ocorreu um erro ao tentar iniciar os relatórios.");
-                console.error(error);
-                btnGerar.innerHTML = "Gerar Relatório";
-                btnGerar.classList.remove('disabled');
-            });
-        });
-    }
-</script>
 {% endblock %}

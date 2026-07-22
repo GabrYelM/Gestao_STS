@@ -13,7 +13,7 @@ def bot_setup_page():
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()
 
-    browser = p.chromium.launch(headless=True, channel="msedge", slow_mo=3000)
+    browser = p.chromium.launch(headless=False, channel="msedge", slow_mo=3000)
     context = browser.new_context(http_credentials={'username': usuario, 'password': senha}, accept_downloads=True)
     page = context.new_page()
 

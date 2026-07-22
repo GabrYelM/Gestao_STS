@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Gerar Relatórios{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <h1 class="h3 text-primary mb-3">Gerar Relatórios</h1>
+                    <p class="text-muted">Inicie a extração automatizada dos dados de produção para o período selecionado.</p>
+
+                    <div class="mb-4">
+                        <label for="mes-competencia" class="form-label fw-semibold">Mês da competência</label>
+                        <select id="mes-competencia" class="form-select" aria-label="Selecione o mês da competência">
+                            <option value="Janeiro">Janeiro</option>
+                            <option value="Fevereiro">Fevereiro</option>
+                            <option value="Março">Março</option>
+                            <option value="Abril">Abril</option>
+                            <option value="Maio">Maio</option>
+                            <option value="Junho">Junho</option>
+                            <option value="Julho">Julho</option>
+                            <option value="Agosto">Agosto</option>
+                            <option value="Setembro">Setembro</option>
+                            <option value="Outubro">Outubro</option>
+                            <option value="Novembro">Novembro</option>
+                            <option value="Dezembro">Dezembro</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="ano-competencia" class="form-label fw-semibold">Ano da competência</label>
+                        <input type="text" id="ano-competencia" class="form-control" value="2026" placeholder="Digite o ano" />
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
+                        <button type="button" id="btn-gerar" class="btn btn-success">Gerar</button>
+                        <a href="/" class="btn btn-outline-secondary">Voltar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const btnGerar = document.getElementById('btn-gerar');
+    const mesCompetencia = document.getElementById('mes-competencia');
+    const anoCompetencia = document.getElementById('ano-competencia');
+
+    if (btnGerar) {
+        btnGerar.addEventListener('click', function (e) {
+            e.preventDefault();
+
+            btnGerar.innerHTML = '⏳ Processando...';
+            btnGerar.classList.add('disabled');
+
+            const formData = new URLSearchParams();
+            formData.append('mes_competencia', mesCompetencia ? mesCompetencia.value : 'Janeiro');
+            formData.append('ano_competencia', anoCompetencia ? anoCompetencia.value : '2026');
+
+            fetch('/gerar_relatorios', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+                },
+                body: formData.toString()
+            })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.mensagem);
+                    btnGerar.innerHTML = 'Gerar';
+                    btnGerar.classList.remove('disabled');
+                })
+                .catch(error => {
+                    alert('Ocorreu um erro ao tentar iniciar os relatórios.');
+                    console.error(error);
+                    btnGerar.innerHTML = 'Gerar';
+                    btnGerar.classList.remove('disabled');
+                });
+        });
+    }
+</script>
+{% endblock %}
