@@ -30,6 +30,7 @@ def executar_bot(funcao_busca, mes, ano):
 
 
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
@@ -45,6 +46,12 @@ def login():
         return redirect("/")
 
     return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/gerar_relatorios", methods=["GET", "POST"])

@@ -9,6 +9,7 @@
     <title>Gestão STS | {% block title %}{% endblock %}</title>
 </head>
 <body>
+    {% if session.get("usuario_id") %}
     <nav class="navbar navbar-expand-lg bg-body-tertiary">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">Gestão STS</a>
@@ -21,31 +22,27 @@
                     <li class="nav-item">
                         <a class="nav-link active" aria-current="page" href="/">Início</a>
                     </li>
-
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             Relatórios
                         </a>
-
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="/gerar_relatorios">Produção</a></li>
                             <li><a class="dropdown-item" href="#">AG-04</a></li>
-                            <li><a class="dropdown-item" href="#">AG-04</a></li>
-                            <li><a class="dropdown-item" href="#">AT-02</a></li>
-                            <li><a class="dropdown-item" href="#">AT-03</a></li>
-                            <li><a class="dropdown-item" href="#">FE-02</a></li>
-                            <li><a class="dropdown-item" href="#">VG-02</a></li>
-                            <li><a class="dropdown-item" href="#">VG-04</a></li>
-                            <li><a class="dropdown-item" href="#">CG-01</a></li>
-                            <li><a class="dropdown-item" href="#">CG-05</a></li>
-                            <li><a class="dropdown-item" href="#">CG-06</a></li>
-                            <li><a class="dropdown-item" href="#">GAC-02</a></li>
                         </ul>
                     </li>
                 </ul>
+
+                <div class="ms-auto d-flex align-items-center">
+                    <a class="badge text-bg-danger text-decoration-none" type="button" href="/logout" >
+                        Deslogar
+                    </a>
+                </div>
+                
             </div>
         </div>
     </nav>
+    {% endif %}
     
     {% block content %}
     {% endblock %}
