@@ -3,34 +3,47 @@
 {% block title %}Login - Gestão STS{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center align-items-center" style="min-height: 75vh;">
-    <div class="col-12 col-md-6 col-lg-4">
-        <div class="card shadow border-0 rounded-4 mt-5">
-            <div class="card-body p-5">
-                
-                <div class="text-center mb-4">
-                    <h2 class="fw-bold text-primary mb-1">Gestão STS</h2>
-                    <p class="text-muted small">Automação e Gestão de Dados de Produção</p>
+<div class="container">
+    <div class="row justify-content-center align-items-center" style="min-height: 75vh;">
+        <div class="col-12 col-md-6 col-lg-5">
+            <div class="card shadow border-0 rounded-4 mt-5">
+                <div class="card-body p-5">
+                    
+                    <div class="text-center mb-4">
+                        <h2 class="fw-bold text-primary mb-1">Gestão STS</h2>
+                        <p class="text-muted small">Automação e Gestão de Dados de Produção</p>
+                    </div>
+
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="bg-danger alert alert-{{ category }} alert-dismissible fade show text-center text-white" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST" action="">
+                        
+                        <div class="mb-3">
+                            <label for="username" class="form-label fw-semibold">Usuário</label>
+                            <input type="text" class="form-control form-control-lg bg-light border-0" id="username" name="username" placeholder="Digite seu usuário" required autofocus>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label for="password" class="form-label fw-semibold">Senha</label>
+                            <input type="password" class="form-control form-control-lg bg-light border-0" id="password" name="password" placeholder="Digite sua senha" required>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
+                            Entrar no Sistema
+                        </button>
+                        
+                    </form>
+
                 </div>
-
-                <form method="POST" action="">
-                    
-                    <div class="mb-3">
-                        <label for="username" class="form-label fw-semibold">Usuário</label>
-                        <input type="text" class="form-control form-control-lg bg-light border-0" id="username" name="username" placeholder="Digite seu usuário" required autofocus>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label for="password" class="form-label fw-semibold">Senha</label>
-                        <input type="password" class="form-control form-control-lg bg-light border-0" id="password" name="password" placeholder="Digite sua senha" required>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
-                        Entrar no Sistema
-                    </button>
-                    
-                </form>
-
             </div>
         </div>
     </div>
