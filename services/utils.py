@@ -3,8 +3,12 @@ from dotenv import load_dotenv
 import calendar
 import pandas as pd
 
+
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
+
+
+
 
 def bot_setup_page():
     usuario = os.getenv("PORTAL_USUARIO")

@@ -1,11 +1,26 @@
-from flask import Flask, render_template, jsonify, request
+import os
+from dotenv import load_dotenv
+from flask import Flask, redirect, render_template, jsonify, request, session
 from concurrent.futures import ThreadPoolExecutor
 import services.utils as su
 import services.bot as sb
+from database import db
+import models
 
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=10)
 
+load_dotenv()
+app.secret_key = os.getenv("SECRET_KEY")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
+
+executor = ThreadPoolExecutor(max_workers=10)
 
 def executar_bot(funcao_busca, mes, ano):
     p, context, page = su.bot_setup_page()
@@ -17,6 +32,19 @@ def executar_bot(funcao_busca, mes, ano):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        senha = request.form.get("senha")
+
+        usuario = models.Usuario.query.filter_by(username=username).one()
+        session["usuario_id"] = usuario.id
+
+        return redirect("/")
+
+    return render_template("login.html")
 
 
 @app.route("/gerar_relatorios", methods=["GET", "POST"])

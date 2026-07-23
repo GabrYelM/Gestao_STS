@@ -1,5 +1,20 @@
 # cria classes para mapear as tabelas no db
 from database import db
+from werkzeug.security import generate_password_hash, check_password_hash
+
+class Usuario(db.Model):
+    __tablename__ = 'usuarios'
+
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), nullable=False)
+    senha = db.Column(db.String(255), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
+
+    def hash_senha(self, senha):
+        self.senha = generate_password_hash(senha)
+
+    def check_senha(self, senha):
+        return check_password_hash(self.senha, senha)
 
 class AG04(db.Model):
     __tablename__ = 'AG-04'
