@@ -1,7 +1,8 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, jsonify, request, session
+from flask import Flask, flash, redirect, render_template, jsonify, request, session, url_for
 from concurrent.futures import ThreadPoolExecutor
+from decorators import *
 import services.utils as su
 import services.bot as sb
 from database import db
@@ -34,16 +35,25 @@ def executar_bot(funcao_busca, mes, ano):
 def index():
     return render_template("index.html")
 
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username")
-        senha = request.form.get("senha")
+        senha_digitada = request.form.get("password")
 
-        usuario = models.Usuario.query.filter_by(username=username).one()
-        session["usuario_id"] = usuario.id
+        usuario = models.Usuario.query.filter_by(username=username).first()
 
-        return redirect("/")
+        if usuario and usuario.check_senha(senha_digitada):
+            session["usuario_id"] = usuario.id
+            session["is_admin"] = usuario.is_admin
+
+            return redirect(url_for("index"))
+        else:
+            flash("Usuário ou senha incorretos. Tente novamente.", "error")
+
+    if session.get("usuario_id"):
+        return redirect(url_for("index"))
 
     return render_template("login.html")
 
