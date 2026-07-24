@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import calendar
 import pandas as pd
+import services.etl as etl 
 
 
 # Carrega as variáveis de ambiente do arquivo .env
@@ -44,10 +45,12 @@ def download_bi(page, click_timeout=60000, timeout_geral=1000):
 
     save_path = fr"C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS\{nome_final}.csv"
 
-    os.makedirs("C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS", exist_ok=True)
+    os.makedirs(r"C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS", exist_ok=True)
     download.save_as(save_path)
 
     print(f"-------Relatório {nome_original} Gerado")
+    return save_path
+
 
 def obter_inicio_e_fim_do_mes(nome_mes, ano_texto):
 

@@ -57,7 +57,7 @@ class AT03(db.Model):
     __tablename__ = 'AT-03'
 
     id = db.Column(db.Integer, primary_key=True)
-    ano_mes = db.Column(db.Integer, default=0)
+    ano = db.Column(db.Integer, default=0)
     mes = db.Column(db.String(15), nullable=False)
     coordenadoria = db.Column(db.String(50), nullable=False)
     estabelecimento = db.Column(db.String(100), nullable=False)

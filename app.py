@@ -3,12 +3,6 @@ from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, jsonify, request, session, url_for
 from concurrent.futures import ThreadPoolExecutor
 from decorators import *
-import services.utils as su
-import services.bot as sb
-from database import db
-import models
-import pandas as pd
-
 app = Flask(__name__)
 
 load_dotenv()
@@ -17,10 +11,19 @@ app.secret_key = os.getenv("SECRET_KEY")
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+from database import db
 db.init_app(app)
+
+import models
 
 with app.app_context():
     db.create_all()
+
+import services.utils as su
+import services.bot as sb
+import pandas as pd
+import services.etl as etl
+
 
 executor = ThreadPoolExecutor(max_workers=10)
 

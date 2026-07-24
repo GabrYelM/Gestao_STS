@@ -1,5 +1,6 @@
 from playwright.sync_api import sync_playwright
 from services.utils import bot_setup_page, download_bi, obter_inicio_e_fim_do_mes
+import services.etl as etl
 
 click_timeout = 10000
 timeout_geral = 1000
@@ -56,7 +57,8 @@ def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_ag04(caminho)
 
 def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -119,7 +121,8 @@ def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_at02(caminho)
 
 def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     '''quando for chamar esta função rodar em um laço de acordo com os meses e anos, deve ser gerado mes a mes'''
@@ -168,7 +171,8 @@ def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
     page.wait_for_load_state("networkidle", timeout=180000)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_at03(caminho)
 
 def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -199,7 +203,8 @@ def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     page.get_by_title("Parâmetro de relatório Digite $$ para todos ou parte do nome do procedimento para pesquisa").fill("$$")
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_fe02(caminho)
 
 def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -258,7 +263,8 @@ def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
     page.wait_for_load_state("networkidle", timeout=180000)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_vg02(caminho)
 
 def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     print("Coletando relatório mensal...")
@@ -314,7 +320,8 @@ def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
     page.wait_for_load_state("networkidle", timeout=180000)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_vg04(caminho)
 
 def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -352,7 +359,8 @@ def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     page.get_by_title("Parâmetro de relatório Tipo de Visualização").select_option("Estabelecimento")
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_cg01(caminho)
 
 def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -385,7 +393,8 @@ def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde").select_option("(Todas as opções)")
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_cg05(caminho)
 
 def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -422,7 +431,8 @@ def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde").select_option("(Todas as opções)")
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_cg06(caminho)
 
 def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
@@ -451,7 +461,8 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     page.get_by_title("Parâmetro de relatório Estabelecimento de Saúde").select_option("(Todas as opções)")
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
-    download_bi(page)
+    caminho = download_bi(page)
+    etl.processa_gac02(caminho)
 
 if __name__ == '__main__':
     p, context, page = bot_setup_page()
