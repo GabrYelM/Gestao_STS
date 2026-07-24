@@ -19,6 +19,21 @@ import models
 with app.app_context():
     db.create_all()
 
+    admin_existente = models.Usuario.query.filter_by(username="admin").first()
+    normal_existente = models.Usuario.query.filter_by(username="normal").first()
+
+    if not admin_existente:
+        admin = models.Usuario(username="admin", is_admin=True)
+        admin.hash_senha("admin")
+        db.session.add(admin)
+        db.session.commit()
+
+    if not normal_existente:
+        normal = models.Usuario(username="normal", is_admin=False)
+        normal.hash_senha("normal")
+        db.session.add(normal)
+        db.session.commit()
+
 import services.utils as su
 import services.bot as sb
 import pandas as pd
@@ -35,7 +50,7 @@ def executar_bot(funcao_busca, mes, ano):
 
 
 @app.route("/")
-@login_required
+# @login_required
 def index():
     return render_template("index.html")
 
@@ -66,6 +81,16 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+""" @app.route("/alterar_senha", methods=["GET", "POST"])
+@admin_required
+def alterar_senha():
+    if request.method == "POST":
+        
+
+
+    return render_template("alterar-senha.html") """
 
 
 @app.route("/gerar_relatorios", methods=["GET", "POST"])
