@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright
 from services.utils import bot_setup_page, download_bi, obter_inicio_e_fim_do_mes
 
-click_timeout = 1000
+click_timeout = 10000
 timeout_geral = 1000
 
 def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
@@ -459,7 +459,16 @@ if __name__ == '__main__':
     mes = ["Janeiro"]
 
     try:
-        buscaAT03(mes[0], ano[0], page, click_timeout, timeout_geral)
+        buscaAG04(mes, ano, page, click_timeout, timeout_geral)
+        buscaAT02(mes, ano, page, click_timeout, timeout_geral)
+        buscaAT03(mes, ano, page, click_timeout, timeout_geral)
+        buscaFE02(mes, ano, page, click_timeout, timeout_geral)
+        buscaVG02(mes, ano, page, click_timeout, timeout_geral)
+        buscaVG04(mes, ano, page, click_timeout, timeout_geral)
+        buscaCG01(mes, ano, page, click_timeout, timeout_geral)
+        buscaCG05(mes, ano, page, click_timeout, timeout_geral)
+        buscaCG06(mes, ano, page, click_timeout, timeout_geral)
+        buscaGAC02(mes, ano, page, click_timeout, timeout_geral)
         input("Pressione enter no terminal para finalizar")
 
     finally:

@@ -43,7 +43,6 @@ class AT02(db.Model):
     cmes = db.Column(db.Integer, default=0)
     coordenadoria = db.Column(db.String(50), nullable=False)
     supervisao = db.Column(db.String(50), nullable=False)
-    oss = db.Column(db.String(50), nullable=False)
     tipo_estabelecimento = db.Column(db.String(100), nullable=False)
     cbo_no_sus = db.Column(db.Integer, default=0)
     nome_cbo = db.Column(db.String(150), nullable=False)
@@ -125,8 +124,6 @@ class FE02(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     ano_mes = db.Column(db.Integer, default=0)
-    ano = db.Column(db.Integer, default=0)
-    mes = db.Column(db.String(20), nullable=False)
     coordenadoria = db.Column(db.String(50), nullable=False)
     supervisao = db.Column(db.String(50), nullable=False)
     estabelecimento = db.Column(db.String(100), nullable=False)
@@ -141,7 +138,6 @@ class GAC02(db.Model):
     __tablename__ = 'GAC-02'
 
     id = db.Column(db.Integer, primary_key=True)
-    municipio = db.Column(db.String(50), nullable=False)
     coordenadoria = db.Column(db.String(50), nullable=False)
     supervisao = db.Column(db.String(50), nullable=False)
     cnes = db.Column(db.Integer, default=0)
@@ -156,12 +152,8 @@ class VG02(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     ano_mes = db.Column(db.Integer, default=0)
-    mes_ano_concatenado = db.Column(db.String(20), nullable=False)
-    ano = db.Column(db.Integer, default=0)
-    mes = db.Column(db.String(20), nullable=False)
     coordenadoria = db.Column(db.String(50), nullable=False)
     supervisao = db.Column(db.String(50), nullable=False)
-    nivel_4 = db.Column(db.String(50), nullable=False) # Região STS ou Subprefeitura
     cnes = db.Column(db.Integer, default=0)
     estabelecimento = db.Column(db.String(100), nullable=False)
     procedimento = db.Column(db.String(200), nullable=False)
@@ -175,8 +167,6 @@ class VG04(db.Model):
     __tablename__ = 'VG-04'
 
     id = db.Column(db.Integer, primary_key=True)
-    ano = db.Column(db.Integer, default=0)
-    mes = db.Column(db.String(20), nullable=False)
     ano_mes = db.Column(db.Integer, default=0)
     tipo_agenda = db.Column(db.String(50), nullable=False)
     tipo_atendimento = db.Column(db.String(50), nullable=False)
@@ -190,4 +180,3 @@ class VG04(db.Model):
     qtde_vaga_ofertada = db.Column(db.Integer, default=0)
     qtde_agendamento = db.Column(db.Integer, default=0)
     qtde_atendimento = db.Column(db.Integer, default=0)
-

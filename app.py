@@ -7,8 +7,15 @@ import services.utils as su
 import services.bot as sb
 from database import db
 import models
+import pandas as pd
 
 app = Flask(__name__)
+
+db.init_app(app)
+
+with app.app_context():
+    db.create_all()
+    print("Verificação do banco concluida: tabelas prontas!")
 
 load_dotenv()
 app.secret_key = os.getenv("SECRET_KEY")
