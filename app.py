@@ -65,6 +65,7 @@ def login():
 
         if usuario and usuario.check_senha(senha_digitada):
             session["usuario_id"] = usuario.id
+            session["usuario_nome"] = usuario.username
             session["is_admin"] = usuario.is_admin
 
             return redirect(url_for("index"))
@@ -84,7 +85,7 @@ def logout():
 
 
 """ @app.route("/alterar_senha", methods=["GET", "POST"])
-@admin_required
+# @admin_required
 def alterar_senha():
     if request.method == "POST":
         
@@ -94,6 +95,7 @@ def alterar_senha():
 
 
 @app.route("/gerar_relatorios", methods=["GET", "POST"])
+# @login_required
 def gerar_relatorios():
     if request.method == "GET":
         return render_template("gerar-relatorios.html")
@@ -111,6 +113,13 @@ def gerar_relatorios():
         executor.submit(executar_bot, func, [mes_competencia], [ano_competencia])
 
     return jsonify({"mensagem": f"Extração iniciada para {mes_competencia}/{ano_competencia}!"})
+
+
+@app.route("/dashboard")
+# @login_required
+def dashboard():
+
+    return render_template("dashboard.html")
 
 
 if __name__ == '__main__':
