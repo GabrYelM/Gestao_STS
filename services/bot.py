@@ -6,7 +6,7 @@ click_timeout = 10000
 timeout_geral = 1000
 
 def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
-    print("Coletando relatório mensal...")
+    print("Coletando AG04")
 
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
     page.get_by_text("Agendamentos").click()
@@ -58,10 +58,10 @@ def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_ag04(caminho)
+    return caminho
 
 def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
-    print("Coletando relatório mensal...")
+    print("Coletando AT02")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
 
     page.get_by_text("Atendimentos").first.click()
@@ -122,11 +122,11 @@ def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("input[value='Aplicar']").click(timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_at02(caminho)
+    return caminho
 
 def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     '''quando for chamar esta função rodar em um laço de acordo com os meses e anos, deve ser gerado mes a mes'''
-    print("Coletando relatório mensal...")
+    print("Coletando AT03")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
 
     page.get_by_text("Atendimentos").first.click()
@@ -172,10 +172,10 @@ def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_load_state("networkidle", timeout=180000)
 
     caminho = download_bi(page)
-    etl.processa_at03(caminho)
+    return caminho
 
 def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
-    print("Coletando relatório mensal...")
+    print("Coletando FE02")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
 
     page.get_by_text("Fila Espera").first.click()
@@ -204,10 +204,10 @@ def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_fe02(caminho)
+    return caminho
 
 def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
-    print("Coletando relatório mensal...")
+    print("Coletando VG02")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
 
     page.get_by_text("Vagas").first.click()
@@ -264,10 +264,10 @@ def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_load_state("networkidle", timeout=180000)
 
     caminho = download_bi(page)
-    etl.processa_vg02(caminho)
+    return caminho
 
 def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
-    print("Coletando relatório mensal...")
+    print("Coletando VG04")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx")
 
     page.get_by_text("Vagas").first.click()
@@ -321,12 +321,12 @@ def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_load_state("networkidle", timeout=180000)
 
     caminho = download_bi(page)
-    etl.processa_vg04(caminho)
+    return caminho
 
 def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
 
-    print("Coletando relatório mensal...")
+    print("Coletando CG01")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
 
     page.get_by_text("Contrato de Gestão").first.click()
@@ -360,12 +360,12 @@ def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_cg01(caminho)
+    return caminho
 
 def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
 
-    print("Coletando relatório mensal...")
+    print("Coletando CG05")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
 
     page.get_by_text("Contrato de Gestão").first.click()
@@ -394,12 +394,12 @@ def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_cg05(caminho)
+    return caminho
 
 def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
 
-    print("Coletando relatório mensal...")
+    print("Coletando CG06")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
 
     page.get_by_text("Contrato de Gestão").first.click()
@@ -432,12 +432,12 @@ def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_cg06(caminho)
+    return caminho
 
 def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
 
-    print("Coletando relatório mensal...")
+    print("Coletando GAC02")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
 
     page.get_by_text("Gestantes - Acolhimento / Risco").first.click()
@@ -462,7 +462,7 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     caminho = download_bi(page)
-    etl.processa_gac02(caminho)
+    return caminho
 
 if __name__ == '__main__':
     p, context, page = bot_setup_page()
@@ -480,7 +480,6 @@ if __name__ == '__main__':
         buscaCG05(mes, ano, page, click_timeout, timeout_geral)
         buscaCG06(mes, ano, page, click_timeout, timeout_geral)
         buscaGAC02(mes, ano, page, click_timeout, timeout_geral)
-        input("Pressione enter no terminal para finalizar")
 
     finally:
         print("-------Fechando-------")

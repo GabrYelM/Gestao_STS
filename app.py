@@ -8,7 +8,8 @@ app = Flask(__name__)
 load_dotenv()
 app.secret_key = os.getenv("SECRET_KEY")
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 from database import db
@@ -40,13 +41,60 @@ import pandas as pd
 import services.etl as etl
 
 
-executor = ThreadPoolExecutor(max_workers=10)
+gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
 
 def executar_bot(funcao_busca, mes, ano):
     p, context, page = su.bot_setup_page()
-    funcao_busca(mes, ano, page, 1000, 1000)
-    context.close()
-    p.stop()
+    try:
+        caminho = funcao_busca(mes, ano, page, 1000, 1000)
+        return caminho
+    except Exception as e:
+        print(f"Erro no bot: {e}")
+        return None
+    finally:
+        context.close()
+        p.stop()
+
+def processo_background(mes_competencia, ano_competencia):
+    print(f"Iniciando fila para {mes_competencia[0]}/{ano_competencia[0]}")
+    funcoes = [
+        (sb.buscaAG04, etl.processa_ag04),
+        (sb.buscaAT02, etl.processa_at02),
+        (sb.buscaAT03, etl.processa_at03),
+        (sb.buscaFE02, etl.processa_fe02),
+        (sb.buscaVG02, etl.processa_vg02),
+        (sb.buscaVG04, etl.processa_vg04),
+        (sb.buscaCG01, etl.processa_cg01),
+        (sb.buscaCG05, etl.processa_cg05),
+        (sb.buscaCG06, etl.processa_cg06),
+        (sb.buscaGAC02, etl.processa_gac02),
+    ]
+
+    caminhos_baixados = []
+    
+    # FASE 1: DOWNLOADS EM PARALELO
+    print("Fase 1: Disparando robôs de download em paralelo (max 4 por vez)...")
+    with ThreadPoolExecutor(max_workers=4) as bot_executor:
+        futuros = []
+        for func_bot, func_etl in funcoes:
+            futuro = bot_executor.submit(executar_bot, func_bot, mes_competencia, ano_competencia)
+            futuros.append((futuro, func_etl))
+            
+        for futuro, func_etl in futuros:
+            caminho = futuro.result() # Espera acabar
+            if caminho:
+                caminhos_baixados.append((caminho, func_etl))
+                
+    # FASE 2: ETL SEQUENCIAL
+    print("Fase 2: Todos os downloads concluídos. Iniciando inserção no banco de dados...")
+    for caminho, func_etl in caminhos_baixados:
+        try:
+            print(f"-> Subindo arquivo: {caminho}")
+            func_etl(caminho)
+        except Exception as e:
+            print(f"Erro no ETL do arquivo {caminho}: {e}")
+            
+    print("✅ PROCESSO 100% CONCLUÍDO COM SUCESSO!")
 
 
 @app.route("/")
@@ -103,16 +151,9 @@ def gerar_relatorios():
     mes_competencia = request.form.get("mes_competencia", "Janeiro")
     ano_competencia = request.form.get("ano_competencia", "2026")
 
-    funcoes = [
-        sb.buscaAG04, sb.buscaAT02, sb.buscaAT03, sb.buscaFE02, 
-        sb.buscaVG02, sb.buscaVG04, sb.buscaCG01, sb.buscaCG05, 
-        sb.buscaCG06, sb.buscaGAC02
-    ]
+    gerenciador_tarefas.submit(processo_background, [mes_competencia], [ano_competencia])
 
-    for func in funcoes:
-        executor.submit(executar_bot, func, [mes_competencia], [ano_competencia])
-
-    return jsonify({"mensagem": f"Extração iniciada para {mes_competencia}/{ano_competencia}!"})
+    return jsonify({"mensagem": f"Extração em 2 Fases iniciada para {mes_competencia}/{ano_competencia}! Os robôs estão baixando os arquivos."})
 
 
 @app.route("/dashboard")

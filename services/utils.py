@@ -2,14 +2,10 @@ import os
 from dotenv import load_dotenv
 import calendar
 import pandas as pd
-import services.etl as etl 
 
 
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
-
-
-
 
 def bot_setup_page():
     usuario = os.getenv("PORTAL_USUARIO")
@@ -18,7 +14,7 @@ def bot_setup_page():
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()
 
-    browser = p.chromium.launch(headless=False, channel="msedge", slow_mo=3000)
+    browser = p.chromium.launch(headless=True, slow_mo=3000)
     context = browser.new_context(http_credentials={'username': usuario, 'password': senha}, accept_downloads=True)
     page = context.new_page()
 
@@ -51,7 +47,6 @@ def download_bi(page, click_timeout=60000, timeout_geral=1000):
     print(f"-------Relatório {nome_original} Gerado")
     return save_path
 
-
 def obter_inicio_e_fim_do_mes(nome_mes, ano_texto):
 
     meses_pt = {
@@ -82,7 +77,3 @@ primeira_linha = {
                 "VG-02": 15,
                 "VG-04": 1
                 }
-
-def limpa_():
-    
-    pd.read_csv("AG-04 Perda Secundária por Executante.csv", sep=";", encoding="utf-8", header=15)

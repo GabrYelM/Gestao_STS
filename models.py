@@ -152,8 +152,6 @@ class VG02(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     ano_mes = db.Column(db.Integer, default=0)
-    coordenadoria = db.Column(db.String(50), nullable=False)
-    supervisao = db.Column(db.String(50), nullable=False)
     cnes = db.Column(db.Integer, default=0)
     estabelecimento = db.Column(db.String(100), nullable=False)
     procedimento = db.Column(db.String(200), nullable=False)

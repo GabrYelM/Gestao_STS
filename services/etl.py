@@ -4,13 +4,33 @@ from app import app
 from database import db
 import models
 
+import io
+
+def read_clean_csv(caminho, primeira_coluna):
+    """
+    Lê o arquivo nativamente, ignora todo o lixo do cabeçalho da prefeitura,
+    e entrega para o pandas apenas a partir da linha onde as colunas reais começam.
+    Isso evita qualquer erro de parsing de aspas duplas ou linhas em branco.
+    """
+    with open(caminho, 'r', encoding='utf-8-sig', errors='ignore') as f:
+        linhas = f.readlines()
+        
+    inicio = 0
+    for i, linha in enumerate(linhas):
+        if primeira_coluna in linha:
+            inicio = i
+            break
+            
+    conteudo_limpo = ''.join(linhas[inicio:])
+    return pd.read_csv(io.StringIO(conteudo_limpo), sep=';')
+
 def processa_ag04(caminho):
     """
     Função ETL para AG-04
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=14, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'Nome_Mes1')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -47,7 +67,7 @@ def processa_at02(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=12, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'Nome_Mes')
     
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -87,7 +107,7 @@ def processa_at03(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=11, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'Nome_Mes')
         
     traduz_col = {
         'Número_Ano': 'ano', 
@@ -104,7 +124,8 @@ def processa_at03(caminho):
     # 2. Transform
     df = df.rename(columns=traduz_col)
 
-    df = df.dropna(subset=['procedimento'])
+    df['nome_cbo'] = df['nome_cbo'].fillna('SEM CBO')
+    df['procedimento'] = df['procedimento'].fillna('SEM PROCEDIMENTO')
 
     col = ['ano', 'mes', 'coordenadoria', 'estabelecimento', 'faixa_etaria', 'nome_cbo', 'procedimento', 'sexo', 'quantidade_procedimento']
     df_limpo = df[col]
@@ -121,7 +142,7 @@ def processa_cg01(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=10, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'nm_municipio3')
         
     traduz_col = {
         'nm_coordenadoria_regional3': 'coordenadoria',
@@ -151,7 +172,7 @@ def processa_cg05(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=4, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'nm_coordenadoria_regional')
         
     traduz_col = {
         'nm_coordenadoria_regional': 'coordenadoria',
@@ -190,7 +211,7 @@ def processa_cg06(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=4, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'nm_coordenadoria_regional')
         
     traduz_col = {
         'nm_coordenadoria_regional': 'coordenadoria',
@@ -233,12 +254,10 @@ def processa_fe02(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=10, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'Nome_Mes6')
         
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
-        'Número_Ano6': 'ano',
-        'Nome_Mes6': 'mes',
         'H1___Nome_Nível_2': 'coordenadoria',
         'H1___Nome_Nível_31': 'supervisao',
         'H1___Nome_Estabelecimento': 'estabelecimento',
@@ -270,10 +289,9 @@ def processa_gac02(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=4, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'municipio')
         
     traduz_col = {
-        'municipio': 'municipio',
         'coordenadoria_regional': 'coordenadoria',
         'supervisao_tecnica1': 'supervisao',
         'cnes': 'cnes',
@@ -304,16 +322,10 @@ def processa_vg02(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', skiprows=14, encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'Nome_Mes')
         
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
-        'Mes_ano_concatenado2': 'mes_ano_concatenado',
-        'Número_Ano': 'ano',
-        'Nome_Mes': 'mes',
-        'H1___Nome_Nível_21': 'coordenadoria',
-        'H1___Nome_Nível_31': 'supervisao',
-        'H1___Nome_Nível_4': 'nivel_4',
         'Código_CNES': 'cnes',
         'H1___Nome_Estabelecimento1': 'estabelecimento',
         'Nome_Procedimento2': 'procedimento',
@@ -344,11 +356,9 @@ def processa_vg04(caminho):
     """
 
     # 1. Extract
-    df = pd.read_csv(caminho, sep=';', encoding='utf-8-sig')
+    df = read_clean_csv(caminho, 'Nome_Mes_')
         
     traduz_col = {
-        'Número_Ano_': 'ano',
-        'Nome_Mes_': 'mes',
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
         'Nome_Tipo_Agenda_': 'tipo_agenda',
         'Nome_Tipo_Atendimento_Agenda': 'tipo_atendimento',
