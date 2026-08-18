@@ -164,7 +164,7 @@ def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Procedimento").click()
-    page.get_by_text("All", exact=True).first.click(timeout=click_timeout)
+    page.get_by_text("Coleta De Material P/ Exame Citopatologico De Colo Uterino", exact=True).first.click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
