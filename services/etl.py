@@ -2,6 +2,7 @@
 import pandas as pd
 from app import app
 from database import db
+from sqlalchemy import text
 import models
 
 import io
@@ -47,6 +48,9 @@ def processa_ag04(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        periodo = df_limpo['ano_mes'].iloc[0]
+        db.session.execute(text(f"DELETE FROM 'AG-04' WHERE ano_mes = {periodo}"))
+        db.session.commit()
         df_limpo.to_sql(name='AG-04', con=db.engine, if_exists='append', index=False)
 
     print('AG-04 carregado')
@@ -77,6 +81,9 @@ def processa_at02(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        periodo = df_limpo['ano_mes'].iloc[0]
+        db.session.execute(text(f"DELETE FROM 'AT-02' WHERE ano_mes = {periodo}"))
+        db.session.commit()
         df_limpo.to_sql(name='AT-02', con=db.engine, if_exists='append', index=False)
 
     print('AT-02 carregado')
@@ -102,6 +109,10 @@ def processa_at03(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        ano = df_limpo['ano'].iloc[0]
+        mes = df_limpo['mes'].iloc[0]
+        db.session.execute(text(f"DELETE FROM 'AT-03' WHERE ano = {ano} AND mes = '{mes}'"))
+        db.session.commit()
         df_limpo.to_sql(name='AT-03', con=db.engine, if_exists='append', index=False)
 
     print('AT-03 carregado')
@@ -127,6 +138,9 @@ def processa_fe02(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        periodo = df_limpo['ano_mes'].iloc[0]
+        db.session.execute(text(f"DELETE FROM 'FE-02' WHERE ano_mes = {periodo}"))
+        db.session.commit()
         df_limpo.to_sql(name='FE-02', con=db.engine, if_exists='append', index=False)
 
     print('FE-02 carregado')
@@ -153,6 +167,9 @@ def processa_vg02(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        periodo = df_limpo['ano_mes'].iloc[0]
+        db.session.execute(text(f"DELETE FROM 'VG-02' WHERE ano_mes = {periodo}"))
+        db.session.commit()
         df_limpo.to_sql(name='VG-02', con=db.engine, if_exists='append', index=False)
 
     print('VG-02 carregado')
@@ -181,6 +198,9 @@ def processa_vg04(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        periodo = df_limpo['ano_mes'].iloc[0]
+        db.session.execute(text(f"DELETE FROM 'VG-04' WHERE ano_mes = {periodo}"))
+        db.session.commit()
         df_limpo.to_sql(name='VG-04', con=db.engine, if_exists='append', index=False)
 
     print('VG-04 carregado')
@@ -202,6 +222,8 @@ def processa_cg01(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        db.session.execute(text("DELETE FROM 'CG-01'"))
+        db.session.commit()
         df_limpo.to_sql(name='CG-01', con=db.engine, if_exists='append', index=False)
 
     print('CG-01 carregado')
@@ -231,6 +253,8 @@ def processa_cg05(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        db.session.execute(text("DELETE FROM 'CG-05'"))
+        db.session.commit()
         df_limpo.to_sql(name='CG-05', con=db.engine, if_exists='append', index=False)
 
     print('CG-05 carregado')
@@ -264,6 +288,8 @@ def processa_cg06(caminho):
     df_limpo = df[col]
 
     with app.app_context():
+        db.session.execute(text("DELETE FROM 'CG-06'"))
+        db.session.commit()
         df_limpo.to_sql(name='CG-06', con=db.engine, if_exists='append', index=False)
 
     print('CG-06 carregado')
@@ -287,6 +313,8 @@ def processa_gac02(caminho):
     df_limpo = df[col]
 
     with app.app_context():
-        df_limpo.to_sql(name='GA-C02', con=db.engine, if_exists='append', index=False)
+        db.session.execute(text("DELETE FROM 'GAC-02'"))
+        db.session.commit()
+        df_limpo.to_sql(name='GAC-02', con=db.engine, if_exists='append', index=False)
 
-    print('GA-C02 carregado')
+    print('GAC-02 carregado')

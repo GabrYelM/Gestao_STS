@@ -152,7 +152,7 @@ class CG06(db.Model):
     totg_75g = db.Column(db.String(255), nullable=True)
 
 class GAC02(db.Model):
-    __tablename__ = 'GA-C02'
+    __tablename__ = 'GAC-02'
 
     id = db.Column(db.Integer, primary_key=True)
     cnes = db.Column(db.Integer, default=0)
