@@ -54,6 +54,7 @@ class AT03(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ano = db.Column(db.Integer, default=0)
     mes = db.Column(db.String(255), nullable=True)
+    sts = db.Column(db.String(255), nullable=True)
     estabelecimento = db.Column(db.String(255), nullable=True)
     faixa_etaria = db.Column(db.String(255), nullable=True)
     nome_cbo = db.Column(db.String(255), nullable=True)
@@ -66,6 +67,7 @@ class FE02(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     ano_mes = db.Column(db.Integer, default=0)
+    sts = db.Column(db.String(255), nullable=True)
     estabelecimento = db.Column(db.String(255), nullable=True)
     cnes = db.Column(db.Integer, default=0)
     nome_procedimento = db.Column(db.String(255), nullable=True)

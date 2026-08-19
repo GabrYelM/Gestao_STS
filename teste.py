@@ -21,7 +21,12 @@ MAPA_FUNCOES = {
 
 # Mapa ligando o índice do relatório analítico à sua respectiva função
 MAPA_RELATORIOS = {
-    '03': prod.gera_relatorio_03
+    '03': prod.gera_relatorio_03,
+    '04': prod.gera_relatorio_04,
+    '10': prod.gera_relatorio_10,
+    '11': prod.gera_relatorio_11,
+    '13': prod.gera_relatorio_13,
+    '14': prod.gera_relatorio_14
 }
 
 def testar_bot(nome_relatorio, func_bot):

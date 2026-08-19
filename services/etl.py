@@ -94,6 +94,7 @@ def processa_at03(caminho):
     traduz_col = {
         'Número_Ano': 'ano',
         'Nome_Mes': 'mes',
+        'H1___Nome_Nível_3': 'sts',
         'H1___Nome_Estabelecimento': 'estabelecimento',
         'Nome_Faixa_Etária': 'faixa_etaria',
         'Nome_CBO': 'nome_cbo',
@@ -122,6 +123,7 @@ def processa_fe02(caminho):
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
+        'H1___Nome_Nível_31': 'sts',
         'H1___Nome_Estabelecimento': 'estabelecimento',
         'Código_CNES': 'cnes',
         'Nome_Procedimento5': 'nome_procedimento',
