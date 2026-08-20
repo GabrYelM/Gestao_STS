@@ -40,25 +40,35 @@ def gera_relatorio_08(periodo):
 
         ano = int(periodo[:4])
         mes = int(periodo[4:])
+        mes_gac = f"{periodo[:4]}-{periodo[4:]}"
 
         query_gac02 = f"""SELECT * FROM 'GAC-02'
-        WHERE estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+        WHERE data_extracao LIKE '{mes_gac}-%' AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
         query_cg01 = f"""SELECT * FROM 'CG-01'
-        WHERE estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+        WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
         query_cg05 = f"""SELECT * FROM 'CG-05'
-        WHERE estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+        WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         AND dias_acolhimento_dum BETWEEN 0 AND 120
         """
         query_cg05_quant = f"""SELECT * FROM 'CG-05'
-        WHERE estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+        WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
         query_cg06 = f"""SELECT * FROM 'CG-06'
-        WHERE estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+        WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
 
         df_gac02 = pd.read_sql(query_gac02, con=db.engine)
+        
+        # Fallback: Se não existir foto do GAC-02 no mês pesquisado, usa a mais recente disponível
+        if df_gac02.empty:
+            query_gac02_fallback = f"""SELECT * FROM 'GAC-02'
+            WHERE data_extracao = (SELECT MAX(data_extracao) FROM 'GAC-02')
+            AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+            """
+            df_gac02 = pd.read_sql(query_gac02_fallback, con=db.engine)
+            
         df_gac02['cnes'] = df_gac02['cnes'].astype(str).str.replace('.', '')
 
         df_cg01 = pd.read_sql(query_cg01, con=db.engine)

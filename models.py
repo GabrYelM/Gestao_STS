@@ -110,15 +110,17 @@ class CG01(db.Model):
     __tablename__ = 'CG-01'
 
     id = db.Column(db.Integer, primary_key=True)
+    ano_mes_extracao = db.Column(db.Integer, default=0)
     estabelecimento = db.Column(db.String(255), nullable=True)
     cnes = db.Column(db.Integer, default=0)
     qtde_gestantes = db.Column(db.Integer, default=0)
-    atendimentos_maior_igual_9 = db.Column(db.String(255), nullable=True)
+    atendimentos_maior_igual_9 = db.Column(db.Integer, default=0)
 
 class CG05(db.Model):
     __tablename__ = 'CG-05'
 
     id = db.Column(db.Integer, primary_key=True)
+    ano_mes_extracao = db.Column(db.Integer, default=0)
     cnes = db.Column(db.Integer, default=0)
     estabelecimento = db.Column(db.String(255), nullable=True)
     cpf = db.Column(db.Integer, default=0)
@@ -136,6 +138,7 @@ class CG06(db.Model):
     __tablename__ = 'CG-06'
 
     id = db.Column(db.Integer, primary_key=True)
+    ano_mes_extracao = db.Column(db.Integer, default=0)
     cnes = db.Column(db.Integer, default=0)
     estabelecimento = db.Column(db.String(255), nullable=True)
     pessoa = db.Column(db.String(255), nullable=True)
@@ -157,6 +160,7 @@ class GAC02(db.Model):
     __tablename__ = 'GAC-02'
 
     id = db.Column(db.Integer, primary_key=True)
+    data_extracao = db.Column(db.String(10), nullable=True)
     cnes = db.Column(db.Integer, default=0)
     estabelecimento = db.Column(db.String(255), nullable=True)
     cns = db.Column(db.Integer, default=0)

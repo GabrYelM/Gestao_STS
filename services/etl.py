@@ -1,5 +1,6 @@
 # transforma os arquivos em tabelas no db
 import pandas as pd
+from datetime import datetime
 from app import app
 from database import db
 from sqlalchemy import text
@@ -25,7 +26,7 @@ def read_clean_csv(caminho, primeira_coluna):
     conteudo_limpo = ''.join(linhas[inicio:])
     return pd.read_csv(io.StringIO(conteudo_limpo), sep=';')
 
-def processa_ag04(caminho):
+def processa_ag04(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes1')
 
     traduz_col = {
@@ -45,7 +46,7 @@ def processa_ag04(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -55,7 +56,7 @@ def processa_ag04(caminho):
 
     print('AG-04 carregado')
 
-def processa_at02(caminho):
+def processa_at02(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes')
 
     traduz_col = {
@@ -78,7 +79,7 @@ def processa_at02(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -88,7 +89,7 @@ def processa_at02(caminho):
 
     print('AT-02 carregado')
 
-def processa_at03(caminho):
+def processa_at03(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes')
 
     traduz_col = {
@@ -107,7 +108,7 @@ def processa_at03(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
 
     with app.app_context():
         ano = df_limpo['ano'].iloc[0]
@@ -118,7 +119,7 @@ def processa_at03(caminho):
 
     print('AT-03 carregado')
 
-def processa_fe02(caminho):
+def processa_fe02(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes6')
 
     traduz_col = {
@@ -137,7 +138,7 @@ def processa_fe02(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -147,7 +148,7 @@ def processa_fe02(caminho):
 
     print('FE-02 carregado')
 
-def processa_vg02(caminho):
+def processa_vg02(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes')
 
     traduz_col = {
@@ -166,7 +167,7 @@ def processa_vg02(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -176,7 +177,7 @@ def processa_vg02(caminho):
 
     print('VG-02 carregado')
 
-def processa_vg04(caminho):
+def processa_vg04(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes_')
 
     traduz_col = {
@@ -197,7 +198,7 @@ def processa_vg04(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -207,7 +208,7 @@ def processa_vg04(caminho):
 
     print('VG-04 carregado')
 
-def processa_cg01(caminho):
+def processa_cg01(caminho, periodo=None):
     df = read_clean_csv(caminho, 'nm_municipio3')
 
     traduz_col = {
@@ -221,16 +222,22 @@ def processa_cg01(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
+    
+    if periodo:
+        df_limpo['ano_mes_extracao'] = periodo
 
     with app.app_context():
-        db.session.execute(text("DELETE FROM 'CG-01'"))
+        if periodo:
+            db.session.execute(text(f"DELETE FROM 'CG-01' WHERE ano_mes_extracao = {periodo}"))
+        else:
+            db.session.execute(text("DELETE FROM 'CG-01'"))
         db.session.commit()
         df_limpo.to_sql(name='CG-01', con=db.engine, if_exists='append', index=False)
 
     print('CG-01 carregado')
 
-def processa_cg05(caminho):
+def processa_cg05(caminho, periodo=None):
     df = read_clean_csv(caminho, 'nm_coordenadoria_regional')
 
     traduz_col = {
@@ -252,16 +259,22 @@ def processa_cg05(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
+
+    if periodo:
+        df_limpo['ano_mes_extracao'] = periodo
 
     with app.app_context():
-        db.session.execute(text("DELETE FROM 'CG-05'"))
+        if periodo:
+            db.session.execute(text(f"DELETE FROM 'CG-05' WHERE ano_mes_extracao = {periodo}"))
+        else:
+            db.session.execute(text("DELETE FROM 'CG-05'"))
         db.session.commit()
         df_limpo.to_sql(name='CG-05', con=db.engine, if_exists='append', index=False)
 
     print('CG-05 carregado')
 
-def processa_cg06(caminho):
+def processa_cg06(caminho, periodo=None):
     df = read_clean_csv(caminho, 'nm_coordenadoria_regional')
 
     traduz_col = {
@@ -287,16 +300,22 @@ def processa_cg06(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
+
+    if periodo:
+        df_limpo['ano_mes_extracao'] = periodo
 
     with app.app_context():
-        db.session.execute(text("DELETE FROM 'CG-06'"))
+        if periodo:
+            db.session.execute(text(f"DELETE FROM 'CG-06' WHERE ano_mes_extracao = {periodo}"))
+        else:
+            db.session.execute(text("DELETE FROM 'CG-06'"))
         db.session.commit()
         df_limpo.to_sql(name='CG-06', con=db.engine, if_exists='append', index=False)
 
     print('CG-06 carregado')
 
-def processa_gac02(caminho):
+def processa_gac02(caminho, periodo=None):
     df = read_clean_csv(caminho, 'municipio')
 
     traduz_col = {
@@ -312,10 +331,15 @@ def processa_gac02(caminho):
     # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
 
     col = list(traduz_col.values())
-    df_limpo = df[col]
+    df_limpo = df[col].copy()
+
+    hoje = datetime.today().strftime('%Y-%m-%d')
+    mes_atual = datetime.today().strftime('%Y-%m')
+    df_limpo['data_extracao'] = hoje
 
     with app.app_context():
-        db.session.execute(text("DELETE FROM 'GAC-02'"))
+        # Deleta do mesmo mês até o dia de hoje
+        db.session.execute(text(f"DELETE FROM 'GAC-02' WHERE data_extracao LIKE '{mes_atual}-%' AND data_extracao <= '{hoje}'"))
         db.session.commit()
         df_limpo.to_sql(name='GAC-02', con=db.engine, if_exists='append', index=False)
 

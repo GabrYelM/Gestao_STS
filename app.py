@@ -101,10 +101,20 @@ def processo_background(mes_competencia, ano_competencia, relatorio_escolhido="T
                 
     # FASE 2: ETL SEQUENCIAL
     print("Fase 2: Todos os downloads concluídos. Iniciando inserção no banco de dados...")
+    
+    MAPA_MESES = {
+        'Janeiro': '01', 'Fevereiro': '02', 'Março': '03', 'Abril': '04',
+        'Maio': '05', 'Junho': '06', 'Julho': '07', 'Agosto': '08',
+        'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12'
+    }
+    mes_str = mes_competencia[0]
+    ano_str = ano_competencia[0]
+    periodo = int(f"{ano_str}{MAPA_MESES.get(mes_str, '01')}")
+
     for caminho, func_etl in caminhos_baixados:
         try:
             print(f"-> Subindo arquivo: {caminho}")
-            func_etl(caminho)
+            func_etl(caminho, periodo)
         except Exception as e:
             print(f"Erro no ETL do arquivo {caminho}: {e}")
             
