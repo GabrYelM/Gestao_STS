@@ -1,7 +1,48 @@
 {% extends "base.html" %}
-
-{% block title %}Dashboard{% endblock %}
-
+{% block title %}Dashboards{% endblock %}
 {% block content %}
+<div class="container mt-5">
+    <h2>Painel de Dashboards Analíticos</h2>
+    <hr>
+    
+    <!-- O FORMULÁRIO DE SELEÇÃO -->
+    <form method="POST" action="/dashboard" class="row g-3 mb-4">
+        
+        <!-- Escolha do Relatório -->
+        <div class="col-md-4">
+            <label class="form-label">Qual Dashboard deseja visualizar?</label>
+            <select class="form-select" name="indice_relatorio">
+                <option value="03">Relatório 03 - PLANILHA DE PRODUÇÃO POR ESPECIALIDADE (SIGA)</option>
+                <option value="04">Relatório 04 - VAGAS OFERTADAS POR TIPO DE ATENDIMENTO DA AGENDA POR UNIDADE</option>
+                <option value="08">Relatório 08 - PLANILHA DE ACOMPANHAMENTO DE GESTANTES</option>
+                <option value="10">Relatório 10 - ATENDIMENTO POR PROCEDIMENTO SEGUNDO SEXO E FAIXA ETÁRIA</option>
+                <option value="11">Relatório 11 - FLUXO DE ENTRADA SAÍDA E ATIVOS DE PROCEDIMENTOS E ESPECIALIDADES</option>
+                <option value="13">Relatório 13 - PERDA PRIMÁRIA POR PROCEDIMENTO E ESPECIALIDADE</option>
+                <option value="14">Relatório 14 - PERDA SECUNDÁRIA POR EXECUTANTE</option>
+                <!-- Pode adicionar os outros aqui -->
+            </select>
+        </div>
 
+        <!-- Escolha do Período -->
+        <div class="col-md-4">
+            <label class="form-label">Período (Ex: 202601)</label>
+            <input type="text" class="form-control" name="periodo" value="202601">
+        </div>
+
+        <div class="col-md-4 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">Gerar Dashboard</button>
+        </div>
+    </form>
+
+    <!-- A TABELA SÓ APARECE SE O PYTHON MANDAR A VARIÁVEL tabela_html -->
+    {% if tabela_html %}
+        <div class="card shadow-sm p-3">
+            <h4>Resultado:</h4>
+            <div class="table-responsive">
+                {{ tabela_html | safe }}
+            </div>
+        </div>
+    {% endif %}
+
+</div>
 {% endblock %}

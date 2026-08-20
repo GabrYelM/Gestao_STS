@@ -92,7 +92,7 @@ def gera_relatorio_08(periodo):
             values = 'qtde_consultas',
             aggfunc = 'count'
         ).reset_index()
-        print(gestantes_ativas)
+        #print(gestantes_ativas)
 
 
         df_cg05_quant['data_previsao_parto'] = pd.to_datetime(df_cg05_quant['data_previsao_parto'], format='%d/%m/%Y', errors='coerce')
@@ -106,7 +106,7 @@ def gera_relatorio_08(periodo):
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
-        print(gestantes_data_parto)
+        #print(gestantes_data_parto)
 
         df_cg01['atendimentos_maior_igual_9'] = pd.to_numeric(df_cg01['atendimentos_maior_igual_9'], errors='coerce')
         df_cg01['atendimentos_maior_igual_9'] = df_cg01['atendimentos_maior_igual_9'].fillna(0)
@@ -116,7 +116,7 @@ def gera_relatorio_08(periodo):
             values = 'atendimentos_maior_igual_9',
             aggfunc = 'sum'
         ).reset_index()
-        print(consultas_maior)
+        #print(consultas_maior)
 
         dias_120 = pd.pivot_table(
             df_cg05,
@@ -124,7 +124,7 @@ def gera_relatorio_08(periodo):
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
-        print(dias_120)
+        #print(dias_120)
 
         exames = pd.pivot_table(
             df_cg06,
@@ -132,7 +132,7 @@ def gera_relatorio_08(periodo):
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
-        print(exames)
+        #print(exames)
 
         df_final = pd.merge(df_base, gestantes_ativas, on=['cnes', 'estabelecimento'], how='left')
         df_final = pd.merge(df_final, gestantes_data_parto, on=['cnes', 'estabelecimento'], how='left')
@@ -157,8 +157,8 @@ def gera_relatorio_08(periodo):
         df_final = df_final.replace([np.inf, -np.inf, np.nan], 0)
         df_final = df_final.round(2)
 
-        print(df_final)
-        return # df_final
+        #print(df_final)
+        return df_final
 
 def gera_relatorio_10(periodo):
 
@@ -199,7 +199,7 @@ def gera_relatorio_10(periodo):
             values = 'quantidade_procedimento',
             aggfunc='sum'
         )
-        print(df_final)
+        #print(df_final)
         return df_final
 
 def gera_relatorio_11(periodo):

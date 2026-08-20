@@ -39,7 +39,7 @@ import services.utils as su
 import services.bot as sb
 import pandas as pd
 import services.etl as etl
-
+import services.producao as prod
 
 gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
 
@@ -156,11 +156,41 @@ def gerar_relatorios():
     return jsonify({"mensagem": f"Extração em 2 Fases iniciada para {mes_competencia}/{ano_competencia}! Os robôs estão baixando os arquivos."})
 
 
-@app.route("/dashboard")
+@app.route("/dashboard", methods=["GET", "POST"])
 # @login_required
 def dashboard():
-
-    return render_template("dashboard.html")
+    tabela_html = None  # Começa vazio
+    if request.method == "POST":
+        # 1. Pega as opções que o usuário digitou/escolheu na tela
+        indice = request.form.get("indice_relatorio")
+        periodo = request.form.get("periodo")
+        # 2. Um "if" simples para decidir qual função rodar
+        try:
+            if indice == '03':
+                df = prod.gera_relatorio_03(periodo)
+            elif indice == '04':
+                df = prod.gera_relatorio_04(periodo)
+            elif indice == '08':
+                df = prod.gera_relatorio_08(periodo)
+            elif indice == '10':
+                df = prod.gera_relatorio_10(periodo)
+            elif indice == '11':
+                df = prod.gera_relatorio_11(periodo)
+            elif indice == '13':
+                df = prod.gera_relatorio_13(periodo)
+            elif indice == '14':
+                df = prod.gera_relatorio_14(periodo)
+            else:
+                df = None
+            
+            # 3. Transforma o resultado em HTML
+            if df is not None:
+                tabela_html = df.to_html(classes='table table-striped table-bordered table-hover')
+                
+        except Exception as e:
+            # Caso o usuário digite um mês que não tem no banco, etc.
+            tabela_html = f"<div class='alert alert-danger'>Erro ao gerar relatório: {e}</div>"
+    return render_template("dashboard.html", tabela_html=tabela_html)
 
 
 if __name__ == '__main__':
