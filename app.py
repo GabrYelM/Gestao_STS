@@ -55,20 +55,34 @@ def executar_bot(funcao_busca, mes, ano):
         context.close()
         p.stop()
 
-def processo_background(mes_competencia, ano_competencia):
-    print(f"Iniciando fila para {mes_competencia[0]}/{ano_competencia[0]}")
-    funcoes = [
-        (sb.buscaAG04, etl.processa_ag04),
-        (sb.buscaAT02, etl.processa_at02),
-        (sb.buscaAT03, etl.processa_at03),
-        (sb.buscaFE02, etl.processa_fe02),
-        (sb.buscaVG02, etl.processa_vg02),
-        (sb.buscaVG04, etl.processa_vg04),
-        (sb.buscaCG01, etl.processa_cg01),
-        (sb.buscaCG05, etl.processa_cg05),
-        (sb.buscaCG06, etl.processa_cg06),
-        (sb.buscaGAC02, etl.processa_gac02),
-    ]
+status_extracao = {"em_andamento": False, "concluido": False}
+
+def processo_background(mes_competencia, ano_competencia, relatorio_escolhido="TODOS"):
+    status_extracao["em_andamento"] = True
+    status_extracao["concluido"] = False
+    
+    print(f"Iniciando fila para {mes_competencia[0]}/{ano_competencia[0]} - Relatório: {relatorio_escolhido}")
+    todas_funcoes = {
+        'AG04': (sb.buscaAG04, etl.processa_ag04),
+        'AT02': (sb.buscaAT02, etl.processa_at02),
+        'AT03': (sb.buscaAT03, etl.processa_at03),
+        'FE02': (sb.buscaFE02, etl.processa_fe02),
+        'VG02': (sb.buscaVG02, etl.processa_vg02),
+        'VG04': (sb.buscaVG04, etl.processa_vg04),
+        'CG01': (sb.buscaCG01, etl.processa_cg01),
+        'CG05': (sb.buscaCG05, etl.processa_cg05),
+        'CG06': (sb.buscaCG06, etl.processa_cg06),
+        'GAC02': (sb.buscaGAC02, etl.processa_gac02),
+    }
+
+    if relatorio_escolhido == "TODOS":
+        funcoes = list(todas_funcoes.values())
+    else:
+        funcoes = [todas_funcoes.get(relatorio_escolhido)]
+        
+    if None in funcoes:
+        print("Relatório escolhido inválido.")
+        return
 
     caminhos_baixados = []
     
@@ -94,7 +108,9 @@ def processo_background(mes_competencia, ano_competencia):
         except Exception as e:
             print(f"Erro no ETL do arquivo {caminho}: {e}")
             
-    print("✅ PROCESSO 100% CONCLUÍDO COM SUCESSO!")
+    print("100% CONCLUÍDO COM SUCESSO!")
+    status_extracao["em_andamento"] = False
+    status_extracao["concluido"] = True
 
 
 @app.route("/")
@@ -150,15 +166,19 @@ def gerar_relatorios():
 
     mes_competencia = request.form.get("mes_competencia", "Janeiro")
     ano_competencia = request.form.get("ano_competencia", "2026")
+    relatorio_escolhido = request.form.get("relatorio_escolhido", "TODOS")
 
-    gerenciador_tarefas.submit(processo_background, [mes_competencia], [ano_competencia])
+    gerenciador_tarefas.submit(processo_background, [mes_competencia], [ano_competencia], relatorio_escolhido)
 
-    return jsonify({"mensagem": f"Extração em 2 Fases iniciada para {mes_competencia}/{ano_competencia}! Os robôs estão baixando os arquivos."})
+    return jsonify({"mensagem": f"Extração iniciada para {mes_competencia}/{ano_competencia} ({relatorio_escolhido})! Os robôs estão baixando os arquivos."})
 
+@app.route("/status_extracao")
+def status_extracao_route():
+    return jsonify(status_extracao)
 
-@app.route("/dashboard", methods=["GET", "POST"])
+@app.route("/producao", methods=["GET", "POST"])
 # @login_required
-def dashboard():
+def producao():
     tabela_html = None  # Começa vazio
     if request.method == "POST":
         # 1. Pega as opções que o usuário digitou/escolheu na tela
@@ -190,7 +210,7 @@ def dashboard():
         except Exception as e:
             # Caso o usuário digite um mês que não tem no banco, etc.
             tabela_html = f"<div class='alert alert-danger'>Erro ao gerar relatório: {e}</div>"
-    return render_template("dashboard.html", tabela_html=tabela_html)
+    return render_template("producao.html", tabela_html=tabela_html)
 
 
 if __name__ == '__main__':

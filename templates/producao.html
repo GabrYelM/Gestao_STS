@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Dashboards{% endblock %}
+{% block title %}Produção{% endblock %}
 {% block content %}
 <div class="container mt-5">
-    <h2>Painel de Dashboards Analíticos</h2>
+    <h2>Painel de Produção</h2>
     <hr>
     
     <!-- O FORMULÁRIO DE SELEÇÃO -->
-    <form method="POST" action="/dashboard" class="row g-3 mb-4">
+    <form method="POST" action="/producao" class="row g-3 mb-4">
         
         <!-- Escolha do Relatório -->
         <div class="col-md-4">
-            <label class="form-label">Qual Dashboard deseja visualizar?</label>
+            <label class="form-label">Qual Relatório de Produção deseja visualizar?</label>
             <select class="form-select" name="indice_relatorio">
                 <option value="03">Relatório 03 - PLANILHA DE PRODUÇÃO POR ESPECIALIDADE (SIGA)</option>
                 <option value="04">Relatório 04 - VAGAS OFERTADAS POR TIPO DE ATENDIMENTO DA AGENDA POR UNIDADE</option>
@@ -30,7 +30,10 @@
         </div>
 
         <div class="col-md-4 d-flex align-items-end">
-            <button type="submit" class="btn btn-primary w-100">Gerar Dashboard</button>
+            <button type="submit" id="btn-gerar-dash" class="btn btn-primary w-100">
+                <span id="spinner-dash" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                <span id="texto-botao">Visualizar Produção</span>
+            </button>
         </div>
     </form>
 
@@ -45,4 +48,17 @@
     {% endif %}
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const formDash = document.querySelector('form');
+    if (formDash) {
+        formDash.addEventListener('submit', function() {
+            document.getElementById('spinner-dash').classList.remove('d-none');
+            document.getElementById('texto-botao').innerText = ' Processando...';
+            document.getElementById('btn-gerar-dash').classList.add('disabled');
+        });
+    }
+</script>
 {% endblock %}
