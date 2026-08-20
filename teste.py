@@ -23,6 +23,7 @@ MAPA_FUNCOES = {
 MAPA_RELATORIOS = {
     '03': prod.gera_relatorio_03,
     '04': prod.gera_relatorio_04,
+    '08': prod.gera_relatorio_08,
     '10': prod.gera_relatorio_10,
     '11': prod.gera_relatorio_11,
     '13': prod.gera_relatorio_13,
