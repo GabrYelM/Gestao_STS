@@ -92,8 +92,10 @@ def gera_relatorio_08(periodo):
             values = 'qtde_consultas',
             aggfunc = 'count'
         ).reset_index()
-        #print(gestantes_ativas)
-
+        if 'qtde_consultas' in gestantes_ativas.columns:
+            gestantes_ativas = gestantes_ativas.rename(columns={'qtde_consultas': 'gestantes_ativas'})
+        else:
+            gestantes_ativas['gestantes_ativas'] = 0
 
         df_cg05_quant['data_previsao_parto'] = pd.to_datetime(df_cg05_quant['data_previsao_parto'], format='%d/%m/%Y', errors='coerce')
         df_cg05_quant = df_cg05_quant[
@@ -106,17 +108,24 @@ def gera_relatorio_08(periodo):
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
-        #print(gestantes_data_parto)
+        if 'pessoa' in gestantes_data_parto.columns:
+            gestantes_data_parto = gestantes_data_parto.rename(columns={'pessoa': 'gestantes_data_parto'})
+        else:
+            gestantes_data_parto['gestantes_data_parto'] = 0
 
         df_cg01['atendimentos_maior_igual_9'] = pd.to_numeric(df_cg01['atendimentos_maior_igual_9'], errors='coerce')
         df_cg01['atendimentos_maior_igual_9'] = df_cg01['atendimentos_maior_igual_9'].fillna(0)
+
         consultas_maior = pd.pivot_table(
             df_cg01,
             index = ['estabelecimento', 'cnes'],
             values = 'atendimentos_maior_igual_9',
             aggfunc = 'sum'
         ).reset_index()
-        #print(consultas_maior)
+        if 'atendimentos_maior_igual_9' in consultas_maior.columns:
+            consultas_maior = consultas_maior.rename(columns={'atendimentos_maior_igual_9': 'consultas_maior_igual_7'})
+        else:
+            consultas_maior['consultas_maior_igual_7'] = 0
 
         dias_120 = pd.pivot_table(
             df_cg05,
@@ -124,7 +133,10 @@ def gera_relatorio_08(periodo):
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
-        #print(dias_120)
+        if 'pessoa' in dias_120.columns:
+            dias_120 = dias_120.rename(columns={'pessoa': 'captacao_ate_120_dias'})
+        else:
+            dias_120['captacao_ate_120_dias'] = 0
 
         exames = pd.pivot_table(
             df_cg06,
@@ -132,7 +144,10 @@ def gera_relatorio_08(periodo):
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
-        #print(exames)
+        if 'pessoa' in exames.columns:
+            exames = exames.rename(columns={'pessoa': 'exames_realizados'})
+        else:
+            exames['exames_realizados'] = 0
 
         df_final = pd.merge(df_base, gestantes_ativas, on=['cnes', 'estabelecimento'], how='left')
         df_final = pd.merge(df_final, gestantes_data_parto, on=['cnes', 'estabelecimento'], how='left')
@@ -140,15 +155,6 @@ def gera_relatorio_08(periodo):
         df_final = pd.merge(df_final, dias_120, on=['cnes', 'estabelecimento'], how='left')
         df_final = pd.merge(df_final, exames, on=['cnes', 'estabelecimento'], how='left')
 
-        df_final.columns = [
-            'cnes', 
-            'estabelecimento', 
-            'gestantes_ativas',           # Veio do GAC02 (qtde_consultas)
-            'gestantes_data_parto',       # Veio do CG05_quant (pessoa_x)
-            'consultas_maior_igual_7',    # Veio do CG01 (qtde_gestantes)
-            'captacao_ate_120_dias',      # Veio do CG05 normal (pessoa_y)
-            'exames_realizados'           # Veio do CG06 (pessoa)
-        ]
         df_final = df_final.fillna(0)
 
         df_final['%_consultas_7'] = (df_final['consultas_maior_igual_7'] / df_final['gestantes_data_parto']) * 100
