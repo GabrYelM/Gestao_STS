@@ -15,14 +15,12 @@ def buscaAG04(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Data Agendada.Número Ano").click()
-    for i in ano:    
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(ano, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Data Agendada.Nome Mes").click()
-    for i in mes:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(mes, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
     
     page.wait_for_timeout(timeout_geral)
@@ -70,14 +68,12 @@ def buscaAT02(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Número Ano").click()
-    for i in ano:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(ano, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Mes").click()
-    for i in mes:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(mes, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
@@ -135,12 +131,12 @@ def buscaAT03(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Número Ano").click()
-    page.get_by_text(ano[0]).click(timeout=click_timeout)
+    page.get_by_text(ano, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Mes").click()
-    page.get_by_text(mes[0]).click(timeout=click_timeout)
+    page.get_by_text(mes, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
@@ -184,14 +180,12 @@ def buscaFE02(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Número Ano").click()
-    for i in ano:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(ano, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Mes").click()
-    for i in mes:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(mes, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
@@ -216,14 +210,12 @@ def buscaVG02(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Número Ano").click()
-    for i in ano:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(ano, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Mes").click()
-    for i in mes:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(mes, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
@@ -276,14 +268,12 @@ def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     page.wait_for_timeout(timeout_geral)
 
     page.get_by_title("Parâmetro de relatório Número Ano").click()
-    for i in ano:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(ano, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
     page.get_by_title("Parâmetro de relatório Nome Mes").click()
-    for i in mes:
-        page.get_by_text(i).click(timeout=click_timeout)
+    page.get_by_text(mes, exact=True).click(timeout=click_timeout)
     page.locator("#m_sqlRsWebPart_ctl00_ctl19_ButtonCell").click(position={"x": 10, "y": 10}, timeout=click_timeout)
 
     page.wait_for_timeout(timeout_geral)
@@ -324,7 +314,7 @@ def buscaVG04(mes, ano, page, click_timeout, timeout_geral):
     return caminho
 
 def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
-    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+    inicio, fim = obter_inicio_e_fim_do_mes(mes, ano)
 
     print("Coletando CG01")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
@@ -363,7 +353,7 @@ def buscaCG01(mes, ano, page, click_timeout, timeout_geral):
     return caminho
 
 def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
-    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+    inicio, fim = obter_inicio_e_fim_do_mes(mes, ano)
 
     print("Coletando CG05")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
@@ -397,7 +387,7 @@ def buscaCG05(mes, ano, page, click_timeout, timeout_geral):
     return caminho
 
 def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
-    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+    inicio, fim = obter_inicio_e_fim_do_mes(mes, ano)
 
     print("Coletando CG06")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
@@ -435,7 +425,7 @@ def buscaCG06(mes, ano, page, click_timeout, timeout_geral):
     return caminho
 
 def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
-    inicio, fim = obter_inicio_e_fim_do_mes(mes[0], ano[0])
+    inicio, fim = obter_inicio_e_fim_do_mes(mes, ano)
 
     print("Coletando GAC02")
     page.goto("https://biprodam.saude.prefeitura.sp.gov.br/sites/maepaulistana/Paginas/Mae-Paulistana.aspx")
@@ -466,8 +456,8 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
 
 if __name__ == '__main__':
     p, context, page = bot_setup_page()
-    ano = ["2026"]
-    mes = ["Janeiro"]
+    ano = "2026"
+    mes = "Janeiro"
 
     try:
         buscaAG04(mes, ano, page, click_timeout, timeout_geral)

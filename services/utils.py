@@ -39,9 +39,10 @@ def download_bi(page, click_timeout=60000, timeout_geral=1000):
     nome_original = download.suggested_filename
     nome_final = nome_original.split()[0]
 
-    save_path = fr"C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS\{nome_final}.csv"
+    pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+    save_path = os.path.join(pasta_destino, f"{nome_final}.csv")
 
-    os.makedirs(r"C:\.Projetos\Gestao_STS\ARQUIVOS ORIGINAIS", exist_ok=True)
+    os.makedirs(pasta_destino, exist_ok=True)
     download.save_as(save_path)
 
     print(f"-------Relatório {nome_original} Gerado")

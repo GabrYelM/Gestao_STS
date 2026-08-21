@@ -11,27 +11,54 @@
                     <h1 class="h3 text-primary mb-3">Gerar Relatórios</h1>
                     <p class="text-muted">Inicie a extração automatizada dos dados de produção para o período selecionado.</p>
 
-                    <div class="mb-4">
-                        <label for="mes-competencia" class="form-label fw-semibold">Mês da competência</label>
-                        <select id="mes-competencia" class="form-select" aria-label="Selecione o mês da competência">
-                            <option value="Janeiro">Janeiro</option>
-                            <option value="Fevereiro">Fevereiro</option>
-                            <option value="Março">Março</option>
-                            <option value="Abril">Abril</option>
-                            <option value="Maio">Maio</option>
-                            <option value="Junho">Junho</option>
-                            <option value="Julho">Julho</option>
-                            <option value="Agosto">Agosto</option>
-                            <option value="Setembro">Setembro</option>
-                            <option value="Outubro">Outubro</option>
-                            <option value="Novembro">Novembro</option>
-                            <option value="Dezembro">Dezembro</option>
-                        </select>
-                    </div>
+                    <div id="container-datas">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="mes-inicio" class="form-label fw-semibold">Mês de Início</label>
+                                <select id="mes-inicio" class="form-select">
+                                    <option value="Janeiro">Janeiro</option>
+                                    <option value="Fevereiro">Fevereiro</option>
+                                    <option value="Março">Março</option>
+                                    <option value="Abril">Abril</option>
+                                    <option value="Maio">Maio</option>
+                                    <option value="Junho">Junho</option>
+                                    <option value="Julho">Julho</option>
+                                    <option value="Agosto">Agosto</option>
+                                    <option value="Setembro">Setembro</option>
+                                    <option value="Outubro">Outubro</option>
+                                    <option value="Novembro">Novembro</option>
+                                    <option value="Dezembro">Dezembro</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="ano-inicio" class="form-label fw-semibold">Ano de Início</label>
+                                <input type="number" id="ano-inicio" class="form-control" value="2026">
+                            </div>
+                        </div>
 
-                    <div class="mb-4">
-                        <label for="ano-competencia" class="form-label fw-semibold">Ano da competência</label>
-                        <input type="text" id="ano-competencia" class="form-control" value="2026" placeholder="Digite o ano" />
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="mes-fim" class="form-label fw-semibold">Mês de Fim</label>
+                                <select id="mes-fim" class="form-select">
+                                    <option value="Janeiro">Janeiro</option>
+                                    <option value="Fevereiro">Fevereiro</option>
+                                    <option value="Março">Março</option>
+                                    <option value="Abril">Abril</option>
+                                    <option value="Maio">Maio</option>
+                                    <option value="Junho">Junho</option>
+                                    <option value="Julho">Julho</option>
+                                    <option value="Agosto">Agosto</option>
+                                    <option value="Setembro">Setembro</option>
+                                    <option value="Outubro">Outubro</option>
+                                    <option value="Novembro">Novembro</option>
+                                    <option value="Dezembro">Dezembro</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="ano-fim" class="form-label fw-semibold">Ano de Fim</label>
+                                <input type="number" id="ano-fim" class="form-control" value="2026">
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mb-4">
@@ -65,9 +92,22 @@
 {% block scripts %}
 <script>
     const btnGerar = document.getElementById('btn-gerar');
-    const mesCompetencia = document.getElementById('mes-competencia');
-    const anoCompetencia = document.getElementById('ano-competencia');
+    const mesInicio = document.getElementById('mes-inicio');
+    const anoInicio = document.getElementById('ano-inicio');
+    const mesFim = document.getElementById('mes-fim');
+    const anoFim = document.getElementById('ano-fim');
     const relatorioEscolhido = document.getElementById('relatorio-escolhido');
+    const containerDatas = document.getElementById('container-datas');
+
+    if (relatorioEscolhido) {
+        relatorioEscolhido.addEventListener('change', function() {
+            if (this.value === 'GAC02') {
+                containerDatas.style.display = 'none';
+            } else {
+                containerDatas.style.display = 'block';
+            }
+        });
+    }
 
     if (btnGerar) {
         btnGerar.addEventListener('click', function (e) {
@@ -77,8 +117,10 @@
             btnGerar.classList.add('disabled');
 
             const formData = new URLSearchParams();
-            formData.append('mes_competencia', mesCompetencia ? mesCompetencia.value : 'Janeiro');
-            formData.append('ano_competencia', anoCompetencia ? anoCompetencia.value : '2026');
+            formData.append('mes_inicio', mesInicio ? mesInicio.value : 'Janeiro');
+            formData.append('ano_inicio', anoInicio ? anoInicio.value : '2026');
+            formData.append('mes_fim', mesFim ? mesFim.value : 'Janeiro');
+            formData.append('ano_fim', anoFim ? anoFim.value : '2026');
             formData.append('relatorio_escolhido', relatorioEscolhido ? relatorioEscolhido.value : 'TODOS');
 
             fetch('/gerar_relatorios', {
@@ -90,20 +132,21 @@
             })
                 .then(response => response.json())
                 .then(data => {
-                    // O backend disse que a fila começou.
-                    // Em vez de alertar e soltar o botão, começamos o "Radar"
                     const radar = setInterval(() => {
                         fetch('/status_extracao')
                             .then(res => res.json())
                             .then(status => {
+                                if (status.progresso) {
+                                    btnGerar.innerHTML = '⏳ ' + status.progresso;
+                                }
                                 if (status.concluido) {
-                                    clearInterval(radar); // Desliga o radar
+                                    clearInterval(radar);
                                     alert("Extratores e ETL concluídos com sucesso! Dados prontos no banco.");
                                     btnGerar.innerHTML = 'Gerar';
                                     btnGerar.classList.remove('disabled');
                                 }
                             });
-                    }, 3000); // Pergunta pro servidor a cada 3 segundos
+                    }, 3000);
                 })
                 .catch(error => {
                     alert('Ocorreu um erro ao tentar iniciar os relatórios.');

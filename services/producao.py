@@ -61,13 +61,7 @@ def gera_relatorio_08(periodo):
 
         df_gac02 = pd.read_sql(query_gac02, con=db.engine)
         
-        # Fallback: Se não existir foto do GAC-02 no mês pesquisado, usa a mais recente disponível
-        if df_gac02.empty:
-            query_gac02_fallback = f"""SELECT * FROM 'GAC-02'
-            WHERE data_extracao = (SELECT MAX(data_extracao) FROM 'GAC-02')
-            AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
-            """
-            df_gac02 = pd.read_sql(query_gac02_fallback, con=db.engine)
+        
             
         df_gac02['cnes'] = df_gac02['cnes'].astype(str).str.replace('.', '')
 
@@ -94,7 +88,20 @@ def gera_relatorio_08(periodo):
             (df_cg06['vdrl'] >= 3)
         ]
 
-        df_base = df_gac02[['estabelecimento', 'cnes']].drop_duplicates()
+        bases_para_concat = []
+        if not df_gac02.empty:
+            bases_para_concat.append(df_gac02[['estabelecimento', 'cnes']])
+        if not df_cg01.empty:
+            bases_para_concat.append(df_cg01[['estabelecimento', 'cnes']])
+        if not df_cg05_quant.empty:
+            bases_para_concat.append(df_cg05_quant[['estabelecimento', 'cnes']])
+        if not df_cg06.empty:
+            bases_para_concat.append(df_cg06[['estabelecimento', 'cnes']])
+            
+        if bases_para_concat:
+            df_base = pd.concat(bases_para_concat).drop_duplicates()
+        else:
+            df_base = pd.DataFrame(columns=['estabelecimento', 'cnes'])
 
         gestantes_ativas = pd.pivot_table(
             df_gac02,
