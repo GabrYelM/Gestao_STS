@@ -99,10 +99,19 @@
                        'rt' +
                        '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
                 "buttons": [
-                    {
+                                        {
                         extend: 'excelHtml5',
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
-                        className: 'btn btn-success'
+                        className: 'btn btn-success',
+                        exportOptions: {
+                            format: {
+                                header: function (data, columnIdx, node) {
+                                    var clone = $(node).clone();
+                                    clone.find('select').remove();
+                                    return clone.text().trim();
+                                }
+                            }
+                        }
                     }
                 ],
                 initComplete: function () {

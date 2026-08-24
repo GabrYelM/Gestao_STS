@@ -279,5 +279,55 @@ def producao():
     return render_template("producao.html", tabela_html=tabela_html, relatorio_selecionado=indice, periodo_selecionado=periodo)
 
 
+
+import zipfile
+import os
+
+@app.route("/upload_dtic", methods=["GET", "POST"])
+def upload_dtic():
+    if "usuario_id" not in session:
+        return redirect(url_for("login"))
+        
+    mensagem = None
+    if request.method == "POST":
+        tipo_relatorio = request.form.get("tipo_relatorio")
+        arquivos = request.files.getlist("arquivos")
+        
+        sucessos = 0
+        for arquivo in arquivos:
+            if arquivo and arquivo.filename.endswith('.zip'):
+                nome_zip = arquivo.filename.lower()
+                
+                                # Identifica por nome (regra das referências)
+                tipo_identificado = None
+                if (tipo_relatorio == "todos" or tipo_relatorio == "rel09") and "rel_sb_gestante_prev_parto" in nome_zip:
+                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
+                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel15") and "penha" in nome_zip:
+                    tipo_identificado = "(rel135) penha"
+                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel17") and "atividade_coletiva_por_profissional" in nome_zip:
+                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
+                
+                if tipo_identificado:
+                    # Salvar diretamente na pasta raiz ARQUIVOS ORIGINAIS
+                    pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                    
+                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
+                        for nome_arq in zip_ref.namelist():
+                            if nome_arq.endswith('.csv') or nome_arq.endswith('.xls') or nome_arq.endswith('.xlsx'):
+                                ext = os.path.splitext(nome_arq)[1]
+                                nome_final = f"{tipo_identificado}{ext}"
+                                caminho_final = os.path.join(pasta_destino, nome_final)
+                                
+                                # Extrai e renomeia o arquivo
+                                with zip_ref.open(nome_arq) as fonte, open(caminho_final, "wb") as destino:
+                                    destino.write(fonte.read())
+                                
+                    sucessos += 1
+                    
+        mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e extraído(s) para ARQUIVOS ORIGINAIS!"
+        
+    return render_template("upload_dtic.html", mensagem=mensagem)
+
 if __name__ == '__main__':
+
     app.run(debug=True)

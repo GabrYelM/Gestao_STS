@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Upload DTIC{% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Importação de Relatórios DTIC</h4>
+                </div>
+                <div class="card-body">
+                    {% if mensagem %}
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        {{ mensagem }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                    {% endif %}
+                    
+                    <form method="POST" action="/upload_dtic" enctype="multipart/form-data">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Selecione o Relatório</label>
+                            <select class="form-select" name="tipo_relatorio" required>
+                                <option value="todos">Todos os Relatórios (Auto-identificação)</option>
+                                <option value="rel09">REL 114 (Gestante Prev Parto)</option>
+                                <option value="rel15">REL 135 (Penha)</option>
+                                <option value="rel17">REL 134 (Atividade Coletiva Por Profissional)</option>
+                            </select>
+                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome do arquivo.</small>
+                        </div>
+                        
+                                                <div class="mb-4">
+                            <label class="form-label fw-bold">Arquivos ZIP</label>
+                            
+                            <!-- Área de Arrastar e Soltar -->
+                            <div id="dropzone" class="p-5 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
+                                <i class="bi bi-cloud-arrow-up display-4 text-primary"></i>
+                                <p class="mt-2 mb-1 fs-5">Arraste seus arquivos para cá</p>
+                                <small class="text-muted">ou clique para selecionar. Você pode adicionar vários arquivos aos poucos.</small>
+                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip" multiple>
+                            </div>
+                            
+                            <!-- Lista Visual dos Arquivos Acumulados -->
+                            <ul id="listaArquivos" class="list-group mt-3 d-none shadow-sm">
+                            </ul>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-success" id="btn-upload">
+                                <span id="spinner-upload" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                <span id="texto-botao"><i class="bi bi-cloud-upload"></i> Processar Arquivos</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let acumulador = new DataTransfer();
+    let inputArquivos = document.getElementById('inputArquivos');
+    let dropzone = document.getElementById('dropzone');
+    let listaArquivos = document.getElementById('listaArquivos');
+    const formUpload = document.querySelector('form');
+
+    // Ao clicar na dropzone, aciona o input invisível
+    dropzone.addEventListener('click', () => inputArquivos.click());
+
+    // Efeitos visuais ao arrastar sobre a caixa
+    dropzone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('bg-light');
+        dropzone.classList.add('bg-primary', 'bg-opacity-10');
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.add('bg-light');
+        dropzone.classList.remove('bg-primary', 'bg-opacity-10');
+    });
+
+    // Ao soltar o arquivo na caixa
+    dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropzone.classList.add('bg-light');
+        dropzone.classList.remove('bg-primary', 'bg-opacity-10');
+        
+        if (e.dataTransfer.files.length > 0) {
+            adicionarArquivos(e.dataTransfer.files);
+        }
+    });
+
+    // Ao selecionar pelo clique tradicional
+    inputArquivos.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            adicionarArquivos(e.target.files);
+        }
+    });
+
+    function adicionarArquivos(arquivosNovos) {
+        for (let i = 0; i < arquivosNovos.length; i++) {
+            if(arquivosNovos[i].name.toLowerCase().endsWith('.zip')) {
+                acumulador.items.add(arquivosNovos[i]);
+            }
+        }
+        
+        // Atualiza o input invisível para o Flask receber os dados corretos no submit
+        inputArquivos.files = acumulador.files;
+        renderizarLista();
+    }
+
+    function removerArquivo(index) {
+        let novoAcumulador = new DataTransfer();
+        
+        // Copia todos os arquivos, exceto o que queremos remover
+        for (let i = 0; i < acumulador.files.length; i++) {
+            if (i !== index) {
+                novoAcumulador.items.add(acumulador.files[i]);
+            }
+        }
+        
+        // Substitui o acumulador atual
+        acumulador = novoAcumulador;
+        inputArquivos.files = acumulador.files;
+        
+        // Re-renderiza a lista
+        renderizarLista();
+    }
+
+    function renderizarLista() {
+        listaArquivos.innerHTML = '';
+        if (acumulador.files.length > 0) {
+            listaArquivos.classList.remove('d-none');
+            for (let i = 0; i < acumulador.files.length; i++) {
+                let li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center bg-white';
+                
+                // O HTML de cada linha agora tem um botão vermelho de X (trash)
+                li.innerHTML = `
+                    <span><i class="bi bi-file-earmark-zip text-warning me-2"></i> ${acumulador.files[i].name}</span>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="removerArquivo(${i})" title="Remover Arquivo">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                `;
+                listaArquivos.appendChild(li);
+            }
+        } else {
+            listaArquivos.classList.add('d-none');
+        }
+    }
+
+    if (formUpload) {
+        formUpload.addEventListener('submit', function(e) {
+            if (acumulador.files.length === 0) {
+                e.preventDefault();
+                alert('Por favor, adicione pelo menos um arquivo ZIP antes de processar.');
+                return;
+            }
+            document.getElementById('spinner-upload').classList.remove('d-none');
+            document.getElementById('texto-botao').innerText = ' Extraindo e Processando...';
+            document.getElementById('btn-upload').classList.add('disabled');
+        });
+    }
+</script>
+{% endblock %}
