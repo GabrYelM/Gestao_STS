@@ -466,15 +466,23 @@ def processa_rel135(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    hoje = datetime.today().strftime('%Y-%m-%d')
-    mes_atual = datetime.today().strftime('%Y-%m')
-    df_limpo['data_extracao'] = hoje
+    from datetime import timedelta
+    # Calcula ano e mês do mês passado
+    primeiro_dia = datetime.today().replace(day=1)
+    mes_passado_obj = primeiro_dia - timedelta(days=1)
+    ano_alvo = mes_passado_obj.strftime('%Y')
+    mes_alvo = mes_passado_obj.strftime('%m')
 
     with app.app_context():
         try:
-            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE data_extracao LIKE '{mes_atual}-%' AND data_extracao <= '{hoje}'"))
+            # Remove apenas as linhas onde a data_cadastro seja do mês alvo
+            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE data_cadastro LIKE '%/{mes_alvo}/{ano_alvo}'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
+            
+        # Filtra o dataframe para subir estritamente os cadastros do mês alvo
+        df_limpo = df_limpo[df_limpo['data_cadastro'].str.endswith(f"/{mes_alvo}/{ano_alvo}", na=False)]
+        
         df_limpo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
     print('REL-135 carregado com sucesso!')
