@@ -210,10 +210,10 @@ def alterar_senha():
     return render_template("alterar-senha.html") """
 
 
-@app.route("/gerar_relatorios", methods=["GET", "POST"])
+@app.route("/bi_producao", methods=["GET", "POST"])
 def gerar_relatorios():
     if request.method == "GET":
-        return render_template("gerar-relatorios.html")
+        return render_template("bi-producao.html")
 
     mes_inicio = request.form.get("mes_inicio", "Janeiro")
     ano_inicio = request.form.get("ano_inicio", "2026")
@@ -230,9 +230,14 @@ def status_extracao_route():
     return jsonify(status_extracao)
 
 @app.route("/producao", methods=["GET", "POST"])
-# @login_required
 def producao():
-    tabela_html = None  # Começa vazio
+    if "usuario_id" not in session:
+        return redirect(url_for("login"))
+
+    tabela_html = None
+    indice = None
+    periodo = None
+
     if request.method == "POST":
         # 1. Pega as opções que o usuário digitou/escolheu na tela
         indice = request.form.get("indice_relatorio")
@@ -258,12 +263,20 @@ def producao():
             
             # 3. Transforma o resultado em HTML
             if df is not None:
-                tabela_html = df.to_html(classes='table table-striped table-bordered table-hover')
+                # Remove o nome da dimensão das colunas que causa a coluna vazia/estranha
+                if hasattr(df.columns, 'names'):
+                    df.columns.names = [None] * len(df.columns.names)
+                else:
+                    df.columns.name = None
+
+                if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
+                    df = df.reset_index()
+                tabela_html = df.to_html(classes='table table-sm table-striped table-bordered w-100 small', index=False, escape=False)
                 
         except Exception as e:
             # Caso o usuário digite um mês que não tem no banco, etc.
             tabela_html = f"<div class='alert alert-danger'>Erro ao gerar relatório: {e}</div>"
-    return render_template("producao.html", tabela_html=tabela_html)
+    return render_template("producao.html", tabela_html=tabela_html, relatorio_selecionado=indice, periodo_selecionado=periodo)
 
 
 if __name__ == '__main__':

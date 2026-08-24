@@ -5,9 +5,16 @@ from app import app
 
 def gera_relatorio_03(periodo):
     with app.app_context():
+        ano = int(str(periodo)[:4])
+        mes = int(str(periodo)[4:])
+        ano_ant = ano - 1
+        periodo_ant = f"{ano_ant}{mes:02d}"
 
-        query = f"SELECT * FROM 'AT-02' WHERE ano_mes = {periodo}"
+        query = f"SELECT * FROM 'AT-02' WHERE ano_mes BETWEEN {periodo_ant} AND {periodo}"
         df_at02 = pd.read_sql(query, con=db.engine)
+        
+        if df_at02.empty:
+            return None
 
         df_final = pd.pivot_table(
             df_at02,
@@ -15,8 +22,11 @@ def gera_relatorio_03(periodo):
             index = ['estabelecimento', 'nome_cbo', 'profissional', 'procedimento'],
             values = 'quantidade_procedimento',
             aggfunc='sum'
-        )
-        #print(df_final)
+        ).fillna(0).astype(int).astype(int)
+        
+        # Rotaciona o texto dos meses para a vertical
+        df_final.columns = [f'<div class="vertical-text">{col}</div>' for col in df_final.columns]
+        
         return df_final
 
 def gera_relatorio_04(periodo):
@@ -208,21 +218,34 @@ def gera_relatorio_10(periodo):
     
         query = f"""
         SELECT * FROM 'AT-03' 
-        WHERE ano = {ano} AND mes = '{mes}'
-        AND sts = 'SUDESTE - STS PENHA'
+        WHERE sts = 'SUDESTE - STS PENHA'
         AND estabelecimento NOT IN ('Sae Dst/Aids Penha')
         AND faixa_etaria IN ('20 a 24 anos', '25 a 29 anos', '30 a 34 anos', '35 a 39 anos', '40 a 44 anos', '45 a 49 anos', '50 a 54 anos', '55 a 59 anos', '60 a 64 anos')
         """
         df_at03 = pd.read_sql(query, con=db.engine)
+        
+        if df_at03.empty:
+            return None
+
+        mapa_inverso = {v: k for k, v in mapa_mes.items() if len(k) == 2}
+        df_at03['mes_num'] = df_at03['mes'].map(mapa_inverso)
+        df_at03 = df_at03.dropna(subset=['mes_num'])
+        df_at03['ano_mes_int'] = (df_at03['ano'].astype(str) + df_at03['mes_num']).astype(int)
+        
+        # Filtra histórico até o selecionado
+        df_at03 = df_at03[df_at03['ano_mes_int'] <= int(periodo)]
+        df_at03 = df_at03.sort_values('ano_mes_int')
+        df_at03['Mês/Ano'] = df_at03['mes'] + '/' + df_at03['ano'].astype(str)
 
         df_final = pd.pivot_table(
             df_at03,
             columns = 'estabelecimento',
-            index = 'mes',
+            index = ['ano_mes_int', 'Mês/Ano'],
             values = 'quantidade_procedimento',
             aggfunc='sum'
-        )
-        #print(df_final)
+        ).fillna(0).astype(int)
+        
+        df_final = df_final.reset_index(level=0, drop=True)
         return df_final
 
 def gera_relatorio_11(periodo):
@@ -272,5 +295,5 @@ def gera_relatorio_14(periodo):
             values = 'quantidade_agendamento',
             aggfunc='sum'
         )
-        print(df_final)
-        #return df_final
+        #print(df_final)
+        return df_final
