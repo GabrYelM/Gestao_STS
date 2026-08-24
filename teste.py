@@ -16,7 +16,10 @@ MAPA_FUNCOES = {
     'CG01': (sb.buscaCG01, etl.processa_cg01),
     'CG05': (sb.buscaCG05, etl.processa_cg05),
     'CG06': (sb.buscaCG06, etl.processa_cg06),
-    'GAC02': (sb.buscaGAC02, etl.processa_gac02)
+    'GAC02': (sb.buscaGAC02, etl.processa_gac02),
+    'REL114': (None, etl.processa_rel114),
+    'REL134': (None, etl.processa_rel134),
+    'REL135': (None, etl.processa_rel135)
 }
 
 # Mapa ligando o índice do relatório analítico à sua respectiva função
@@ -27,7 +30,10 @@ MAPA_RELATORIOS = {
     '10': prod.gera_relatorio_10,
     '11': prod.gera_relatorio_11,
     '13': prod.gera_relatorio_13,
-    '14': prod.gera_relatorio_14
+    '14': prod.gera_relatorio_14,
+    '09': prod.gera_relatorio_09,
+    '15': prod.gera_relatorio_15,
+    '17': prod.gera_relatorio_17
 }
 
 def testar_bot(nome_relatorio, func_bot):
@@ -64,6 +70,17 @@ def testar_etl(nome_relatorio, func_etl, caminho_especifico=None):
         caminho_especifico = os.path.join(pasta_origens, f"{nome_relatorio[:2]}-{nome_relatorio[2:]}.csv")
         
         if not os.path.exists(caminho_especifico):
+            caminho_especifico = os.path.join(pasta_origens, f"{nome_relatorio}.csv")
+            
+        if not os.path.exists(caminho_especifico):
+            # Procura qualquer arquivo que contenha o nome_relatorio (útil para os do DTIC)
+            if os.path.exists(pasta_origens):
+                for f_name in os.listdir(pasta_origens):
+                    if nome_relatorio.lower() in f_name.lower() and f_name.endswith('.csv'):
+                        caminho_especifico = os.path.join(pasta_origens, f_name)
+                        break
+
+    if not os.path.exists(caminho_especifico):
             caminho_especifico = os.path.join(pasta_origens, f"{nome_relatorio}.csv")
 
     if not os.path.exists(caminho_especifico):
@@ -127,13 +144,20 @@ def menu_interativo():
             func_bot, func_etl = MAPA_FUNCOES[rel]
 
             if opcao == '1':
-                testar_bot(rel, func_bot)
+                if func_bot:
+                    testar_bot(rel, func_bot)
+                else:
+                    print("⚠️ Este relatório não possui robô (Download Manual).")
             elif opcao == '2':
                 testar_etl(rel, func_etl)
             elif opcao == '3':
-                caminho = testar_bot(rel, func_bot)
-                if caminho:
-                    testar_etl(rel, func_etl, caminho)
+                if func_bot:
+                    caminho = testar_bot(rel, func_bot)
+                    if caminho:
+                        testar_etl(rel, func_etl, caminho)
+                else:
+                    print("⚠️ Este relatório não possui robô. Testando apenas ETL com arquivo existente.")
+                    testar_etl(rel, func_etl)
                     
     elif tipo_teste == '2':
         print("\nRelatórios Analíticos Disponíveis:", ", ".join(MAPA_RELATORIOS.keys()))

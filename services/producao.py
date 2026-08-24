@@ -193,6 +193,37 @@ def gera_relatorio_08(periodo):
         #print(df_final)
         return df_final
 
+def gera_relatorio_09(periodo):
+    with app.app_context():
+
+        if periodo:
+            ano = periodo[:4]
+            mes = periodo[4:]
+            query = f"""SELECT * FROM 'REL-114'
+            WHERE previsao_parto LIKE '%/{mes}/{ano}'
+            AND estab_acolhimento NOT IN ('ENG TRINDADE', 'AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO', 'UBS VILA GUILHERMINA - DR AMERICO RASPA NETO')
+        """
+        else:
+            query = "SELECT * FROM 'REL-114'"
+
+        df_rel114 = pd.read_sql(query, con=db.engine)
+        
+        if df_rel114.empty:
+            return pd.DataFrame()
+            
+        # Garantir que a coluna de soma seja lida como número (evita que o Pandas concatene textos)
+        df_rel114['total_ated_saude_bucal'] = pd.to_numeric(df_rel114['total_ated_saude_bucal'], errors='coerce').fillna(0)
+        
+        df_final = pd.pivot_table(
+            df_rel114,
+            index = ['estab_acolhimento'],
+            values = ['nome_paciente', 'estab_ult_atend_saude_bucal'],
+            aggfunc = {'nome_paciente' : 'count', 
+                       'estab_ult_atend_saude_bucal' : 'count'}
+        )
+        print(df_final)
+        return df_final
+
 def gera_relatorio_10(periodo):
 
     mapa_mes = {
@@ -297,3 +328,32 @@ def gera_relatorio_14(periodo):
         )
         #print(df_final)
         return df_final
+
+
+def gera_relatorio_17(periodo):
+    with app.app_context():
+        # Relatório 17 corresponde ao REL-134
+        query = "SELECT * FROM 'REL-134'"
+        df = pd.read_sql(query, con=db.engine)
+        
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Manipule df conforme a regra de negócio
+        df_resumo = df
+        
+        return df_resumo
+
+def gera_relatorio_15(periodo):
+    with app.app_context():
+        # Relatório 15 corresponde ao REL-135
+        query = "SELECT * FROM 'REL-135'"
+        df = pd.read_sql(query, con=db.engine)
+        
+        if df.empty:
+            return pd.DataFrame()
+        
+        # Manipule df conforme a regra de negócio
+        df_resumo = df
+        
+        return df_resumo

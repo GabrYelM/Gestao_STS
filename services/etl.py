@@ -14,7 +14,7 @@ def read_clean_csv(caminho, primeira_coluna):
     e entrega para o pandas apenas a partir da linha onde as colunas reais começam.
     Isso evita qualquer erro de parsing de aspas duplas ou linhas em branco.
     """
-    with open(caminho, 'r', encoding='utf-8-sig', errors='ignore') as f:
+    with open(caminho, 'r', encoding='latin1', errors='ignore') as f:
         linhas = f.readlines()
         
     inicio = 0
@@ -344,3 +344,137 @@ def processa_gac02(caminho, periodo=None):
         df_limpo.to_sql(name='GAC-02', con=db.engine, if_exists='append', index=False)
 
     print('GAC-02 carregado')
+
+def processa_rel114(caminho, periodo=None):
+    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+        
+    traduz_col = {
+        'CNES_ESTAB_ACOLHIMENTO': 'cnes_estab_acolhimento',
+        'ESTAB_ACOLHIMENTO': 'estab_acolhimento',
+        'CNS_PACIENTE': 'cns_paciente',
+        'CPF_PACIENTE': 'cpf_paciente',
+        'NR_SISPRENATAL': 'nr_sisprenatal',
+        'NOME_PACIENTE': 'nome_paciente',
+        'RACA': 'raca',
+        'DATA_ACOLHIMENTO': 'data_acolhimento',
+        'DATA_PREVISAO_PARTO': 'previsao_parto',
+        'TOTAL_ATED_SAUDE_BUCAL': 'total_ated_saude_bucal',
+        'CNES_ULT_ATEND_SAUDE_BUCAL': 'cnes_ult_atend_saude_bucal',
+        'ESTAB_ULT_ATEND_SAUDE_BUCAL': 'estab_ult_atend_saude_bucal',
+        'CNS_PROF': 'cns_prof',
+        'NOME_PROF_SAUDE_BUCAL': 'profissional',
+        'COD_CBO_PROF_SAUDE_BUCAL': 'cod_cbo',
+        'CBO_PROF_SAUDE_BUCAL': 'cbo',
+        'DATA_ULTIMO_ATENDIMENTO': 'data_ultimo_atendimento'
+    }
+
+    df = df.rename(columns=traduz_col)
+    colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
+    df_limpo = df[colunas_presentes].copy()
+
+    from datetime import timedelta
+    # Calcula ano e mês do mês passado
+    primeiro_dia = datetime.today().replace(day=1)
+    mes_passado_obj = primeiro_dia - timedelta(days=1)
+    ano_alvo = mes_passado_obj.strftime('%Y')
+    mes_alvo = mes_passado_obj.strftime('%m')
+
+    with app.app_context():
+        try:
+            # Remove apenas as linhas onde a previsão de parto seja do mês alvo
+            db.session.execute(text(f"DELETE FROM 'REL-114' WHERE previsao_parto LIKE '%/{mes_alvo}/{ano_alvo}'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            
+        # Filtra o dataframe para subir estritamente as previsões de parto do mês alvo
+        df_limpo = df_limpo[df_limpo['previsao_parto'].str.endswith(f"/{mes_alvo}/{ano_alvo}", na=False)]
+        
+        df_limpo.to_sql(name='REL-114', con=db.engine, if_exists='append', index=False)
+    print('REL-114 carregado com sucesso!')
+
+def processa_rel134(caminho, periodo=None):
+    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+        
+    traduz_col = {
+        'tipo_de_visao': 'tipo_de_visao',
+        'id_atividade': 'id_atividade',
+        'tipo_ficha': 'tipo_ficha',
+        'tipo_atividade': 'tipo_atividade',
+        'pics': 'pics',
+        'emulti': 'emulti',
+        'total_prof_participantes_emult': 'total_prof_participantes_emult',
+        'total_prof_participantes': 'total_prof_participantes',
+        'cnes': 'cnes',
+        'nome_unidade': 'nome_unidade',
+        'cns_prof': 'cns_prof',
+        'nome_profissional': 'nome_profissional',
+        'cbo_prof': 'cbo_prof',
+        'cbo': 'cbo',
+        'ine': 'ine',
+        'data_atividade': 'data_atividade',
+        'ano': 'ano',
+        'mes': 'mes',
+        'turno': 'turno',
+        'pse_educacao': 'pse_educacao',
+        'pse_saude': 'pse_saude',
+        'inep': 'inep',
+        'nome_instituicao': 'nome_instituicao',
+        'outra_localidade': 'outra_localidade',
+        'cnes_participante': 'cnes_participante',
+        'nome_unid_participante': 'nome_unid_participante',
+        'num_participantes': 'num_participantes',
+        'num_part_registrados': 'num_part_registrados',
+        'tema_para_reuniao': 'tema_para_reuniao',
+        'publico_alvo': 'publico_alvo',
+        'temas_para_saude': 'temas_para_saude',
+        'praticas_em_saude': 'praticas_em_saude',
+        'cod_proced_sigtap': 'cod_proced_sigtap',
+        'procedimento_sigtap': 'procedimento_sigtap',
+        'origem_ficha': 'origem_ficha',
+        'tipo_origem_transp': 'tipo_origem_transp'
+    }
+
+    df = df.rename(columns=traduz_col)
+    colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
+    df_limpo = df[colunas_presentes].copy()
+
+    hoje = datetime.today().strftime('%Y-%m-%d')
+    mes_atual = datetime.today().strftime('%Y-%m')
+    df_limpo['data_extracao'] = hoje
+
+    with app.app_context():
+        try:
+            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE data_extracao LIKE '{mes_atual}-%' AND data_extracao <= '{hoje}'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
+    print('REL-134 carregado com sucesso!')
+
+def processa_rel135(caminho, periodo=None):
+    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+        
+    traduz_col = {
+        'unidade': 'unidade', 
+        'cod_ine': 'cod_ine',
+        'data_cadastro': 'data_cadastro',
+        'nome_cidadao': 'nome_cidadao'
+    }
+
+    df = df.rename(columns=traduz_col)
+    colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
+    df_limpo = df[colunas_presentes].copy()
+
+    hoje = datetime.today().strftime('%Y-%m-%d')
+    mes_atual = datetime.today().strftime('%Y-%m')
+    df_limpo['data_extracao'] = hoje
+
+    with app.app_context():
+        try:
+            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE data_extracao LIKE '{mes_atual}-%' AND data_extracao <= '{hoje}'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        df_limpo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
+    print('REL-135 carregado com sucesso!')

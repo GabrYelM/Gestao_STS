@@ -258,6 +258,12 @@ def producao():
                 df = prod.gera_relatorio_13(periodo)
             elif indice == '14':
                 df = prod.gera_relatorio_14(periodo)
+            elif indice == '09':
+                df = prod.gera_relatorio_09(periodo)
+            elif indice == '15':
+                df = prod.gera_relatorio_15(periodo)
+            elif indice == '17':
+                df = prod.gera_relatorio_17(periodo)
             else:
                 df = None
             
@@ -318,9 +324,50 @@ def upload_dtic():
                                 nome_final = f"{tipo_identificado}{ext}"
                                 caminho_final = os.path.join(pasta_destino, nome_final)
                                 
-                                # Extrai e renomeia o arquivo
-                                with zip_ref.open(nome_arq) as fonte, open(caminho_final, "wb") as destino:
-                                    destino.write(fonte.read())
+                                                                                                # Extrai, filtra e salva o arquivo
+                                with zip_ref.open(nome_arq) as fonte:
+                                    import pandas as pd
+                                    
+                                    # Definir regras de filtro baseadas no relatório
+                                    filtro_coluna = None
+                                    filtro_valor = None
+                                    
+                                    if "(rel114)" in tipo_identificado:
+                                        filtro_coluna = "SUPERVISAO"
+                                        filtro_valor = "SUDESTE - STS PENHA"
+                                    elif "(rel134)" in tipo_identificado:
+                                        filtro_coluna = "supervisao"
+                                        filtro_valor = "SUDESTE - PENHA"
+                                    # Se houver regra para o rel135 futuramente, adicionaremos aqui
+                                    
+                                    if filtro_coluna:
+                                        # Leitura em pedaços (chunks) para não estourar a memória
+                                        first = True
+                                        for chunk in pd.read_csv(fonte, sep=';', encoding='latin1', chunksize=50000, low_memory=False):
+                                            if filtro_coluna in chunk.columns:
+                                                chunk_filtrado = chunk[chunk[filtro_coluna] == filtro_valor]
+                                                chunk_filtrado.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
+                                                first = False
+                                            else:
+                                                # Se a coluna não existir, salva tudo por segurança
+                                                chunk.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
+                                                first = False
+                                    else:
+                                        # Sem filtro definido, extrai normalmente (copia o conteúdo)
+                                        with open(caminho_final, "wb") as destino:
+                                            destino.write(fonte.read())
+                                
+                                                                # Chama a função de ETL correspondente
+                                from services.etl import processa_rel114, processa_rel134, processa_rel135
+                                try:
+                                    if "(rel114)" in tipo_identificado:
+                                        processa_rel114(caminho_final)
+                                    elif "(rel134)" in tipo_identificado:
+                                        processa_rel134(caminho_final)
+                                    elif "(rel135)" in tipo_identificado:
+                                        processa_rel135(caminho_final)
+                                except Exception as e:
+                                    print(f"Erro ao processar ETL do {tipo_identificado}: {e}")
                                 
                     sucessos += 1
                     
