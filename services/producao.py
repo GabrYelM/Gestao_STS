@@ -329,25 +329,26 @@ def gera_relatorio_14(periodo):
         #print(df_final)
         return df_final
 
+def gera_relatorio_15(periodo):
+    with app.app_context():
+        # Relatório 15 corresponde ao REL-135
+        # Busca o snapshot já sumarizado no ETL
+        if periodo:
+            query = f"SELECT unidade as 'UNIDADE', cod_ine as 'COD_INE', total_cadastros as 'Contagem de NOME_CIDADAO' FROM 'REL-135' WHERE ano_mes_competencia = '{periodo}'"
+        else:
+            query = "SELECT unidade as 'UNIDADE', cod_ine as 'COD_INE', total_cadastros as 'Contagem de NOME_CIDADAO' FROM 'REL-135'"
+            
+        df = pd.read_sql(query, con=db.engine)
+        
+        if df.empty:
+            return pd.DataFrame()
+            
+        return df
 
 def gera_relatorio_17(periodo):
     with app.app_context():
         # Relatório 17 corresponde ao REL-134
         query = "SELECT * FROM 'REL-134'"
-        df = pd.read_sql(query, con=db.engine)
-        
-        if df.empty:
-            return pd.DataFrame()
-        
-        # Manipule df conforme a regra de negócio
-        df_resumo = df
-        
-        return df_resumo
-
-def gera_relatorio_15(periodo):
-    with app.app_context():
-        # Relatório 15 corresponde ao REL-135
-        query = "SELECT * FROM 'REL-135'"
         df = pd.read_sql(query, con=db.engine)
         
         if df.empty:

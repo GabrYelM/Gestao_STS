@@ -233,7 +233,7 @@ class REL134(db.Model):
 class REL135(db.Model):
     __tablename__ = 'REL-135'
     id = db.Column(db.Integer, primary_key=True)
+    ano_mes_competencia = db.Column(db.String(6), nullable=False)
     unidade = db.Column(db.String(255), nullable=True)
     cod_ine = db.Column(db.String(255), nullable=True)
-    data_cadastro = db.Column(db.String(255), nullable=True)
-    nome_cidadao = db.Column(db.String(255), nullable=True)
+    total_cadastros = db.Column(db.Integer, default=0)

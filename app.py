@@ -229,14 +229,79 @@ def gerar_relatorios():
 def status_extracao_route():
     return jsonify(status_extracao)
 
+
+import io
+from flask import send_file
+
+@app.route("/download_excel/<indice>/<periodo>")
+def download_excel(indice, periodo):
+    if "usuario_id" not in session:
+        return redirect(url_for("login"))
+        
+    try:
+        if indice == '03':
+            df = prod.gera_relatorio_03(periodo)
+        elif indice == '04':
+            df = prod.gera_relatorio_04(periodo)
+        elif indice == '08':
+            df = prod.gera_relatorio_08(periodo)
+        elif indice == '09':
+            df = prod.gera_relatorio_09(periodo)
+        elif indice == '10':
+            df = prod.gera_relatorio_10(periodo)
+        elif indice == '11':
+            df = prod.gera_relatorio_11(periodo)
+        elif indice == '13':
+            df = prod.gera_relatorio_13(periodo)
+        elif indice == '14':
+            df = prod.gera_relatorio_14(periodo)
+        elif indice == '15':
+            df = prod.gera_relatorio_15(periodo)
+        elif indice == '17':
+            df = prod.gera_relatorio_17(periodo)
+        else:
+            df = None
+            
+        if df is None or df.empty:
+            return "Sem dados", 404
+            
+        if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
+            df = df.reset_index()
+            
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Relatorio')
+        output.seek(0)
+        
+        return send_file(output, download_name=f"Relatorio_{indice}_{periodo}.xlsx", as_attachment=True)
+        
+    except Exception as e:
+        return str(e), 500
+
 @app.route("/producao", methods=["GET", "POST"])
 def producao():
     if "usuario_id" not in session:
         return redirect(url_for("login"))
 
     tabela_html = None
-    indice = None
-    periodo = None
+    indice = request.form.get("indice_relatorio") if request.method == "POST" else None
+    
+    from datetime import datetime, timedelta
+    from dateutil.relativedelta import relativedelta
+    hoje = datetime.today()
+    primeiro_dia = hoje.replace(day=1)
+    
+    # Gera a lista dos ultimos 12 meses (ano/mês)
+    periodos_disponiveis = []
+    for i in range(1, 13):
+        mes_calculado = primeiro_dia - relativedelta(months=i)
+        valor = mes_calculado.strftime('%Y%m')
+        texto = mes_calculado.strftime('%m/%Y')
+        periodos_disponiveis.append((valor, texto))
+        
+    # O default é o mês passado (index 0 da lista)
+    periodo_padrao = periodos_disponiveis[0][0]
+    periodo = request.form.get("periodo") if request.method == "POST" else periodo_padrao
 
     if request.method == "POST":
         # 1. Pega as opções que o usuário digitou/escolheu na tela
@@ -267,9 +332,10 @@ def producao():
             else:
                 df = None
             
-            # 3. Transforma o resultado em HTML
+            # 3. Transforma o resultado para JSON
+            json_dados = None
+            json_colunas = None
             if df is not None:
-                # Remove o nome da dimensão das colunas que causa a coluna vazia/estranha
                 if hasattr(df.columns, 'names'):
                     df.columns.names = [None] * len(df.columns.names)
                 else:
@@ -277,12 +343,26 @@ def producao():
 
                 if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
                     df = df.reset_index()
-                tabela_html = df.to_html(classes='table table-sm table-striped table-bordered w-100 small', index=False, escape=False)
+                
+                # Prepara JSON
+                import json
+                
+                # Prepara definições de colunas para o DataTables
+                colunas = [{"data": str(col), "title": str(col)} for col in df.columns]
+                json_colunas = json.dumps(colunas)
+                
+                # Preenche NaN com string vazia ou None
+                df = df.fillna("")
+                
+                # Converte dados
+                # to_dict(orient='records') gera uma lista de dicts
+                dados = df.to_dict(orient="records")
+                json_dados = json.dumps(dados)
                 
         except Exception as e:
-            # Caso o usuário digite um mês que não tem no banco, etc.
             tabela_html = f"<div class='alert alert-danger'>Erro ao gerar relatório: {e}</div>"
-    return render_template("producao.html", tabela_html=tabela_html, relatorio_selecionado=indice, periodo_selecionado=periodo)
+
+    return render_template("producao.html", tabela_html=tabela_html, json_dados=json_dados, json_colunas=json_colunas, relatorio_selecionado=indice, periodo_selecionado=periodo, periodos_disponiveis=periodos_disponiveis)
 
 
 

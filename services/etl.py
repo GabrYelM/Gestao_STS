@@ -466,23 +466,43 @@ def processa_rel135(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import timedelta
-    # Calcula ano e mês do mês passado
-    primeiro_dia = datetime.today().replace(day=1)
-    mes_passado_obj = primeiro_dia - timedelta(days=1)
-    ano_alvo = mes_passado_obj.strftime('%Y')
-    mes_alvo = mes_passado_obj.strftime('%m')
+    # 1. Filtra COD_INE removendo nulos e '-'
+    df_limpo = df_limpo[df_limpo['cod_ine'].notna()]
+    df_limpo = df_limpo[df_limpo['cod_ine'].astype(str).str.strip() != '-']
+
+    from datetime import datetime, timedelta
+    
+    # Descobre o mês passado
+    hoje_obj = datetime.today()
+    primeiro_dia_mes_atual = hoje_obj.replace(day=1)
+    ultimo_dia_mes_passado = primeiro_dia_mes_atual - timedelta(days=1)
+    
+    ano_alvo = ultimo_dia_mes_passado.strftime('%Y')
+    mes_alvo = ultimo_dia_mes_passado.strftime('%m')
+    ano_mes_competencia = f"{ano_alvo}{mes_alvo}"
+    
+    # 2. Filtra DATA_CADASTRO (Remove dias após o fim da competência)
+    # Primeiro transforma a coluna em data real (ignorando erros caso tenha sujeira)
+    df_limpo['data_cadastro_dt'] = pd.to_datetime(df_limpo['data_cadastro'], format='%d/%m/%Y', errors='coerce')
+    
+    # Filtra mantendo apenas as datas menores ou iguais ao último dia do mês passado
+    df_limpo = df_limpo[df_limpo['data_cadastro_dt'] <= ultimo_dia_mes_passado]
+    
+    # 3. Agrupa por UNIDADE e COD_INE, fazendo a contagem do NOME_CIDADAO
+    df_resumo = df_limpo.groupby(['unidade', 'cod_ine']).agg(
+        total_cadastros=('nome_cidadao', 'count')
+    ).reset_index()
+    
+    # Adiciona a coluna do período
+    df_resumo['ano_mes_competencia'] = ano_mes_competencia
 
     with app.app_context():
         try:
-            # Remove apenas as linhas onde a data_cadastro seja do mês alvo
-            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE data_cadastro LIKE '%/{mes_alvo}/{ano_alvo}'"))
+            # Deleta caso já tenha rodado a extração deste mesmo mês antes
+            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE ano_mes_competencia = '{ano_mes_competencia}'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
             
-        # Filtra o dataframe para subir estritamente os cadastros do mês alvo
-        df_limpo = df_limpo[df_limpo['data_cadastro'].str.endswith(f"/{mes_alvo}/{ano_alvo}", na=False)]
-        
-        df_limpo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
-    print('REL-135 carregado com sucesso!')
+        df_resumo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
+    print('REL-135 carregado e agrupado com sucesso!')
