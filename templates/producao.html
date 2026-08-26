@@ -5,15 +5,10 @@
 <style>
 #tabela-dinamica th, #tabela-dinamica td {
     white-space: nowrap !important;
-}
-.vertical-text {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    white-space: nowrap;
-    padding: 5px;
-    font-weight: bold;
+    vertical-align: middle;
 }
 </style>
+
 
 <div class="container-fluid mt-5" style="padding-left: 3%; padding-right: 3%;">
     <h2>Painel de Produção</h2>
@@ -36,6 +31,7 @@
                 <option value="13" {% if relatorio_selecionado == '13' %}selected{% endif %}>Relatório 13 - PERDA PRIMÁRIA POR PROCEDIMENTO E ESPECIALIDADE</option>
                 <option value="14" {% if relatorio_selecionado == '14' %}selected{% endif %}>Relatório 14 - PERDA SECUNDÁRIA POR EXECUTANTE</option>
                 <option value="15" {% if relatorio_selecionado == '15' %}selected{% endif %}>Relatório 15 - CADASTROS INDIVIDUAIS CONSOLIDADOS (REL 135)</option>
+                <option value="17" {% if relatorio_selecionado == '17' %}selected{% endif %}>Relatório 17 - EDUCAÇÃO EM SAÚDE NA ESCOLA (REL 134)</option>
             </select>
         </div>
 
@@ -99,15 +95,67 @@
     {% endif %}
         <div class="card shadow-sm p-3">
             <h4>Resultado (Filtre antes de exportar):</h4>
-            <div class="table-responsive">
-                <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
-                    <!-- O cabeçalho será injetado pelo DataTables via JSON -->
-                </table>
-            </div>
+            <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
+                <!-- O cabeçalho será injetado pelo DataTables via JSON -->
+            </table>
         </div>
     {% endif %}
 
 </div>
+
+{% if relatorio_selecionado == '15' %}
+<style>
+    /* Congelamento Nativo por CSS Sticky em Tabela Única */
+    #tabela-dinamica th:nth-child(1), #tabela-dinamica td:nth-child(1),
+    #tabela-dinamica th:nth-child(2), #tabela-dinamica td:nth-child(2),
+    #tabela-dinamica th:nth-child(3), #tabela-dinamica td:nth-child(3),
+    #tabela-dinamica th:nth-child(4), #tabela-dinamica td:nth-child(4) {
+        position: sticky !important;
+        z-index: 2 !important;
+        background-color: #ffffff !important;
+    }
+    
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+    }
+    
+    #tabela-dinamica thead th:nth-child(-n+4) {
+        background-color: #f8f9fa !important;
+        z-index: 5 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '17' %}
+<style>
+    /* Permite quebra de linha nos cabeçalhos e limita a largura */
+    #tabela-dinamica th {
+        white-space: normal !important;
+        word-wrap: break-word;
+        word-break: normal;
+        overflow-wrap: break-word;
+    }
+    #tabela-dinamica th:nth-child(n+4) {
+        width: 140px !important;
+        min-width: 130px !important;
+        max-width: 160px !important;
+        vertical-align: bottom;
+        text-align: center;
+        font-size: 0.85rem;
+    }
+    #tabela-dinamica td:nth-child(n+4) {
+        text-align: center;
+    }
+    /* Evita que o dropdown estique a coluna e impeça a quebra de texto */
+    #tabela-dinamica th:nth-child(n+4) select {
+        width: 100% !important;
+        max-width: 130px !important;
+        margin-top: 10px;
+        font-size: 0.75rem;
+    }
+</style>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -140,8 +188,7 @@
             data: tableData,
             columns: tableCols,
             deferRender: true,
-            scrollX: true,
-            fixedColumns: { leftColumns: 4 },
+            scrollX: false,
             rowCallback: function(row, data) {
                 var rel_indice = '{{ relatorio_selecionado }}';
                 if (rel_indice === '15') {
@@ -186,8 +233,8 @@
             },
             "pageLength": 100, // Quantidade inicial
             "lengthMenu": [10, 50, 100, 500, 1000], // Opções de quantidade
-            "dom": '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4"f>>' +
-                   'rt' +
+            "dom": '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
+                   '<"table-responsive"t>' +
                    '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
             "buttons": [
                 {
@@ -233,10 +280,25 @@
                     });
                 });
                 
-                // Recalculate widths after adding dropdowns to fix FixedColumns misalignment
-                setTimeout(function() {
-                    $('#tabela-dinamica').DataTable().columns.adjust().draw();
-                }, 100);
+                {% if relatorio_selecionado == '15' %}
+                function fixarColunasSticky() {
+                    var leftOffset = 0;
+                    for (var i = 1; i <= 4; i++) {
+                        var $th = $('#tabela-dinamica thead th:nth-child(' + i + ')');
+                        var w = $th.outerWidth();
+                        $('#tabela-dinamica th:nth-child(' + i + '), #tabela-dinamica td:nth-child(' + i + ')')
+                            .css('left', leftOffset + 'px');
+                        leftOffset += w;
+                    }
+                }
+                fixarColunasSticky();
+                setTimeout(fixarColunasSticky, 50);
+                setTimeout(fixarColunasSticky, 300);
+                $(window).on('resize', fixarColunasSticky);
+                $('#tabela-dinamica').on('draw.dt', function() {
+                    setTimeout(fixarColunasSticky, 20);
+                });
+                {% endif %}
             }
         });
         {% endif %}

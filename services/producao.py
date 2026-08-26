@@ -410,14 +410,31 @@ def gera_relatorio_15(periodo):
 
 def gera_relatorio_17(periodo):
     with app.app_context():
-        # Relatório 17 corresponde ao REL-134
-        query = "SELECT * FROM 'REL-134'"
+        query = 'SELECT * FROM "REL-134"'
         df = pd.read_sql(query, con=db.engine)
         
         if df.empty:
             return pd.DataFrame()
         
-        # Manipule df conforme a regra de negócio
-        df_resumo = df
+        # Filtrar inep não nulo/vazio
+        df = df[df['inep'].notna()]
+        df = df[df['inep'].astype(str).str.strip() != '']
+        df = df[df['inep'].astype(str).str.upper() != 'NONE']
+        df = df[df['inep'].astype(str).str.upper() != 'NAN']
+        df = df[df['inep'].astype(str).str.strip() != '-']
         
-        return df_resumo
+        # Garantir tipo numérico
+        df['num_participantes'] = pd.to_numeric(df['num_participantes'], errors='coerce').fillna(0)
+        
+        # Tabela Dinâmica
+        df_pivot = pd.pivot_table(
+            df,
+            index=['nome_unidade', 'inep', 'nome_instituicao'],
+            columns='temas_para_saude',
+            values='num_participantes',
+            aggfunc='sum',
+            fill_value=0
+        )
+        
+        df_pivot = df_pivot.reset_index()
+        return df_pivot

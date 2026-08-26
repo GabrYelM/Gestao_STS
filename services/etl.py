@@ -396,43 +396,16 @@ def processa_rel114(caminho, periodo=None):
 def processa_rel134(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
         
+    # Filtrado para manter apenas colunas essenciais para o Relatório 17 e histórico base, reduzindo o peso do BD
     traduz_col = {
-        'tipo_de_visao': 'tipo_de_visao',
-        'id_atividade': 'id_atividade',
-        'tipo_ficha': 'tipo_ficha',
-        'tipo_atividade': 'tipo_atividade',
-        'pics': 'pics',
-        'emulti': 'emulti',
-        'total_prof_participantes_emult': 'total_prof_participantes_emult',
-        'total_prof_participantes': 'total_prof_participantes',
-        'cnes': 'cnes',
         'nome_unidade': 'nome_unidade',
-        'cns_prof': 'cns_prof',
-        'nome_profissional': 'nome_profissional',
-        'cbo_prof': 'cbo_prof',
-        'cbo': 'cbo',
-        'ine': 'ine',
-        'data_atividade': 'data_atividade',
-        'ano': 'ano',
-        'mes': 'mes',
-        'turno': 'turno',
-        'pse_educacao': 'pse_educacao',
-        'pse_saude': 'pse_saude',
         'inep': 'inep',
         'nome_instituicao': 'nome_instituicao',
-        'outra_localidade': 'outra_localidade',
-        'cnes_participante': 'cnes_participante',
-        'nome_unid_participante': 'nome_unid_participante',
         'num_participantes': 'num_participantes',
-        'num_part_registrados': 'num_part_registrados',
-        'tema_para_reuniao': 'tema_para_reuniao',
-        'publico_alvo': 'publico_alvo',
         'temas_para_saude': 'temas_para_saude',
-        'praticas_em_saude': 'praticas_em_saude',
-        'cod_proced_sigtap': 'cod_proced_sigtap',
-        'procedimento_sigtap': 'procedimento_sigtap',
-        'origem_ficha': 'origem_ficha',
-        'tipo_origem_transp': 'tipo_origem_transp'
+        'ano': 'ano',
+        'mes': 'mes',
+        'data_atividade': 'data_atividade'
     }
 
     df = df.rename(columns=traduz_col)

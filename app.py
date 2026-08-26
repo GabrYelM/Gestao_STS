@@ -369,8 +369,8 @@ def producao():
                 # Prepara JSON
                 import json
                 
-                # Prepara definições de colunas para o DataTables
-                colunas = [{"data": str(col), "title": str(col)} for col in df.columns]
+                # Prepara definições de colunas para o DataTables (escapa pontos para evitar erro de objeto aninhado no DataTables)
+                colunas = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df.columns]
                 json_colunas = json.dumps(colunas)
                 
                 # Preenche NaN com string vazia ou None
