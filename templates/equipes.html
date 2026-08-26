@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <h2>Gerenciar Mapeamento de Equipes</h2>
+        <p class="text-muted">Associe uma Sigla a cada Código INE. Apenas equipes marcadas como ESF, ECR, EAP20H ou EAP30H serão contabilizadas no Relatório 15.</p>
+        
+        {% if pendentes %}
+        <div class="alert alert-warning">
+            <h4><i class="bi bi-exclamation-triangle"></i> Atenção: Novas Equipes Detectadas no Relatório 135!</h4>
+            <p>As seguintes equipes foram encontradas no banco de dados mas ainda não possuem uma Sigla definida. Por favor, mapeie-as abaixo:</p>
+            <form action="{{ url_for('gerenciar_equipes') }}" method="POST">
+                <input type="hidden" name="lote" value="1">
+                <table class="table table-sm mt-3">
+                    <thead>
+                        <tr>
+                            <th>Unidade</th>
+                            <th>Código INE</th>
+                            <th>Definir Sigla</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pendentes %}
+                        <tr>
+                            <td>{{ p.unidade }}</td>
+                            <td>{{ p.cod_ine }}</td>
+                            <td>
+                                <input type="hidden" name="unidade_{{ p.cod_ine }}" value="{{ p.unidade }}">
+                                <select name="sigla_{{ p.cod_ine }}" class="form-select form-select-sm">
+                                    <option value="">Manter Pendente...</option>
+                                    <option value="ESF">ESF</option>
+                                    <option value="ECR">ECR</option>
+                                    <option value="EAP20H">EAP 20H</option>
+                                    <option value="EAP30H">EAP 30H</option>
+                                    <option value="IGNORAR">Desconsiderar (Ex: EMAD/ESB)</option>
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary">Salvar Todas Selecionadas (Lote)</button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        <h4>Todas as Equipes Mapeadas</h4>
+        <div class="table-responsive mt-3">
+            <table class="table table-striped table-hover" id="tabelaEquipes">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Unidade</th>
+                        <th>Código INE</th>
+                        <th>Sigla Atual</th>
+                        <th>Ação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in equipes %}
+                    <tr>
+                        <td>{{ e.unidade }}</td>
+                        <td>{{ e.cod_ine }}</td>
+                        <td>
+                            {% if e.sigla == 'IGNORAR' %}
+                                <span class="badge bg-secondary">Ignorada</span>
+                            {% else %}
+                                <strong>{{ e.sigla }}</strong>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{{ url_for('gerenciar_equipes') }}" method="POST" class="d-flex">
+                                <input type="hidden" name="cod_ine" value="{{ e.cod_ine }}">
+                                <input type="hidden" name="unidade" value="{{ e.unidade }}">
+                                <select name="sigla" class="form-select form-select-sm me-2" required>
+                                    <option value="ESF" {% if e.sigla == 'ESF' %}selected{% endif %}>ESF</option>
+                                    <option value="ECR" {% if e.sigla == 'ECR' %}selected{% endif %}>ECR</option>
+                                    <option value="EAP20H" {% if e.sigla == 'EAP20H' %}selected{% endif %}>EAP 20H</option>
+                                    <option value="EAP30H" {% if e.sigla == 'EAP30H' %}selected{% endif %}>EAP 30H</option>
+                                    <option value="IGNORAR" {% if e.sigla == 'IGNORAR' %}selected{% endif %}>Desconsiderar</option>
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">Atualizar</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        $('#tabelaEquipes').DataTable({
+            "language": {
+                "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+            }
+        });
+    });
+</script>
+{% endblock %}

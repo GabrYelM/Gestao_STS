@@ -284,6 +284,8 @@ def producao():
         return redirect(url_for("login"))
 
     tabela_html = None
+    json_dados = None
+    json_colunas = None
     indice = request.form.get("indice_relatorio") if request.method == "POST" else None
     
     from datetime import datetime, timedelta
@@ -455,6 +457,59 @@ def upload_dtic():
         
     return render_template("upload_dtic.html", mensagem=mensagem)
 
+
+@app.route('/equipes', methods=['GET', 'POST'])
+def gerenciar_equipes():
+    # Obtém todas as equipes cadastradas
+    equipes = pd.read_sql("SELECT * FROM equipes ORDER BY unidade, sigla", con=db.engine).to_dict('records')
+    
+    # Identifica INEs que estão no REL-135 mas não estão mapeadas na tabela equipes
+    # Isso serve para alertar o usuário de equipes novas
+    query_pendentes = '''
+        SELECT DISTINCT r.cod_ine, r.unidade 
+        FROM "REL-135" r 
+        LEFT JOIN equipes e ON r.cod_ine = e.cod_ine 
+        WHERE e.sigla IS NULL OR e.sigla = ''
+    '''
+    try:
+        pendentes = pd.read_sql(query_pendentes, con=db.engine).to_dict('records')
+    except Exception as e:
+        pendentes = []
+
+    if request.method == 'POST':
+        if 'lote' in request.form:
+            # Salvar em lote
+            for key, value in request.form.items():
+                if key.startswith('sigla_') and value:
+                    cod_ine = key.replace('sigla_', '')
+                    unidade = request.form.get(f'unidade_{cod_ine}')
+                    equipe = models.Equipe.query.get(cod_ine)
+                    if equipe:
+                        equipe.sigla = value
+                    else:
+                        equipe = models.Equipe(cod_ine=cod_ine, sigla=value, unidade=unidade)
+                        db.session.add(equipe)
+            db.session.commit()
+            return redirect(url_for('gerenciar_equipes'))
+        else:
+            # Atualiza a sigla de uma equipe existente ou cadastra uma nova individual
+            cod_ine = request.form.get('cod_ine')
+            sigla = request.form.get('sigla')
+            unidade = request.form.get('unidade')
+            
+            if cod_ine and sigla:
+                equipe = models.Equipe.query.get(cod_ine)
+                if equipe:
+                    equipe.sigla = sigla
+                else:
+                    equipe = models.Equipe(cod_ine=cod_ine, sigla=sigla, unidade=unidade)
+                    db.session.add(equipe)
+                db.session.commit()
+                return redirect(url_for('gerenciar_equipes'))
+
+    return render_template('equipes.html', equipes=equipes, pendentes=pendentes)
+
 if __name__ == '__main__':
+
 
     app.run(debug=True)

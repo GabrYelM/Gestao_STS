@@ -3,6 +3,9 @@
 
 {% block content %}
 <style>
+#tabela-dinamica th, #tabela-dinamica td {
+    white-space: nowrap !important;
+}
 .vertical-text {
     writing-mode: vertical-rl;
     transform: rotate(180deg);
@@ -63,10 +66,41 @@
     {% endif %}
     
     {% if json_dados %}
+    {% if relatorio_selecionado == '15' %}
+    <div class="card shadow-sm p-3 mb-3">
+        <h5>Regras de Parâmetros e Limites (Portaria SAPS/MS nº 161-10/12/24)</h5>
+        <div class="row align-items-center">
+            <div class="col-md-auto">
+                <table class="table table-sm table-bordered text-center mb-0" style="font-size: 0.85rem;">
+                    <thead class="table-primary">
+                        <tr>
+                            <th>Sigla da Equipe</th>
+                            <th>Parâmetro</th>
+                            <th>Limite</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>eAP-20h</td><td>2000</td><td>Acima de 2250</td></tr>
+                        <tr><td>eAP-30h</td><td>3000</td><td>Acima de 3375</td></tr>
+                        <tr><td>eSF</td><td>4000</td><td>Acima de 4500</td></tr>
+                        <tr><td>eCR</td><td>600</td><td>-</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="col-md-auto d-flex flex-wrap gap-2 mt-2 mt-md-0">
+                <span class="badge bg-white text-danger border border-danger border-2 p-2 fs-6">&lt; 40%</span>
+                <span class="badge bg-white text-warning border border-warning border-2 p-2 fs-6">entre 40% e 70%</span>
+                <span class="badge bg-white text-success border border-success border-2 p-2 fs-6">entre 70% e 100%</span>
+                <span class="badge bg-white text-primary border border-primary border-2 p-2 fs-6">acima de 100%</span>
+                <span class="badge bg-warning text-white border border-warning border-2 p-2 fs-6">Valor acima do limite</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
         <div class="card shadow-sm p-3">
             <h4>Resultado (Filtre antes de exportar):</h4>
             <div class="table-responsive">
-                <table id="tabela-dinamica" class="table table-sm table-striped table-bordered w-100 small">
+                <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
                     <!-- O cabeçalho será injetado pelo DataTables via JSON -->
                 </table>
             </div>
@@ -80,6 +114,7 @@
 <!-- Estilos do DataTables -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.3.0/css/fixedColumns.bootstrap5.min.css">
 
 <!-- Scripts do DataTables -->
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -91,19 +126,61 @@
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
 
 <script>
 
 
     $(document).ready(function() {
-        {% if json_dados %}
+          {% if json_dados %}
         var tableData = {{ json_dados | safe }};
         var tableCols = {{ json_colunas | safe }};
         
         $('#tabela-dinamica').DataTable({
             data: tableData,
             columns: tableCols,
-            deferRender: true, // Super otimização: renderiza apenas a página atual no HTML
+            deferRender: true,
+            scrollX: true,
+            fixedColumns: { leftColumns: 4 },
+            rowCallback: function(row, data) {
+                var rel_indice = '{{ relatorio_selecionado }}';
+                if (rel_indice === '15') {
+                    var sigla = data['SIGLA'];
+                    var limite = 0;
+                    if (sigla === 'EAP20H' || sigla === 'eAP-20h' || sigla === 'eAP 20h') limite = 2000;
+                    else if (sigla === 'EAP30H' || sigla === 'eAP-30h' || sigla === 'eAP 30h') limite = 3000;
+                    else if (sigla === 'ESF' || sigla === 'eSF') limite = 4000;
+                    else if (sigla === 'ECR' || sigla === 'eCR') limite = 600;
+                    if (limite > 0) {
+                        $('td', row).each(function(colIndex) {
+                            if (colIndex >= 4) {
+                                var val = parseFloat($(this).text().replace(/[^0-9.-]+/g,""));
+                                if (!isNaN(val) && val > 0) {
+                                    var perc = val / limite;
+                                    $(this).css({'font-weight': 'bold', 'text-align': 'center'});
+                                    if (perc < 0.40) {
+                                        $(this).css({'color': '#d9534f', 'border': '2px solid #d9534f'});
+                                    } else if (perc >= 0.40 && perc < 0.70) {
+                                        $(this).css({'color': '#f0ad4e', 'border': '2px solid #f0ad4e'});
+                                    } else if (perc >= 0.70 && perc <= 1.00) {
+                                        $(this).css({'color': '#198754', 'border': '2px solid #198754'});
+                                    } else if (perc > 1.00) {
+                                        var is_acima = false;
+                                        if (sigla === 'EAP20H' && val > 2250) is_acima = true;
+                                        else if (sigla === 'EAP30H' && val > 3375) is_acima = true;
+                                        else if (sigla === 'ESF' && val > 4500) is_acima = true;
+                                        if (is_acima) {
+                                            $(this).css({'background-color': '#f0ad4e', 'color': 'white', 'border': '2px solid #f0ad4e'});
+                                        } else {
+                                            $(this).css({'color': '#0d6efd', 'border': '2px solid #0d6efd'});
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }, // Super otimização: renderiza apenas a página atual no HTML
             "language": {
                 "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
             },
@@ -155,6 +232,11 @@
                         }
                     });
                 });
+                
+                // Recalculate widths after adding dropdowns to fix FixedColumns misalignment
+                setTimeout(function() {
+                    $('#tabela-dinamica').DataTable().columns.adjust().draw();
+                }, 100);
             }
         });
         {% endif %}

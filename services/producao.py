@@ -331,19 +331,82 @@ def gera_relatorio_14(periodo):
 
 def gera_relatorio_15(periodo):
     with app.app_context():
-        # Relatório 15 corresponde ao REL-135
-        # Busca o snapshot já sumarizado no ETL
+        # Busca todo o histórico até o período selecionado para montar o consolidado quadrimestral
         if periodo:
-            query = f"SELECT unidade as 'UNIDADE', cod_ine as 'COD_INE', total_cadastros as 'Contagem de NOME_CIDADAO' FROM 'REL-135' WHERE ano_mes_competencia = '{periodo}'"
+            query = f'''
+                SELECT r.*, e.sigla 
+                FROM "REL-135" r
+                JOIN equipes e ON r.cod_ine = e.cod_ine
+                WHERE r.ano_mes_competencia <= '{periodo}'
+                AND e.sigla IN ('ESF', 'ECR', 'EAP20H', 'EAP30H')
+            '''
         else:
-            query = "SELECT unidade as 'UNIDADE', cod_ine as 'COD_INE', total_cadastros as 'Contagem de NOME_CIDADAO' FROM 'REL-135'"
+            query = '''
+                SELECT r.*, e.sigla 
+                FROM "REL-135" r
+                JOIN equipes e ON r.cod_ine = e.cod_ine
+                WHERE e.sigla IN ('ESF', 'ECR', 'EAP20H', 'EAP30H')
+            '''
             
         df = pd.read_sql(query, con=db.engine)
         
         if df.empty:
             return pd.DataFrame()
             
-        return df
+        # 1. Cria a tabela dinâmica cruzando histórico
+        df_pivot = pd.pivot_table(
+            df,
+            index=['cnes', 'unidade', 'cod_ine', 'sigla'],
+            columns='ano_mes_competencia',
+            values='total_cadastros',
+            aggfunc='sum'
+        ).fillna(0).astype(int).reset_index()
+        
+        # 2. Aplica a regra de negócio Quadrimestral
+        colunas = list(df_pivot.columns)
+        anos = set([c[:4] for c in colunas if str(c).isnumeric() and len(str(c)) == 6])
+        
+        colunas_para_dropar = []
+        colunas_para_renomear = {}
+        
+        for ano in anos:
+            # Quadrimestre 1 (Jan, Fev, Mar, Abr)
+            if f"{ano}04" in colunas:
+                colunas_para_renomear[f"{ano}04"] = f"Q1/{ano}"
+                colunas_para_dropar.extend([f"{ano}01", f"{ano}02", f"{ano}03"])
+            # Quadrimestre 2 (Mai, Jun, Jul, Ago)
+            if f"{ano}08" in colunas:
+                colunas_para_renomear[f"{ano}08"] = f"Q2/{ano}"
+                colunas_para_dropar.extend([f"{ano}05", f"{ano}06", f"{ano}07"])
+            # Quadrimestre 3 (Set, Out, Nov, Dez)
+            if f"{ano}12" in colunas:
+                colunas_para_renomear[f"{ano}12"] = f"Q3/{ano}"
+                colunas_para_dropar.extend([f"{ano}09", f"{ano}10", f"{ano}11"])
+                
+        # Remove os meses anteriores do quadrimestre fechado
+        colunas_para_dropar = [c for c in colunas_para_dropar if c in df_pivot.columns]
+        df_pivot = df_pivot.drop(columns=colunas_para_dropar)
+        
+        # Renomeia a coluna que fechou o quadrimestre
+        df_pivot = df_pivot.rename(columns=colunas_para_renomear)
+        
+        # 3. Renomeia os meses restantes (quadrimestre aberto) para o formato MM/YYYY
+        outras_renomeacoes = {}
+        for c in df_pivot.columns:
+            if str(c).isnumeric() and len(str(c)) == 6:
+                outras_renomeacoes[c] = f"{str(c)[4:]}/{str(c)[:4]}"
+                
+        df_pivot = df_pivot.rename(columns=outras_renomeacoes)
+        
+        # 4. Formatações Finais
+        df_pivot = df_pivot.rename(columns={'unidade': 'UNIDADE', 'cnes': 'CNES', 'cod_ine': 'COD_INE', 'sigla': 'SIGLA'})
+
+        
+        # Opcional: ordenar colunas (Unidade, INE, seguido por meses e quadrimestres em ordem temporal)
+        # O pivot_table já as colocou ordenadas alfabeticamente/cronologicamente (202601 vem antes de 202602 etc)
+        # Ao renomear, a ordem original das colunas foi preservada pelo Pandas!
+        
+        return df_pivot
 
 def gera_relatorio_17(periodo):
     with app.app_context():

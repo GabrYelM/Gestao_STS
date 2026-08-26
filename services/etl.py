@@ -457,6 +457,7 @@ def processa_rel135(caminho, periodo=None):
         
     traduz_col = {
         'unidade': 'unidade', 
+        'cnes': 'cnes',
         'cod_ine': 'cod_ine',
         'data_cadastro': 'data_cadastro',
         'nome_cidadao': 'nome_cidadao'
@@ -468,7 +469,9 @@ def processa_rel135(caminho, periodo=None):
 
     # 1. Filtra COD_INE removendo nulos e '-'
     df_limpo = df_limpo[df_limpo['cod_ine'].notna()]
-    df_limpo = df_limpo[df_limpo['cod_ine'].astype(str).str.strip() != '-']
+    df_limpo['cod_ine'] = df_limpo['cod_ine'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
+    df_limpo = df_limpo[df_limpo['cod_ine'] != '-']
+    df_limpo = df_limpo[df_limpo['cod_ine'] != '']
 
     from datetime import datetime, timedelta
     
@@ -488,8 +491,8 @@ def processa_rel135(caminho, periodo=None):
     # Filtra mantendo apenas as datas menores ou iguais ao último dia do mês passado
     df_limpo = df_limpo[df_limpo['data_cadastro_dt'] <= ultimo_dia_mes_passado]
     
-    # 3. Agrupa por UNIDADE e COD_INE, fazendo a contagem do NOME_CIDADAO
-    df_resumo = df_limpo.groupby(['unidade', 'cod_ine']).agg(
+    # 3. Agrupa por UNIDADE, CNES e COD_INE, fazendo a contagem do NOME_CIDADAO
+    df_resumo = df_limpo.groupby(['unidade', 'cnes', 'cod_ine']).agg(
         total_cadastros=('nome_cidadao', 'count')
     ).reset_index()
     

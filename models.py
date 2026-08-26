@@ -232,8 +232,15 @@ class REL134(db.Model):
 
 class REL135(db.Model):
     __tablename__ = 'REL-135'
-    id = db.Column(db.Integer, primary_key=True)
-    ano_mes_competencia = db.Column(db.String(6), nullable=False)
-    unidade = db.Column(db.String(255), nullable=True)
-    cod_ine = db.Column(db.String(255), nullable=True)
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ano_mes_competencia = db.Column(db.String(10), nullable=False)
+    unidade = db.Column(db.String(255))
+    cnes = db.Column(db.String(255))
+    cod_ine = db.Column(db.String(50))
     total_cadastros = db.Column(db.Integer, default=0)
+
+class Equipe(db.Model):
+    __tablename__ = 'equipes'
+    cod_ine = db.Column(db.String(50), primary_key=True)
+    sigla = db.Column(db.String(50))
+    unidade = db.Column(db.String(255))
