@@ -7,6 +7,69 @@
     white-space: nowrap !important;
     vertical-align: middle;
 }
+
+/* Botões do DataTables - Garante texto sempre visível e nítido */
+.dt-buttons .btn,
+.dt-buttons .btn-outline-secondary,
+.dt-buttons button.buttons-colvis {
+    color: #212529 !important;
+    background-color: #ffffff !important;
+    border: 1px solid #6c757d !important;
+    font-weight: 500 !important;
+}
+
+.dt-buttons .btn-outline-secondary:hover,
+.dt-buttons button.buttons-colvis:hover {
+    color: #ffffff !important;
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+}
+
+.dt-buttons .btn-success {
+    color: #ffffff !important;
+    background-color: #198754 !important;
+    border-color: #198754 !important;
+}
+
+/* ColVis Dropdown - Garante que todo texto da seleção de colunas seja sempre 100% visível e legível */
+div.dt-button-collection {
+    background-color: #ffffff !important;
+    border: 1px solid rgba(0, 0, 0, 0.15) !important;
+    border-radius: 0.375rem !important;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.175) !important;
+    padding: 0.5rem 0 !important;
+    max-height: 420px !important;
+    overflow-y: auto !important;
+}
+
+div.dt-button-collection .dt-button,
+div.dt-button-collection a.dt-button,
+div.dt-button-collection button.dt-button,
+div.dt-button-collection .dropdown-item {
+    color: #212529 !important;
+    background-color: #ffffff !important;
+    padding: 0.4rem 1.2rem !important;
+    font-size: 0.875rem !important;
+    display: block !important;
+    width: 100% !important;
+    text-align: left !important;
+    border: none !important;
+}
+
+div.dt-button-collection .dt-button.active,
+div.dt-button-collection a.dt-button.active,
+div.dt-button-collection button.dt-button.active {
+    background-color: #0d6efd !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+}
+
+div.dt-button-collection .dt-button:hover,
+div.dt-button-collection a.dt-button:hover,
+div.dt-button-collection button.dt-button:hover {
+    background-color: #e9ecef !important;
+    color: #000000 !important;
+}
 </style>
 
 
@@ -99,6 +162,10 @@
                 <!-- O cabeçalho será injetado pelo DataTables via JSON -->
             </table>
         </div>
+
+        <!-- Dados JSON embutidos de forma segura para evitar erros de sintaxe no editor -->
+        <script id="dados-tabela-json" type="application/json">{{ json_dados | safe }}</script>
+        <script id="colunas-tabela-json" type="application/json">{{ json_colunas | safe }}</script>
     {% endif %}
 
 </div>
@@ -162,7 +229,6 @@
 <!-- Estilos do DataTables -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
-<link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.3.0/css/fixedColumns.bootstrap5.min.css">
 
 <!-- Scripts do DataTables -->
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -174,134 +240,136 @@
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
 
 <script>
-
-
     $(document).ready(function() {
-          {% if json_dados %}
-        var tableData = {{ json_dados | safe }};
-        var tableCols = {{ json_colunas | safe }};
+        var dadosEl = document.getElementById('dados-tabela-json');
+        var colunasEl = document.getElementById('colunas-tabela-json');
         
-        $('#tabela-dinamica').DataTable({
-            data: tableData,
-            columns: tableCols,
-            deferRender: true,
-            scrollX: false,
-            rowCallback: function(row, data) {
-                var rel_indice = '{{ relatorio_selecionado }}';
-                if (rel_indice === '15') {
-                    var sigla = data['SIGLA'];
-                    var limite = 0;
-                    if (sigla === 'EAP20H' || sigla === 'eAP-20h' || sigla === 'eAP 20h') limite = 2000;
-                    else if (sigla === 'EAP30H' || sigla === 'eAP-30h' || sigla === 'eAP 30h') limite = 3000;
-                    else if (sigla === 'ESF' || sigla === 'eSF') limite = 4000;
-                    else if (sigla === 'ECR' || sigla === 'eCR') limite = 600;
-                    if (limite > 0) {
-                        $('td', row).each(function(colIndex) {
-                            if (colIndex >= 4) {
-                                var val = parseFloat($(this).text().replace(/[^0-9.-]+/g,""));
-                                if (!isNaN(val) && val > 0) {
-                                    var perc = val / limite;
-                                    $(this).css({'font-weight': 'bold', 'text-align': 'center'});
-                                    if (perc < 0.40) {
-                                        $(this).css({'color': '#d9534f', 'border': '2px solid #d9534f'});
-                                    } else if (perc >= 0.40 && perc < 0.70) {
-                                        $(this).css({'color': '#f0ad4e', 'border': '2px solid #f0ad4e'});
-                                    } else if (perc >= 0.70 && perc <= 1.00) {
-                                        $(this).css({'color': '#198754', 'border': '2px solid #198754'});
-                                    } else if (perc > 1.00) {
-                                        var is_acima = false;
-                                        if (sigla === 'EAP20H' && val > 2250) is_acima = true;
-                                        else if (sigla === 'EAP30H' && val > 3375) is_acima = true;
-                                        else if (sigla === 'ESF' && val > 4500) is_acima = true;
-                                        if (is_acima) {
-                                            $(this).css({'background-color': '#f0ad4e', 'color': 'white', 'border': '2px solid #f0ad4e'});
-                                        } else {
-                                            $(this).css({'color': '#0d6efd', 'border': '2px solid #0d6efd'});
+        if (dadosEl && colunasEl) {
+            var tableData = JSON.parse(dadosEl.textContent || '[]');
+            var tableCols = JSON.parse(colunasEl.textContent || '[]');
+            var relIndice = "{{ relatorio_selecionado }}";
+            
+            $('#tabela-dinamica').DataTable({
+                data: tableData,
+                columns: tableCols,
+                deferRender: true,
+                scrollX: false,
+                rowCallback: function(row, data) {
+                    if (relIndice === '15') {
+                        var sigla = data['SIGLA'];
+                        var limite = 0;
+                        if (sigla === 'EAP20H' || sigla === 'eAP-20h' || sigla === 'eAP 20h') limite = 2000;
+                        else if (sigla === 'EAP30H' || sigla === 'eAP-30h' || sigla === 'eAP 30h') limite = 3000;
+                        else if (sigla === 'ESF' || sigla === 'eSF') limite = 4000;
+                        else if (sigla === 'ECR' || sigla === 'eCR') limite = 600;
+                        if (limite > 0) {
+                            $('td', row).each(function(colIndex) {
+                                if (colIndex >= 4) {
+                                    var val = parseFloat($(this).text().replace(/[^0-9.-]+/g, ""));
+                                    if (!isNaN(val) && val > 0) {
+                                        var perc = val / limite;
+                                        $(this).css({'font-weight': 'bold', 'text-align': 'center'});
+                                        if (perc < 0.40) {
+                                            $(this).css({'color': '#d9534f', 'border': '2px solid #d9534f'});
+                                        } else if (perc >= 0.40 && perc < 0.70) {
+                                            $(this).css({'color': '#f0ad4e', 'border': '2px solid #f0ad4e'});
+                                        } else if (perc >= 0.70 && perc <= 1.00) {
+                                            $(this).css({'color': '#198754', 'border': '2px solid #198754'});
+                                        } else if (perc > 1.00) {
+                                            var is_acima = false;
+                                            if (sigla === 'EAP20H' && val > 2250) is_acima = true;
+                                            else if (sigla === 'EAP30H' && val > 3375) is_acima = true;
+                                            else if (sigla === 'ESF' && val > 4500) is_acima = true;
+                                            if (is_acima) {
+                                                $(this).css({'background-color': '#f0ad4e', 'color': 'white', 'border': '2px solid #f0ad4e'});
+                                            } else {
+                                                $(this).css({'color': '#0d6efd', 'border': '2px solid #0d6efd'});
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
-                }
-            }, // Super otimização: renderiza apenas a página atual no HTML
-            "language": {
-                "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
-            },
-            "pageLength": 100, // Quantidade inicial
-            "lengthMenu": [10, 50, 100, 500, 1000], // Opções de quantidade
-            "dom": '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
-                   '<"table-responsive"t>' +
-                   '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
-            "buttons": [
-                {
-                    extend: 'excelHtml5',
-                    text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
-                    className: 'btn btn-success',
-                    exportOptions: {
-                        // Exporta apenas o que está sendo filtrado atualmente na tela
-                        modifier: { search: 'applied' }, 
-                        format: {
-                            header: function (data, columnIdx, node) {
-                                var clone = $(node).clone();
-                                clone.find('select').remove();
-                                return clone.text().trim();
+                },
+                language: {
+                    url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+                },
+                pageLength: 100,
+                lengthMenu: [10, 50, 100, 500, 1000],
+                dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
+                     '<"table-responsive"t>' +
+                     '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                buttons: [
+                    {
+                        extend: 'colvis',
+                        text: '<i class="bi bi-layout-three-columns"></i> Selecionar Colunas',
+                        className: 'btn btn-outline-secondary me-2',
+                        postfixButtons: ['colvisRestore']
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
+                        className: 'btn btn-success',
+                        exportOptions: {
+                            modifier: { search: 'applied' },
+                            format: {
+                                header: function(data, columnIdx, node) {
+                                    var clone = $(node).clone();
+                                    clone.find('select').remove();
+                                    return clone.text().trim();
+                                }
                             }
                         }
                     }
-                }
-            ],
-            initComplete: function () {
-                this.api().columns().every(function () {
-                    var column = this;
-                    
-                    // Cria o dropdown de filtro no cabeçalho da coluna
-                    var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
-                        .appendTo($(column.header()))
-                        .on('change', function () {
-                            var val = $.fn.dataTable.util.escapeRegex($(this).val());
-                            // Filtra exatamente pela string escolhida
-                            column.search(val ? '^' + val + '$' : '', true, false).draw();
-                        })
-                        .on('click', function(e) {
-                            // Impede que o clique no filtro acione a ordenação da coluna
-                            e.stopPropagation();
+                ],
+                initComplete: function() {
+                    this.api().columns().every(function() {
+                        var column = this;
+                        
+                        var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
+                            .appendTo($(column.header()))
+                            .on('change', function() {
+                                var val = $.fn.dataTable.util.escapeRegex($(this).val());
+                                column.search(val ? '^' + val + '$' : '', true, false).draw();
+                            })
+                            .on('click', function(e) {
+                                e.stopPropagation();
+                            });
+                        
+                        column.data().unique().sort().each(function(d) {
+                            var text = $('<div>').html(d).text();
+                            if (text && text.trim() !== '') {
+                                select.append('<option value="' + text + '">' + text + '</option>');
+                            }
                         });
-                    
-                    // Povoa o dropdown com os valores únicos daquela coluna
-                    column.data().unique().sort().each(function (d, j) {
-                        var text = $('<div>').html(d).text(); // Limpa formatações HTML caso existam
-                        if (text && text.trim() !== '') {
-                            select.append('<option value="' + text + '">' + text + '</option>');
-                        }
                     });
-                });
-                
-                {% if relatorio_selecionado == '15' %}
-                function fixarColunasSticky() {
-                    var leftOffset = 0;
-                    for (var i = 1; i <= 4; i++) {
-                        var $th = $('#tabela-dinamica thead th:nth-child(' + i + ')');
-                        var w = $th.outerWidth();
-                        $('#tabela-dinamica th:nth-child(' + i + '), #tabela-dinamica td:nth-child(' + i + ')')
-                            .css('left', leftOffset + 'px');
-                        leftOffset += w;
+                    
+                    if (relIndice === '15') {
+                        function fixarColunasSticky() {
+                            var leftOffset = 0;
+                            for (var i = 1; i <= 4; i++) {
+                                var $th = $('#tabela-dinamica thead th:nth-child(' + i + ')');
+                                var w = $th.outerWidth();
+                                $('#tabela-dinamica th:nth-child(' + i + '), #tabela-dinamica td:nth-child(' + i + ')')
+                                    .css('left', leftOffset + 'px');
+                                leftOffset += w;
+                            }
+                        }
+                        fixarColunasSticky();
+                        setTimeout(fixarColunasSticky, 50);
+                        setTimeout(fixarColunasSticky, 300);
+                        $(window).on('resize', fixarColunasSticky);
+                        $('#tabela-dinamica').on('draw.dt column-visibility.dt', function() {
+                            setTimeout(fixarColunasSticky, 30);
+                        });
                     }
                 }
-                fixarColunasSticky();
-                setTimeout(fixarColunasSticky, 50);
-                setTimeout(fixarColunasSticky, 300);
-                $(window).on('resize', fixarColunasSticky);
-                $('#tabela-dinamica').on('draw.dt', function() {
-                    setTimeout(fixarColunasSticky, 20);
-                });
-                {% endif %}
-            }
-        });
-        {% endif %}
+            });
+        }
     });
 </script>
 {% endblock %}
