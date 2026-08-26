@@ -7,9 +7,8 @@ import pandas as pd
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-def bot_setup_page():
-    usuario = os.getenv("PORTAL_USUARIO")
-    senha = os.getenv("PORTAL_SENHA")
+def bot_setup_page(usuario, senha):
+
 
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()

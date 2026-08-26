@@ -43,8 +43,8 @@ import services.producao as prod
 
 gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
 
-def executar_bot(funcao_busca, mes, ano):
-    p, context, page = su.bot_setup_page()
+def executar_bot(funcao_busca, mes, ano, usuario, senha):
+    p, context, page = su.bot_setup_page(usuario, senha)
     try:
         # click_timeout = 60000 (Espera inteligentemente até 60s o elemento aparecer)
         # timeout_geral = 100 (Dorme apenas 100ms em vez de 1 segundo a cada passo)
@@ -78,7 +78,7 @@ def gerar_lista_meses(m_inicio, a_inicio, m_fim, a_fim):
             lista.append((meses_ordem[m], str(ano)))
     return lista
 
-def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido="TODOS"):
+def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha):
     status_extracao["em_andamento"] = True
     status_extracao["concluido"] = False
     status_extracao["progresso"] = "Iniciando fila..."
@@ -119,7 +119,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
         try:
             bot_gac, etl_gac = gac02_func
             # Executa GAC02 1 única vez
-            caminho_gac = executar_bot(bot_gac, mes_inicio, ano_inicio)
+            caminho_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
             if caminho_gac:
                 etl_gac(caminho_gac, None)
         except Exception as e:
@@ -143,7 +143,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
             with ThreadPoolExecutor(max_workers=4) as bot_executor:
                 futuros = []
                 for func_bot, func_etl in funcoes_loop:
-                    futuro = bot_executor.submit(executar_bot, func_bot, mes, ano)
+                    futuro = bot_executor.submit(executar_bot, func_bot, mes, ano, usuario, senha)
                     futuros.append((futuro, func_etl))
                     
                 for futuro, func_etl in futuros:
@@ -220,10 +220,30 @@ def gerar_relatorios():
     mes_fim = request.form.get("mes_fim", "Janeiro")
     ano_fim = request.form.get("ano_fim", "2026")
     relatorio_escolhido = request.form.get("relatorio_escolhido", "TODOS")
+    usuario_bi = request.form.get("usuario_bi", "")
+    senha_bi = request.form.get("senha_bi", "")
 
-    gerenciador_tarefas.submit(processo_background, mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido)
+    # Testar credenciais usando Playwright (mesmo motor do robô para evitar erros de protocolo)
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p_test:
+            browser_test = p_test.chromium.launch(headless=True)
+            context_test = browser_test.new_context(http_credentials={'username': usuario_bi, 'password': senha_bi})
+            page_test = context_test.new_page()
+            
+            url_teste = 'https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx'
+            resp = page_test.goto(url_teste, timeout=15000)
+            
+            if resp and resp.status == 401:
+                return jsonify({"erro": "Usuário ou senha do BI incorretos!"}), 401
+                
+    except Exception as e:
+        print(f"Erro no teste prévio de credenciais: {e}")
+        pass # Se der timeout na rede, prossegue e deixa o bot principal tentar lidar com a lentidão
 
-    return jsonify({"mensagem": f"Extração iniciada de {mes_inicio}/{ano_inicio} até {mes_fim}/{ano_fim} ({relatorio_escolhido})! O radar está acompanhando."})
+    gerenciador_tarefas.submit(processo_background, mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario_bi, senha_bi)
+
+    return jsonify({"mensagem": f"Autenticado! Extração iniciada de {mes_inicio}/{ano_inicio} até {mes_fim}/{ano_fim} ({relatorio_escolhido})!"})
 
 @app.route("/status_extracao")
 def status_extracao_route():

@@ -61,6 +61,17 @@
                         </div>
                     </div>
 
+                                        <div class="row mb-4">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="usuario-bi" class="form-label fw-semibold">Usuário BI</label>
+                            <input type="text" id="usuario-bi" class="form-control" placeholder="Seu usuário" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="senha-bi" class="form-label fw-semibold">Senha BI</label>
+                            <input type="password" id="senha-bi" class="form-control" placeholder="Sua senha" required>
+                        </div>
+                    </div>
+
                     <div class="mb-4">
                         <label for="relatorio-escolhido" class="form-label fw-semibold">Relatório a extrair (Download + ETL)</label>
                         <select id="relatorio-escolhido" class="form-select">
@@ -116,22 +127,41 @@
             btnGerar.innerHTML = '⏳ Processando...';
             btnGerar.classList.add('disabled');
 
+            const usuarioBi = document.getElementById('usuario-bi').value;
+            const senhaBi = document.getElementById('senha-bi').value;
+            
+            if (!usuarioBi || !senhaBi) {
+                alert("Por favor, preencha o Usuário e a Senha do BI!");
+                btnGerar.innerHTML = 'Gerar';
+                btnGerar.classList.remove('disabled');
+                return;
+            }
+
             const formData = new URLSearchParams();
             formData.append('mes_inicio', mesInicio ? mesInicio.value : 'Janeiro');
             formData.append('ano_inicio', anoInicio ? anoInicio.value : '2026');
             formData.append('mes_fim', mesFim ? mesFim.value : 'Janeiro');
             formData.append('ano_fim', anoFim ? anoFim.value : '2026');
             formData.append('relatorio_escolhido', relatorioEscolhido ? relatorioEscolhido.value : 'TODOS');
+            formData.append('usuario_bi', usuarioBi);
+            formData.append('senha_bi', senhaBi);
 
-            fetch('/gerar_relatorios', {
+            fetch('/bi_producao', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
                 },
                 body: formData.toString()
             })
-                .then(response => response.json())
+                .then(async response => {
+                    if (response.status === 401) {
+                        const errData = await response.json();
+                        throw new Error(errData.erro);
+                    }
+                    return response.json();
+                })
                 .then(data => {
+                    alert("✅ Login realizado com sucesso no BI! Iniciando a extração...");
                     const radar = setInterval(() => {
                         fetch('/status_extracao')
                             .then(res => res.json())
@@ -149,7 +179,7 @@
                     }, 3000);
                 })
                 .catch(error => {
-                    alert('Ocorreu um erro ao tentar iniciar os relatórios.');
+                    alert(error.message || 'Ocorreu um erro ao tentar iniciar os relatórios.');
                     console.error(error);
                     btnGerar.innerHTML = 'Gerar';
                     btnGerar.classList.remove('disabled');

@@ -8,3 +8,7 @@ __pycache__/
 ARQUIVOS ORIGINAIS/
 .venv
 node_modules/
+*.xls
+*.xlsx
+*.zip
+*.txt
