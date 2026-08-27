@@ -22,24 +22,17 @@
                         </div>
                     </div>
 
-                    <div class="row mb-3">
-                        <div class="col-md-6 mb-3 mb-md-0">
-                            <label for="periodo-pm" class="form-label fw-semibold">Período anterior ao último mês</label>
-                            <select id="periodo-pm" class="form-select">
-                                <option value="12 meses" selected>12 meses</option>
-                                <option value="24 meses">24 meses</option>
-                                <option value="36 meses">36 meses</option>
-                                <option value="48 meses">48 meses</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="local-pm" class="form-label fw-semibold">Localidade / Subprefeitura</label>
-                            <input type="text" id="local-pm" class="form-control" value="PENHA" readonly>
-                        </div>
+                    <div class="mb-3">
+                        <label for="relatorio-escolhido-pm" class="form-label fw-semibold">Relatório a extrair</label>
+                        <select id="relatorio-escolhido-pm" class="form-select">
+                            <option value="TODOS" selected>Ambos (Relatório 06 - STS e Relatório 07 - Subprefeitura)</option>
+                            <option value="REL06">Relatório 06 - Apenas STS Penha</option>
+                            <option value="REL07">Relatório 07 - Apenas Subprefeitura Penha</option>
+                        </select>
                     </div>
 
                     <div class="alert alert-info py-2 small mb-4">
-                        <i class="bi bi-info-circle me-1"></i> O robô acessará o Painel CEInfo, selecionará todos os indicadores da <strong>Subprefeitura Penha</strong>, extrairá os valores numéricos e aplicará a coloração dos sinais mensais automaticamente.
+                        <i class="bi bi-info-circle me-1"></i> O robô acessará o Painel CEInfo, emitirá o relatório para a <strong>Região Penha</strong> (STS e/ou Subprefeitura), extrairá os valores numéricos e aplicará a coloração dos sinais mensais automaticamente.
                     </div>
 
                     <div class="d-grid gap-2 d-md-flex justify-content-md-start">
@@ -61,12 +54,12 @@
         const btnColetar = document.getElementById("btn-coletar");
         const usuarioInput = document.getElementById("usuario-pm");
         const senhaInput = document.getElementById("senha-pm");
-        const periodoSelect = document.getElementById("periodo-pm");
+        const relatorioSelect = document.getElementById("relatorio-escolhido-pm");
 
         btnColetar.addEventListener("click", () => {
             const usuario = usuarioInput.value.trim();
             const senha = senhaInput.value.trim();
-            const periodo = periodoSelect.value;
+            const relatorio = relatorioSelect.value;
 
             if (!usuario || !senha) {
                 alert("Por favor, preencha o usuário e a senha do Painel de Monitoramento!");
@@ -82,7 +75,7 @@
                 body: JSON.stringify({
                     usuario_pm: usuario,
                     senha_pm: senha,
-                    periodo: periodo
+                    relatorio_escolhido: relatorio
                 })
             })
             .then(async response => {

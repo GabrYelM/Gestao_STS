@@ -455,11 +455,15 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     caminho = download_bi(page)
     return caminho
 
-def buscaPainelMonitoramento(usuario, senha, periodo_meses="12 meses", subprefeitura="PENHA", page=None, click_timeout=20000, timeout_geral=1500):
-    print("Iniciando coleta do Painel de Monitoramento 3.2 (CEInfo)...")
+def buscaPainelMonitoramento(usuario, senha, tipo_local="STS", page=None, click_timeout=60000, timeout_geral=1500):
+    print(f"Iniciando coleta do Painel de Monitoramento 3.2 (CEInfo) - Modo: {tipo_local}...")
+    
+    # Configura tempo limite estendido (10 minutos) para relatórios pesados
+    page.set_default_timeout(600000)
+    page.set_default_navigation_timeout(600000)
     
     url_pm = "http://10.20.254.148/xampp/pm/"
-    page.goto(url_pm, timeout=45000)
+    page.goto(url_pm, timeout=120000)
     page.wait_for_load_state("domcontentloaded")
     page.wait_for_timeout(timeout_geral)
 
@@ -474,22 +478,36 @@ def buscaPainelMonitoramento(usuario, senha, periodo_meses="12 meses", subprefei
         user_input.fill(usuario)
         pass_input.fill(senha)
         page.get_by_text("Ok").click()
-        page.wait_for_load_state("domcontentloaded", timeout=15000)
+        page.wait_for_load_state("domcontentloaded", timeout=30000)
         page.wait_for_timeout(timeout_geral)
 
     # 2. Seleção dos Filtros no Painel
-    print("Selecionando filtros do Painel de Monitoramento...")
+    print(f"Selecionando filtros do Painel de Monitoramento ({tipo_local})...")
     page.wait_for_timeout(timeout_geral)
     page.locator("input[type='radio'][value='Tudo']").click(timeout=click_timeout)
     
-    # Marca o radio button de STS (Supervisão Técnica de Saúde)
-    page.locator("input[type='radio'][value='Supervisão Técnica de Saúde']").click(timeout=click_timeout)
+    if tipo_local == "Subprefeitura":
+        # Marca o radio button de Subprefeitura
+        page.locator("input[type='radio'][value='SubPrefeitura']").click(timeout=click_timeout)
+        page.wait_for_timeout(timeout_geral)
+        # Seleciona PENHA na lista de Subprefeitura
+        try:
+            page.locator("input[type='checkbox'][id='checkunsp']").click(timeout=click_timeout)
+            page.locator("select[id='boxsp[]']").select_option(label="PENHA")
+        except Exception:
+            page.locator("option").filter(has_text="PENHA").click()
+        print("Subprefeitura PENHA selecionada!")
+    else:
+        # Marca o radio button de STS (Supervisão Técnica de Saúde)
+        page.locator("input[type='radio'][value='Supervisão Técnica de Saúde']").click(timeout=click_timeout)
+        page.wait_for_timeout(timeout_geral)
+        # Seleciona PENHA na lista de STS
+        try:
+            page.locator("select[id='boxst[]']").select_option(label="PENHA")
+        except Exception:
+            page.locator("option").filter(has_text="PENHA").click()
+        print("STS PENHA selecionada!")
         
-    page.wait_for_timeout(timeout_geral)
-    
-    # Seleciona PENHA na lista de STS
-    page.locator("select[id='boxst[]']").select_option(label="PENHA")     
-    print("PENHA selecionada!")
     page.wait_for_timeout(timeout_geral)
 
     # Conteúdo: Série, sinal mensal e desempenho
@@ -500,22 +518,27 @@ def buscaPainelMonitoramento(usuario, senha, periodo_meses="12 meses", subprefei
 
     # 3. Emitir Relatório
     print("Clicando no botão 'Emitir Relatório'...")
-    page.locator("input[value='Emitir Relatório']").click(timeout=click_timeout)
+    page.locator("input[value='Emitir Relatório']").click(no_wait_after=True)
     
-    # 4. Aguarda carregar a tabela de resultado
-    print("Aguardando carregamento da tabela de resultados...")
-    page.wait_for_selector("table", timeout=60000)
+    # 4. Aguarda pacientemente o servidor da Prefeitura processar e carregar a tabela
+    print("Aguardando carregamento da tabela de resultados (pode demorar alguns minutos)...")
+    try:
+        page.wait_for_selector("table", timeout=600000)
+    except Exception:
+        page.wait_for_load_state("domcontentloaded", timeout=600000)
+        
     page.wait_for_timeout(3000)
     
     conteudo_html = page.content()
     
+    nome_arquivo = "painel_monitoramento_subprefeitura.html" if tipo_local == "Subprefeitura" else "painel_monitoramento.html"
     pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
     os.makedirs(pasta_destino, exist_ok=True)
-    caminho_salvo = os.path.join(pasta_destino, "painel_monitoramento.html")
+    caminho_salvo = os.path.join(pasta_destino, nome_arquivo)
     with open(caminho_salvo, "w", encoding="utf-8") as f:
         f.write(conteudo_html)
         
-    print("Tabela do Painel de Monitoramento extraída e salva com sucesso!")
+    print(f"Tabela do Painel de Monitoramento ({tipo_local}) extraída e salva com sucesso!")
     return conteudo_html
 
 if __name__ == '__main__':
