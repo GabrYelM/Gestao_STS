@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Painel de Monitoramento{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4">
+                    <h1 class="h3 text-primary mb-3">Painel de Monitoramento 3.2 (CEInfo)</h1>
+                    <p class="text-muted">Inicie a extração automatizada da série histórica, sinais mensais e desempenho dos indicadores da Penha.</p>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="usuario-pm" class="form-label fw-semibold">Usuário</label>
+                            <input type="text" id="usuario-pm" class="form-control" placeholder="Seu usuário do Painel" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="senha-pm" class="form-label fw-semibold">Senha</label>
+                            <input type="password" id="senha-pm" class="form-control" placeholder="Sua senha do Painel" required>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="periodo-pm" class="form-label fw-semibold">Período anterior ao último mês</label>
+                            <select id="periodo-pm" class="form-select">
+                                <option value="12 meses" selected>12 meses</option>
+                                <option value="24 meses">24 meses</option>
+                                <option value="36 meses">36 meses</option>
+                                <option value="48 meses">48 meses</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="local-pm" class="form-label fw-semibold">Localidade / Subprefeitura</label>
+                            <input type="text" id="local-pm" class="form-control" value="PENHA" readonly>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info py-2 small mb-4">
+                        <i class="bi bi-info-circle me-1"></i> O robô acessará o Painel CEInfo, selecionará todos os indicadores da <strong>Subprefeitura Penha</strong>, extrairá os valores numéricos e aplicará a coloração dos sinais mensais automaticamente.
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-start">
+                        <button type="button" id="btn-coletar" class="btn btn-success px-4">
+                            <i class="bi bi-play-fill me-1"></i> Coletar Dados do Painel
+                        </button>
+                        <a href="/" class="btn btn-outline-secondary">Voltar</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        const btnColetar = document.getElementById("btn-coletar");
+        const usuarioInput = document.getElementById("usuario-pm");
+        const senhaInput = document.getElementById("senha-pm");
+        const periodoSelect = document.getElementById("periodo-pm");
+
+        btnColetar.addEventListener("click", () => {
+            const usuario = usuarioInput.value.trim();
+            const senha = senhaInput.value.trim();
+            const periodo = periodoSelect.value;
+
+            if (!usuario || !senha) {
+                alert("Por favor, preencha o usuário e a senha do Painel de Monitoramento!");
+                return;
+            }
+
+            btnColetar.disabled = true;
+            btnColetar.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Conectando e Coletando...';
+
+            fetch('/painel_monitoramento', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    usuario_pm: usuario,
+                    senha_pm: senha,
+                    periodo: periodo
+                })
+            })
+            .then(async response => {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.erro || 'Falha ao iniciar a coleta.');
+                }
+                return data;
+            })
+            .then(data => {
+                alert("✅ " + data.mensagem);
+                
+                // Monitora o status da extração
+                const radar = setInterval(() => {
+                    fetch('/status_extracao')
+                        .then(res => res.json())
+                        .then(status => {
+                            if (status.status === 'em_andamento') {
+                                btnColetar.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${status.progresso}`;
+                            } else if (status.status === 'sucesso') {
+                                clearInterval(radar);
+                                btnColetar.disabled = false;
+                                btnColetar.innerHTML = 'Coleta Concluída!';
+                                btnColetar.className = 'btn btn-success px-4';
+                                alert("🎉 " + status.progresso);
+                            } else if (status.status === 'erro') {
+                                clearInterval(radar);
+                                btnColetar.disabled = false;
+                                btnColetar.innerHTML = 'Tentar Novamente';
+                                btnColetar.className = 'btn btn-danger px-4';
+                                alert("⚠️ Erro na coleta: " + status.progresso);
+                            }
+                        })
+                        .catch(() => {});
+                }, 2000);
+            })
+            .catch(err => {
+                alert("⚠️ Erro: " + err.message);
+                btnColetar.disabled = false;
+                btnColetar.innerHTML = '<i class="bi bi-play-fill me-1"></i> Coletar Dados do Painel';
+                btnColetar.className = 'btn btn-success px-4';
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -44,6 +44,84 @@ def gera_relatorio_04(periodo):
         #print(df_final)
         return df_final
 
+def gera_relatorio_06(periodo=None):
+    """
+    Gera o Relatório 06 (Painel de Monitoramento 3.2 - CEInfo).
+    Funde a série histórica dos últimos 12 meses com os sinais mensais coloridos (+1 verde, -1 vermelho)
+    e inclui a coluna de Desempenho.
+    """
+    with app.app_context():
+        try:
+            df = pd.read_sql("SELECT * FROM 'REL-06' ORDER BY rowid ASC", con=db.engine)
+        except Exception:
+            return None
+            
+        if df is None or df.empty:
+            return None
+            
+        # Filtra linhas de cabeçalho residuais
+        df = df[~df['indicador'].isin(['STS PENHA', 'PENHA', 'Pref.Regional PENHA']) & (df['desempenho'] != 'Desempenho')].copy()
+        if df.empty:
+            return None
+
+        # Formata o valor com classe HTML para preencher o fundo da célula perfeitamente
+        def formata_celula(row):
+            val = str(row['valor']).strip()
+            sinal = row['sinal']
+            if not val or val == 'nan':
+                return ""
+            if sinal == 1:
+                return f'<div class="pm-cell pm-green">{val}</div>'
+            elif sinal == -1:
+                return f'<div class="pm-cell pm-red">{val}</div>'
+            else:
+                return f'<div class="pm-cell">{val}</div>'
+
+        df['celula_formatada'] = df.apply(formata_celula, axis=1)
+        
+        # Pega a ordem cronológica correta e seleciona apenas os últimos 12 meses
+        meses_ordenados = df.sort_values('ordem_mes')['mes_ano'].unique().tolist()
+        ultimos_12_meses = meses_ordenados[-12:] if len(meses_ordenados) >= 12 else meses_ordenados
+        
+        # Filtra o DataFrame apenas para os últimos 12 meses
+        df_filtrado = df[df['mes_ano'].isin(ultimos_12_meses)].copy()
+        
+        # Formata os nomes das colunas como no padrão (ex: 'jul/25')
+        def formata_nome_mes(m):
+            partes = str(m).strip().split()
+            if len(partes) == 2:
+                return f"{partes[0].lower()}/{partes[1]}"
+            return str(m).lower().replace(' ', '/')
+            
+        df_filtrado['mes_col'] = df_filtrado['mes_ano'].apply(formata_nome_mes)
+        cols_ordenadas = [formata_nome_mes(m) for m in ultimos_12_meses]
+        
+        # Cria pivot com o indicador na linha e os 12 meses nas colunas
+        df_pivot = df_filtrado.pivot(index='indicador', columns='mes_col', values='celula_formatada')
+        df_pivot = df_pivot[[c for c in cols_ordenadas if c in df_pivot.columns]]
+        
+        # Adiciona a coluna de Desempenho
+        df_desempenho = df[['indicador', 'desempenho']].drop_duplicates(subset=['indicador']).set_index('indicador')
+        
+        def formata_desempenho(val):
+            val_str = str(val).strip()
+            if not val_str or val_str == 'nan':
+                return ""
+            if 'Alerta' in val_str or 'abaixo' in val_str or 'Atenção' in val_str:
+                return f'<div class="pm-cell pm-red fw-semibold">{val_str}</div>'
+            elif 'Bom' in val_str or 'acima' in val_str:
+                return f'<div class="pm-cell pm-green fw-semibold">{val_str}</div>'
+            else:
+                return f'<div class="pm-cell">{val_str}</div>'
+                
+        df_desempenho['Desempenho'] = df_desempenho['desempenho'].apply(formata_desempenho)
+        
+        df_final = df_pivot.join(df_desempenho['Desempenho'], how='left')
+        df_final = df_final.reset_index()
+        df_final = df_final.rename(columns={'indicador': 'Indicadores'})
+        
+        return df_final
+
 def gera_relatorio_08(periodo):
     # precisa do gac02, cg01, cg05, cg06
     with app.app_context():

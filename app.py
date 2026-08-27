@@ -165,6 +165,67 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     status_extracao["concluido"] = True
 
 
+def processo_background_pm(usuario, senha, periodo_meses):
+    global status_extracao
+    status_extracao["em_andamento"] = True
+    status_extracao["concluido"] = False
+    status_extracao["progresso"] = "Conectando ao Painel de Monitoramento 3.2..."
+    status_extracao["status"] = "em_andamento"
+    
+    try:
+        from services.utils import bot_setup_page
+        from services.bot import buscaPainelMonitoramento
+        from services.etl import processa_painel_monitoramento
+        
+        p, browser, page = bot_setup_page(usuario, senha)
+        try:
+            status_extracao["progresso"] = "Extraindo tabela do Painel de Monitoramento (PENHA)..."
+            html_tabela = buscaPainelMonitoramento(usuario, senha, periodo_meses=periodo_meses, page=page)
+            
+            if html_tabela:
+                status_extracao["progresso"] = "Processando sinais e gravando no banco de dados..."
+                sucesso = processa_painel_monitoramento(html_tabela)
+                if sucesso:
+                    status_extracao["progresso"] = "Painel de Monitoramento extraído e gravado com sucesso!"
+                    status_extracao["status"] = "sucesso"
+                else:
+                    status_extracao["progresso"] = "Erro ao processar a tabela extraída."
+                    status_extracao["status"] = "erro"
+            else:
+                status_extracao["progresso"] = "Não foi possível extrair a tabela do Painel."
+                status_extracao["status"] = "erro"
+        finally:
+            browser.close()
+            p.stop()
+            
+    except Exception as e:
+        print(f"Erro na extração do Painel de Monitoramento: {e}")
+        status_extracao["progresso"] = f"Erro: {e}"
+        status_extracao["status"] = "erro"
+        
+    finally:
+        status_extracao["em_andamento"] = False
+        status_extracao["concluido"] = True
+
+
+@app.route("/painel_monitoramento", methods=["GET", "POST"])
+def painel_monitoramento_route():
+    if request.method == "GET":
+        return render_template("painel-monitoramento.html")
+        
+    data = request.get_json() or {}
+    usuario_pm = data.get("usuario_pm", "")
+    senha_pm = data.get("senha_pm", "")
+    periodo = data.get("periodo", "12 meses")
+    
+    if not usuario_pm or not senha_pm:
+        return jsonify({"erro": "Usuário e senha são obrigatórios."}), 400
+        
+    gerenciador_tarefas.submit(processo_background_pm, usuario_pm, senha_pm, periodo)
+    
+    return jsonify({"mensagem": "Extração do Painel de Monitoramento iniciada com sucesso!"})
+
+
 @app.route("/")
 # @login_required
 def index():
@@ -335,6 +396,8 @@ def producao():
                 df = prod.gera_relatorio_03(periodo)
             elif indice == '04':
                 df = prod.gera_relatorio_04(periodo)
+            elif indice == '06':
+                df = prod.gera_relatorio_06(periodo)
             elif indice == '08':
                 df = prod.gera_relatorio_08(periodo)
             elif indice == '10':

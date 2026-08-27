@@ -1,3 +1,4 @@
+import os
 from playwright.sync_api import sync_playwright
 from services.utils import bot_setup_page, download_bi, obter_inicio_e_fim_do_mes
 import services.etl as etl
@@ -453,6 +454,69 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
 
     caminho = download_bi(page)
     return caminho
+
+def buscaPainelMonitoramento(usuario, senha, periodo_meses="12 meses", subprefeitura="PENHA", page=None, click_timeout=20000, timeout_geral=1500):
+    print("Iniciando coleta do Painel de Monitoramento 3.2 (CEInfo)...")
+    
+    url_pm = "http://10.20.254.148/xampp/pm/"
+    page.goto(url_pm, timeout=45000)
+    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_timeout(timeout_geral)
+
+    page.get_by_text("Emissão de Relatórios").click()
+    
+    # 1. Autenticação (se houver formulário de login na página)
+    user_input = page.locator("input[name='login'], input[name='usuario'], input[name='user'], input[type='text']").first
+    pass_input = page.locator("input[name='senha'], input[name='password'], input[type='password']").first
+    
+    if user_input.is_visible(timeout=3000) and pass_input.is_visible(timeout=3000):
+        print("Preenchendo formulário de login...")
+        user_input.fill(usuario)
+        pass_input.fill(senha)
+        page.get_by_text("Ok").click()
+        page.wait_for_load_state("domcontentloaded", timeout=15000)
+        page.wait_for_timeout(timeout_geral)
+
+    # 2. Seleção dos Filtros no Painel
+    print("Selecionando filtros do Painel de Monitoramento...")
+    page.wait_for_timeout(timeout_geral)
+    page.locator("input[type='radio'][value='Tudo']").click(timeout=click_timeout)
+    
+    # Marca o radio button de STS (Supervisão Técnica de Saúde)
+    page.locator("input[type='radio'][value='Supervisão Técnica de Saúde']").click(timeout=click_timeout)
+        
+    page.wait_for_timeout(timeout_geral)
+    
+    # Seleciona PENHA na lista de STS
+    page.locator("select[id='boxst[]']").select_option(label="PENHA")     
+    print("PENHA selecionada!")
+    page.wait_for_timeout(timeout_geral)
+
+    # Conteúdo: Série, sinal mensal e desempenho
+    page.locator("select[id='radcont']").select_option(value="Série e sinais")
+
+    page.locator("input[id='checkpto'][value='sss']").click(timeout=click_timeout)
+    page.wait_for_timeout(timeout_geral)
+
+    # 3. Emitir Relatório
+    print("Clicando no botão 'Emitir Relatório'...")
+    page.locator("input[value='Emitir Relatório']").click(timeout=click_timeout)
+    
+    # 4. Aguarda carregar a tabela de resultado
+    print("Aguardando carregamento da tabela de resultados...")
+    page.wait_for_selector("table", timeout=60000)
+    page.wait_for_timeout(3000)
+    
+    conteudo_html = page.content()
+    
+    pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+    os.makedirs(pasta_destino, exist_ok=True)
+    caminho_salvo = os.path.join(pasta_destino, "painel_monitoramento.html")
+    with open(caminho_salvo, "w", encoding="utf-8") as f:
+        f.write(conteudo_html)
+        
+    print("Tabela do Painel de Monitoramento extraída e salva com sucesso!")
+    return conteudo_html
 
 if __name__ == '__main__':
     p, context, page = bot_setup_page()

@@ -482,3 +482,133 @@ def processa_rel135(caminho, periodo=None):
             
         df_resumo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
     print('REL-135 carregado e agrupado com sucesso!')
+
+def processa_painel_monitoramento(html_content):
+    """
+    Processa o HTML extraído do Painel de Monitoramento 3.2 (CEInfo).
+    Funde os valores mensais com os sinais (+1, -1, 0) e a coluna de desempenho.
+    Salva a matriz estruturada na tabela 'REL-06'.
+    """
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html_content, 'html.parser')
+    tables = soup.find_all('table')
+    if not tables:
+        print("Nenhuma tabela encontrada no HTML do Painel de Monitoramento.")
+        return False
+        
+    target_table = None
+    for t in tables:
+        texto_t = t.get_text()
+        if 'Mês Ano' in texto_t or 'Sinais' in texto_t or 'Desempenho' in texto_t or 'Pref.Regional' in texto_t:
+            target_table = t
+            break
+    if not target_table:
+        target_table = tables[-1]
+
+    rows = target_table.find_all('tr')
+    if len(rows) < 2:
+        print("Tabela do Painel com linhas insuficientes.")
+        return False
+
+    # Procura a linha que contém os nomes dos meses
+    header_row = None
+    for r in rows[:5]:
+        text_cells = [td.get_text(strip=True) for td in r.find_all(['th', 'td'])]
+        if any(('Jan' in c or 'Fev' in c or 'Dez' in c or 'Jul' in c) for c in text_cells):
+            header_row = text_cells
+            break
+
+    if not header_row:
+        header_row = [td.get_text(strip=True) for td in rows[1].find_all(['th', 'td'])]
+
+    # O cabeçalho repete os meses (uma vez para Valores, outra para Sinais)
+    meses_brutos = [c for c in header_row if c and c not in ['Mês Ano', 'Sinais', 'Desempenho', 'Pref.Regional PENHA', 'Pref.Regional', 'Indicador']]
+    qtd_meses = len(meses_brutos) // 2
+    if qtd_meses > 0:
+        meses = meses_brutos[:qtd_meses]
+    else:
+        meses = meses_brutos
+
+    # Identifica o nome da localidade/STS a partir do cabeçalho
+    localidade = "STS PENHA"
+    for r in rows[:3]:
+        first_cell = r.find(['th', 'td'])
+        if first_cell:
+            txt = first_cell.get_text(strip=True)
+            if 'STS' in txt or 'PENHA' in txt or 'Pref.' in txt:
+                localidade = txt
+                break
+
+    registros = []
+    
+    for r in rows:
+        cells = r.find_all(['td', 'th'])
+        if len(cells) < 3:
+            continue
+            
+        primeiro_texto = cells[0].get_text(strip=True)
+        desempenho = cells[-1].get_text(strip=True)
+        
+        # Ignora linhas de cabeçalho, nomes de STS/Subprefeitura que são títulos de seção, e linhas vazias
+        if not primeiro_texto or desempenho == 'Desempenho' or any(x in primeiro_texto for x in ['Pref.Regional', 'Mês Ano', 'Indicador', 'Local:', 'Série histórica']):
+            continue
+            
+        if primeiro_texto in ['STS PENHA', 'PENHA', localidade]:
+            continue
+            
+        indicador = primeiro_texto
+        
+        # Na estrutura da tabela do CEInfo:
+        # Coluna 0: Indicador
+        # Colunas 1 a qtd_meses: Valores dos meses
+        # Coluna 1 + qtd_meses (ex: 21): Coluna separadora vazia
+        # Colunas 1 + qtd_meses + 1 (ex: 22) a 2*qtd_meses + 1: Sinais dos meses
+        # Última coluna: Desempenho
+        offset_sinais = 1 + qtd_meses + 1
+        
+        for i, mes in enumerate(meses):
+            idx_val = 1 + i
+            idx_sinal = offset_sinais + i
+            
+            val_text = cells[idx_val].get_text(strip=True) if idx_val < len(cells) else ""
+            
+            sinal_cell = cells[idx_sinal] if idx_sinal < len(cells) else None
+            sinal_text = sinal_cell.get_text(strip=True) if sinal_cell else ""
+            bg_color = (sinal_cell.get('bgcolor') or sinal_cell.get('style') or '').lower() if sinal_cell else ""
+            
+            # Reconhece sinais positivos (+1, +2, +3, verde) e negativos (-1, -2, -3, vermelho)
+            if '+' in sinal_text or 'ccffcc' in bg_color or 'd1e7dd' in bg_color or 'd4edda' in bg_color:
+                sinal_num = 1
+            elif '-' in sinal_text or 'ff9999' in bg_color or 'f8d7da' in bg_color or 'f5c6cb' in bg_color:
+                sinal_num = -1
+            else:
+                sinal_num = 0
+                
+            registros.append({
+                'localidade': localidade,
+                'indicador': indicador,
+                'mes_ano': mes,
+                'ordem_mes': i,
+                'valor': val_text,
+                'sinal': sinal_num,
+                'desempenho': desempenho
+            })
+
+    if not registros:
+        print("Nenhum registro extraído da tabela do Painel de Monitoramento.")
+        return False
+
+    df_resultado = pd.DataFrame(registros)
+    
+    with app.app_context():
+        try:
+            db.session.execute(text("DROP TABLE IF EXISTS 'REL-06'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            
+        df_resultado.to_sql(name='REL-06', con=db.engine, if_exists='replace', index=False)
+        print(f"REL-06 gravado com sucesso! Total de {len(df_resultado)} registros.")
+        
+    return True
+

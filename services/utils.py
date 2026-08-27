@@ -7,20 +7,15 @@ import pandas as pd
 # Carrega as variáveis de ambiente do arquivo .env
 load_dotenv()
 
-def bot_setup_page(usuario, senha):
-
-
+def bot_setup_page(usuario, senha, headless=False):
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()
 
-    browser = p.chromium.launch(headless=True, slow_mo=3000)
+    browser = p.chromium.launch(headless=headless, slow_mo=800)
     context = browser.new_context(http_credentials={'username': usuario, 'password': senha}, accept_downloads=True)
     page = context.new_page()
 
-    click_timeout = 0
-    timeout_geral = 0
-
-    print("-------Login com sucesso-------")
+    print("-------Navegador iniciado com sucesso-------")
     return p, browser, page
 
 def download_bi(page, click_timeout=60000, timeout_geral=1000):
