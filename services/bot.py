@@ -467,32 +467,42 @@ def buscaPainelMonitoramento(usuario, senha, tipo_local="STS", page=None, click_
     page.wait_for_load_state("domcontentloaded")
     page.wait_for_timeout(timeout_geral)
 
-    page.get_by_text("Emissão de Relatórios").click()
+    print("Acessando 'Emissão de Relatórios'...")
+    try:
+        page.locator("text='Emissão de Relatórios'").first.click(timeout=30000)
+        page.wait_for_load_state("domcontentloaded", timeout=30000)
+        page.wait_for_timeout(timeout_geral)
+    except Exception as e:
+        print(f"Nota ao clicar em Emissão de Relatórios (pode já estar na tela): {e}")
     
     # 1. Autenticação (se houver formulário de login na página)
     user_input = page.locator("input[name='login'], input[name='usuario'], input[name='user'], input[type='text']").first
     pass_input = page.locator("input[name='senha'], input[name='password'], input[type='password']").first
     
-    if user_input.is_visible(timeout=3000) and pass_input.is_visible(timeout=3000):
-        print("Preenchendo formulário de login...")
-        user_input.fill(usuario)
-        pass_input.fill(senha)
-        page.get_by_text("Ok").click()
-        page.wait_for_load_state("domcontentloaded", timeout=30000)
-        page.wait_for_timeout(timeout_geral)
+    try:
+        if pass_input.is_visible(timeout=4000):
+            print("Preenchendo formulário de login...")
+            user_input.fill(usuario)
+            pass_input.fill(senha)
+            page.get_by_text("Ok").click()
+            page.wait_for_load_state("domcontentloaded", timeout=30000)
+            page.wait_for_timeout(timeout_geral)
+    except Exception as e:
+        print(f"Nota no formulário de login: {e}")
 
     # 2. Seleção dos Filtros no Painel
     print(f"Selecionando filtros do Painel de Monitoramento ({tipo_local})...")
-    page.wait_for_timeout(timeout_geral)
-    page.locator("input[type='radio'][value='Tudo']").click(timeout=click_timeout)
+    page.locator("input[type='radio'][value='Tudo']").click(timeout=30000)
     
     if tipo_local == "Subprefeitura":
         # Marca o radio button de Subprefeitura
-        page.locator("input[type='radio'][value='SubPrefeitura']").click(timeout=click_timeout)
+        page.locator("input[type='radio'][value='Subprefeitura'], input[type='radio'][value='SubPrefeitura']").first.click(timeout=click_timeout)
         page.wait_for_timeout(timeout_geral)
         # Seleciona PENHA na lista de Subprefeitura
         try:
-            page.locator("input[type='checkbox'][id='checkunsp']").click(timeout=click_timeout)
+            chk = page.locator("input[type='checkbox'][id='checkunsp']")
+            if chk.is_visible(timeout=2000) and not chk.is_checked():
+                chk.click(timeout=click_timeout)
             page.locator("select[id='boxsp[]']").select_option(label="PENHA")
         except Exception:
             page.locator("option").filter(has_text="PENHA").click()
