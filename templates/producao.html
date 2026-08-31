@@ -97,6 +97,7 @@ div.dt-button-collection button.dt-button:hover {
                 <option value="13" {% if relatorio_selecionado == '13' %}selected{% endif %}>Relatório 13 - PERDA PRIMÁRIA POR PROCEDIMENTO E ESPECIALIDADE</option>
                 <option value="14" {% if relatorio_selecionado == '14' %}selected{% endif %}>Relatório 14 - PERDA SECUNDÁRIA POR EXECUTANTE</option>
                 <option value="15" {% if relatorio_selecionado == '15' %}selected{% endif %}>Relatório 15 - CADASTROS INDIVIDUAIS CONSOLIDADOS (REL 135)</option>
+                <option value="16" {% if relatorio_selecionado == '16' %}selected{% endif %}>Relatório 16 - TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG</option>
                 <option value="17" {% if relatorio_selecionado == '17' %}selected{% endif %}>Relatório 17 - EDUCAÇÃO EM SAÚDE NA ESCOLA (REL 134)</option>
             </select>
         </div>
@@ -127,7 +128,55 @@ div.dt-button-collection button.dt-button:hover {
         </div>
     {% endif %}
     
-    {% if json_dados %}
+    {% if relatorio_selecionado == '16' and json_dados_ativo %}
+        <!-- Seletor Dinâmico de Visualização para Relatório 16 -->
+        <div class="card shadow-sm p-3 mb-4 bg-light border">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <h5 class="mb-1 text-primary"><i class="bi bi-person-lines-fill me-2"></i>16. TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG</h5>
+                    <small class="text-muted">Selecione o status para alternar a visualização da tabela dinâmica:</small>
+                </div>
+                <div class="btn-group" role="group" aria-label="Visualização AMG">
+                    <input type="radio" class="btn-check" name="amg_view" id="view_ativos" autocomplete="off" checked onclick="alternarVisaoAMG('ativos')">
+                    <label class="btn btn-outline-success px-4 py-2 fw-bold" for="view_ativos">
+                        <i class="bi bi-person-check-fill me-1"></i> Ativo - Por Tipo
+                    </label>
+
+                    <input type="radio" class="btn-check" name="amg_view" id="view_inativos" autocomplete="off" onclick="alternarVisaoAMG('inativos')">
+                    <label class="btn btn-outline-danger px-4 py-2 fw-bold" for="view_inativos">
+                        <i class="bi bi-person-x-fill me-1"></i> Inativos - Por Motivo de Inativação
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <!-- Tabela 1: Pacientes Ativos -->
+            <div class="col-12" id="container-ativos">
+                <div class="card shadow-sm p-3 border-success border-top border-3">
+                    <h4 class="text-success mb-3"><i class="bi bi-person-check-fill me-2"></i>Status: ATIVO (Por Tipo de Diabetes)</h4>
+                    <table id="tabela-ativos" class="table table-sm table-bordered w-100 small">
+                        <!-- Cabeçalho injetado via DataTables -->
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Tabela 2: Pacientes Inativos -->
+            <div class="col-12 d-none" id="container-inativos">
+                <div class="card shadow-sm p-3 border-danger border-top border-3">
+                    <h4 class="text-danger mb-3"><i class="bi bi-person-x-fill me-2"></i>Status: INATIVO (Por Motivo de Inativação)</h4>
+                    <table id="tabela-inativos" class="table table-sm table-bordered w-100 small">
+                        <!-- Cabeçalho injetado via DataTables -->
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <script id="dados-ativos-json" type="application/json">{{ json_dados_ativo | safe }}</script>
+        <script id="colunas-ativos-json" type="application/json">{{ json_colunas_ativo | safe }}</script>
+        <script id="dados-inativos-json" type="application/json">{{ json_dados_inativo | safe }}</script>
+        <script id="colunas-inativos-json" type="application/json">{{ json_colunas_inativo | safe }}</script>
+    {% elif json_dados %}
     {% if relatorio_selecionado == '15' %}
     <div class="card shadow-sm p-3 mb-3">
         <h5>Regras de Parâmetros e Limites (Portaria SAPS/MS nº 161-10/12/24)</h5>
@@ -488,6 +537,99 @@ div.dt-button-collection button.dt-button:hover {
                 }
             });
         }
+
+        // Inicialização especial para Relatório 16 (Duas Tabelas: Ativos e Inativos)
+        var dadosAtivosEl = document.getElementById('dados-ativos-json');
+        var colunasAtivosEl = document.getElementById('colunas-ativos-json');
+        var dadosInativosEl = document.getElementById('dados-inativos-json');
+        var colunasInativosEl = document.getElementById('colunas-inativos-json');
+
+        function initTabelaAMG(tabelaId, dadosJson, colunasJson, nomeExportacao) {
+            var tData = JSON.parse(dadosJson || '[]');
+            var tCols = JSON.parse(colunasJson || '[]');
+            
+            $(tabelaId).DataTable({
+                data: tData,
+                columns: tCols,
+                deferRender: true,
+                language: {
+                    url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+                },
+                pageLength: 50,
+                lengthMenu: [10, 25, 50, 100],
+                dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
+                     '<"table-responsive"t>' +
+                     '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                buttons: [
+                    {
+                        extend: 'colvis',
+                        text: '<i class="bi bi-layout-three-columns"></i> Selecionar Colunas',
+                        className: 'btn btn-outline-secondary me-2',
+                        postfixButtons: ['colvisRestore']
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: nomeExportacao,
+                        text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
+                        className: 'btn btn-success',
+                        exportOptions: {
+                            modifier: { search: 'applied' },
+                            format: {
+                                header: function(data, columnIdx, node) {
+                                    var clone = $(node).clone();
+                                    clone.find('select').remove();
+                                    return clone.text().trim();
+                                }
+                            }
+                        }
+                    }
+                ],
+                initComplete: function() {
+                    this.api().columns().every(function() {
+                        var column = this;
+                        var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
+                            .appendTo($(column.header()))
+                            .on('change', function() {
+                                var val = $.fn.dataTable.util.escapeRegex($(this).val());
+                                column.search(val ? '^' + val + '$' : '', true, false).draw();
+                            })
+                            .on('click', function(e) {
+                                e.stopPropagation();
+                            });
+                        
+                        column.data().unique().sort().each(function(d) {
+                            var text = $('<div>').html(d).text();
+                            if (text && text.trim() !== '') {
+                                select.append('<option value="' + text + '">' + text + '</option>');
+                            }
+                        });
+                    });
+                }
+            });
+        }
+
+        if (dadosAtivosEl && colunasAtivosEl) {
+            initTabelaAMG('#tabela-ativos', dadosAtivosEl.textContent, colunasAtivosEl.textContent, 'AMG_Pacientes_Ativos_Por_Tipo');
+        }
+        if (dadosInativosEl && colunasInativosEl) {
+            initTabelaAMG('#tabela-inativos', dadosInativosEl.textContent, colunasInativosEl.textContent, 'AMG_Pacientes_Inativos_Por_Motivo');
+        }
+
+        window.alternarVisaoAMG = function(tipo) {
+            if (tipo === 'ativos') {
+                $('#container-ativos').removeClass('d-none');
+                $('#container-inativos').addClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-ativos')) {
+                    $('#tabela-ativos').DataTable().columns.adjust().draw();
+                }
+            } else {
+                $('#container-ativos').addClass('d-none');
+                $('#container-inativos').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-inativos')) {
+                    $('#tabela-inativos').DataTable().columns.adjust().draw();
+                }
+            }
+        };
     });
 </script>
 {% endblock %}

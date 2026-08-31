@@ -766,6 +766,56 @@ def gera_relatorio_15(periodo):
         
         return df_pivot
 
+def gera_relatorio_16(periodo=None):
+    """
+    Relatório 16: TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG (SIGA - AMG)
+    Gera duas tabelas dinâmicas:
+      1. Pacientes com STATUS_ATUAL = 'ATIVO'
+      2. Pacientes com STATUS_ATUAL = 'INATIVO'
+    """
+    with app.app_context():
+        query = 'SELECT * FROM "REL-16"'
+        try:
+            df = pd.read_sql(query, con=db.engine)
+        except Exception:
+            return None, None
+        
+        if df.empty:
+            return None, None
+
+        df_ativo = df[df['status_atual'].astype(str).str.upper() == 'ATIVO']
+        df_inativo = df[df['status_atual'].astype(str).str.upper() == 'INATIVO']
+
+        pivot_ativo = pd.pivot_table(
+            df_ativo,
+            index='estabelecimento',
+            columns='diabetes_mellitus',
+            values='nome_paciente',
+            aggfunc='count',
+            fill_value=0
+        )
+        if hasattr(pivot_ativo.columns, 'names'):
+            pivot_ativo.columns.names = [None] * len(pivot_ativo.columns.names)
+        else:
+            pivot_ativo.columns.name = None
+        pivot_ativo = pivot_ativo.reset_index()
+
+        pivot_inativo = pd.pivot_table(
+            df_inativo,
+            index='estabelecimento',
+            columns='motivo_ultimo_status',
+            values='nome_paciente',
+            aggfunc='count',
+            fill_value=0
+        )
+        if hasattr(pivot_inativo.columns, 'names'):
+            pivot_inativo.columns.names = [None] * len(pivot_inativo.columns.names)
+        else:
+            pivot_inativo.columns.name = None
+        pivot_inativo = pivot_inativo.reset_index()
+
+        return pivot_ativo, pivot_inativo
+
 def gera_relatorio_17(periodo):
     with app.app_context():
         query = 'SELECT * FROM "REL-134"'

@@ -1,12 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Upload DTIC{% endblock %}
+{% block title %}Importação de Arquivos ZIP{% endblock %}
 {% block content %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card shadow-sm">
+<div class="container mt-4 mb-5">
+    <div class="row justify-content-center g-4">
+        <!-- Coluna de Upload -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
                 <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0">Importação de Relatórios DTIC</h4>
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-zip me-2"></i>Importação de Arquivos ZIP</h5>
                 </div>
                 <div class="card-body">
                     {% if mensagem %}
@@ -16,25 +17,26 @@
                     </div>
                     {% endif %}
                     
-                    <form method="POST" action="/upload_dtic" enctype="multipart/form-data">
+                    <form method="POST" action="/upload_zip" enctype="multipart/form-data">
                         <div class="mb-4">
                             <label class="form-label fw-bold">Selecione o Relatório</label>
                             <select class="form-select" name="tipo_relatorio" required>
                                 <option value="todos">Todos os Relatórios (Auto-identificação)</option>
                                 <option value="rel09">REL 114 (Gestante Prev Parto)</option>
-                                <option value="rel15">REL 135 (Penha)</option>
+                                <option value="rel15">REL 135 (Cadastros Individuais - Penha)</option>
+                                <option value="rel16">SIGA - AMG (Pacientes Cadastrados por Status)</option>
                                 <option value="rel17">REL 134 (Atividade Coletiva Por Profissional)</option>
                             </select>
-                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome do arquivo.</small>
+                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome do arquivo ZIP.</small>
                         </div>
                         
-                                                <div class="mb-4">
+                        <div class="mb-4">
                             <label class="form-label fw-bold">Arquivos ZIP</label>
                             
                             <!-- Área de Arrastar e Soltar -->
-                            <div id="dropzone" class="p-5 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
+                            <div id="dropzone" class="p-4 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
                                 <i class="bi bi-cloud-arrow-up display-4 text-primary"></i>
-                                <p class="mt-2 mb-1 fs-5">Arraste seus arquivos para cá</p>
+                                <p class="mt-2 mb-1 fs-5">Arraste seus arquivos ZIP para cá</p>
                                 <small class="text-muted">ou clique para selecionar. Você pode adicionar vários arquivos aos poucos.</small>
                                 <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip" multiple>
                             </div>
@@ -51,6 +53,53 @@
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna de Instruções e Filtros do Relatório 16 -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100 border-primary">
+                <div class="card-header bg-primary text-white fw-bold">
+                    <i class="bi bi-info-circle me-2"></i>Filtros para Solicitação do Relatório 16 (SIGA - AMG)
+                </div>
+                <div class="card-body p-4">
+                    <h5 class="text-primary mb-3"><i class="bi bi-person-lines-fill me-2"></i>16. TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG</h5>
+                    <p class="mb-3"><strong>Onde solicitar:</strong> SIGAPEP ➔ <em>Relatórios</em> ➔ <em>Nova Solicitação</em></p>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 45%;">Campo</th>
+                                    <th>Valor / Seleção</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold">Relatório</td>
+                                    <td><code>SIGA - AMG - Pacientes cadastrados por status</code></td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Estabelecimento de registro*</td>
+                                    <td><code>SUDESTE - STS PENHA</code></td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Com hierarquia?</td>
+                                    <td><span class="badge bg-success">Sim</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Período de registro*</td>
+                                    <td><code>01/01/2000</code> até o <strong>último dia da competência</strong> (ex: <code>31/08/2026</code>)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-warning py-2 px-3 small mb-0 mt-3">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        <strong>Atenção:</strong> O período inicial deve ser <code>01/01/2000</code> para garantir a captura de todo o histórico de cadastros do programa AMG.
+                    </div>
                 </div>
             </div>
         </div>

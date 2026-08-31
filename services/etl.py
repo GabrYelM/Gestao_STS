@@ -432,6 +432,50 @@ def processa_rel134(caminho, periodo=None):
         df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
     print('REL-134 carregado com sucesso!')
 
+def processa_rel16(caminho, periodo=None):
+    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+        
+    traduz_col = {
+        'STATUS_ATUAL': 'status_atual',
+        'MOTIVO_ULTIMO_STATUS': 'motivo_ultimo_status',
+        'DATA_ULTIMA_ATUALIZACAO': 'data_ultima_atualizacao',
+        'CNS_PACIENTE': 'cns_paciente',
+        'PRONTUARIO': 'prontuario',
+        'NOME_PACIENTE': 'nome_paciente',
+        'NASCIMENTO': 'nascimento',
+        'SEXO': 'sexo',
+        'IDADE': 'idade',
+        'RACA': 'raca',
+        'ANO_DIAGNOSTICO': 'ano_diagnostico',
+        'DIABETES_MELLITUS': 'diabetes_mellitus',
+        'TIPO_INSULINA': 'tipo_insulina',
+        'AMG_NO_VEZES': 'amg_no_vezes',
+        'DATA_INCLUSAO': 'data_inclusao',
+        'CNES': 'cnes',
+        'CMES': 'cmes',
+        'ESTABELECIMENTO': 'estabelecimento',
+        'COORDENADORIA': 'coordenadoria',
+        'SUPERVISAO': 'supervisao',
+        'OSS': 'oss'
+    }
+
+    df = df.rename(columns=traduz_col)
+    colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
+    df_limpo = df[colunas_presentes].copy()
+
+    hoje = datetime.today().strftime('%Y-%m-%d')
+    mes_atual = datetime.today().strftime('%Y-%m')
+    df_limpo['data_extracao'] = hoje
+
+    with app.app_context():
+        try:
+            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE data_extracao LIKE '{mes_atual}-%'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        df_limpo.to_sql(name='REL-16', con=db.engine, if_exists='append', index=False)
+    print('REL-16 (SIGA - AMG) carregado com sucesso!')
+
 def processa_rel135(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
         

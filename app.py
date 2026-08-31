@@ -344,6 +344,16 @@ def download_excel(indice, periodo):
             df = prod.gera_relatorio_14(periodo)
         elif indice == '15':
             df = prod.gera_relatorio_15(periodo)
+        elif indice == '16':
+            pivot_ativo, pivot_inativo = prod.gera_relatorio_16(periodo)
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                if pivot_ativo is not None and not pivot_ativo.empty:
+                    pivot_ativo.to_excel(writer, index=False, sheet_name='Ativos - Por Tipo')
+                if pivot_inativo is not None and not pivot_inativo.empty:
+                    pivot_inativo.to_excel(writer, index=False, sheet_name='Inativos - Por Motivo')
+            output.seek(0)
+            return send_file(output, download_name=f"Relatorio_16_AMG_{periodo}.xlsx", as_attachment=True)
         elif indice == '17':
             df = prod.gera_relatorio_17(periodo)
         else:
@@ -422,6 +432,35 @@ def producao():
                 df = prod.gera_relatorio_09(periodo)
             elif indice == '15':
                 df = prod.gera_relatorio_15(periodo)
+            elif indice == '16':
+                df_ativo, df_inativo = prod.gera_relatorio_16(periodo)
+                import json
+                json_dados_ativo = None
+                json_colunas_ativo = None
+                json_dados_inativo = None
+                json_colunas_inativo = None
+                
+                if df_ativo is not None and not df_ativo.empty:
+                    colunas_ativo = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_ativo.columns]
+                    json_colunas_ativo = json.dumps(colunas_ativo)
+                    json_dados_ativo = json.dumps(df_ativo.fillna("").to_dict(orient="records"))
+                    
+                if df_inativo is not None and not df_inativo.empty:
+                    colunas_inativo = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_inativo.columns]
+                    json_colunas_inativo = json.dumps(colunas_inativo)
+                    json_dados_inativo = json.dumps(df_inativo.fillna("").to_dict(orient="records"))
+                
+                return render_template(
+                    "producao.html",
+                    tabela_html=tabela_html,
+                    json_dados_ativo=json_dados_ativo,
+                    json_colunas_ativo=json_colunas_ativo,
+                    json_dados_inativo=json_dados_inativo,
+                    json_colunas_inativo=json_colunas_inativo,
+                    relatorio_selecionado=indice,
+                    periodo_selecionado=periodo,
+                    periodos_disponiveis=periodos_disponiveis
+                )
             elif indice == '17':
                 df = prod.gera_relatorio_17(periodo)
             else:
@@ -464,6 +503,7 @@ def producao():
 import zipfile
 import os
 
+@app.route("/upload_zip", methods=["GET", "POST"])
 @app.route("/upload_dtic", methods=["GET", "POST"])
 def upload_dtic():
     if "usuario_id" not in session:
@@ -479,12 +519,14 @@ def upload_dtic():
             if arquivo and arquivo.filename.endswith('.zip'):
                 nome_zip = arquivo.filename.lower()
                 
-                                # Identifica por nome (regra das referências)
+                # Identifica por nome (regra das referências)
                 tipo_identificado = None
                 if (tipo_relatorio == "todos" or tipo_relatorio == "rel09") and "rel_sb_gestante_prev_parto" in nome_zip:
                     tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
                 elif (tipo_relatorio == "todos" or tipo_relatorio == "rel15") and "penha" in nome_zip:
                     tipo_identificado = "(rel135) penha"
+                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel16") and ("amg" in nome_zip or "pacientes_cadastrados" in nome_zip or "pacientes cadastrados" in nome_zip):
+                    tipo_identificado = "(rel16) siga_amg"
                 elif (tipo_relatorio == "todos" or tipo_relatorio == "rel17") and "atividade_coletiva_por_profissional" in nome_zip:
                     tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
                 
@@ -499,7 +541,7 @@ def upload_dtic():
                                 nome_final = f"{tipo_identificado}{ext}"
                                 caminho_final = os.path.join(pasta_destino, nome_final)
                                 
-                                                                                                # Extrai, filtra e salva o arquivo
+                                # Extrai, filtra e salva o arquivo
                                 with zip_ref.open(nome_arq) as fonte:
                                     import pandas as pd
                                     
@@ -513,7 +555,9 @@ def upload_dtic():
                                     elif "(rel134)" in tipo_identificado:
                                         filtro_coluna = "supervisao"
                                         filtro_valor = "SUDESTE - PENHA"
-                                    # Se houver regra para o rel135 futuramente, adicionaremos aqui
+                                    elif "(rel16)" in tipo_identificado:
+                                        filtro_coluna = "SUPERVISAO"
+                                        filtro_valor = "SUDESTE - STS PENHA"
                                     
                                     if filtro_coluna:
                                         # Leitura em pedaços (chunks) para não estourar a memória
@@ -532,8 +576,8 @@ def upload_dtic():
                                         with open(caminho_final, "wb") as destino:
                                             destino.write(fonte.read())
                                 
-                                                                # Chama a função de ETL correspondente
-                                from services.etl import processa_rel114, processa_rel134, processa_rel135
+                                # Chama a função de ETL correspondente
+                                from services.etl import processa_rel114, processa_rel134, processa_rel135, processa_rel16
                                 try:
                                     if "(rel114)" in tipo_identificado:
                                         processa_rel114(caminho_final)
@@ -541,6 +585,8 @@ def upload_dtic():
                                         processa_rel134(caminho_final)
                                     elif "(rel135)" in tipo_identificado:
                                         processa_rel135(caminho_final)
+                                    elif "(rel16)" in tipo_identificado:
+                                        processa_rel16(caminho_final)
                                 except Exception as e:
                                     print(f"Erro ao processar ETL do {tipo_identificado}: {e}")
                                 
