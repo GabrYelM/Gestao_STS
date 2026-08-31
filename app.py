@@ -336,6 +336,8 @@ def download_excel(indice, periodo):
             df = prod.gera_relatorio_10(periodo)
         elif indice == '11':
             df = prod.gera_relatorio_11(periodo)
+        elif indice == '12':
+            df = prod.gera_relatorio_12(periodo)
         elif indice == '13':
             df = prod.gera_relatorio_13(periodo)
         elif indice == '14':
@@ -410,6 +412,8 @@ def producao():
                 df = prod.gera_relatorio_10(periodo)
             elif indice == '11':
                 df = prod.gera_relatorio_11(periodo)
+            elif indice == '12':
+                df = prod.gera_relatorio_12(periodo)
             elif indice == '13':
                 df = prod.gera_relatorio_13(periodo)
             elif indice == '14':

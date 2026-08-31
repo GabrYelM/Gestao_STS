@@ -93,6 +93,7 @@ div.dt-button-collection button.dt-button:hover {
                 <option value="09" {% if relatorio_selecionado == '09' %}selected{% endif %}>Relatório 09 - GESTANTES COM PREVISÃO DE PARTO (REL 114)</option>
                 <option value="10" {% if relatorio_selecionado == '10' %}selected{% endif %}>Relatório 10 - ATENDIMENTO POR PROCEDIMENTO SEGUNDO SEXO E FAIXA ETÁRIA</option>
                 <option value="11" {% if relatorio_selecionado == '11' %}selected{% endif %}>Relatório 11 - FLUXO DE ENTRADA SAÍDA E ATIVOS DE PROCEDIMENTOS E ESPECIALIDADES</option>
+                <option value="12" {% if relatorio_selecionado == '12' %}selected{% endif %}>Relatório 12 - SOLICITAÇÃO MENSAL DE INSUMOS ESPECIAIS (AURICULOTERAPIA)</option>
                 <option value="13" {% if relatorio_selecionado == '13' %}selected{% endif %}>Relatório 13 - PERDA PRIMÁRIA POR PROCEDIMENTO E ESPECIALIDADE</option>
                 <option value="14" {% if relatorio_selecionado == '14' %}selected{% endif %}>Relatório 14 - PERDA SECUNDÁRIA POR EXECUTANTE</option>
                 <option value="15" {% if relatorio_selecionado == '15' %}selected{% endif %}>Relatório 15 - CADASTROS INDIVIDUAIS CONSOLIDADOS (REL 135)</option>
@@ -279,6 +280,33 @@ div.dt-button-collection button.dt-button:hover {
     .pm-red {
         background-color: #f8d7da !important;
         color: #842029 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '12' %}
+<style>
+    /* Permite quebra de linha nos cabeçalhos longos de insumos */
+    #tabela-dinamica th {
+        white-space: normal !important;
+        word-wrap: break-word;
+        word-break: normal;
+        overflow-wrap: break-word;
+        vertical-align: middle !important;
+        text-align: center;
+        font-size: 0.85rem;
+    }
+    #tabela-dinamica th:first-child {
+        text-align: left;
+        min-width: 250px !important;
+        max-width: 320px !important;
+    }
+    #tabela-dinamica td:first-child {
+        text-align: left !important;
+        font-weight: 500;
+    }
+    #tabela-dinamica td {
+        text-align: center;
     }
 </style>
 {% endif %}

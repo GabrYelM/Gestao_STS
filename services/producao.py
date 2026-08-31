@@ -462,6 +462,199 @@ def gera_relatorio_11(periodo):
         #print(df_final)
         return df_final
 
+def gera_relatorio_12(periodo):
+    """
+    Relatório 12: PLANILHA DE SOLICITAÇÃO MENSAL DE INSUMOS ESPECIAIS (AURICULOTERAPIA)
+    Baseado no AT-02 filtrado pelo procedimento 'Sessão de Auriculoterapia'.
+    Calcula:
+      - Produção auriculoterapia (Nº procedimentos)
+      - Total de pontos = Produção * 20
+      - Placa adesiva com semente vacaria para auriculoterapia - 70 pontos = Total de pontos / 70
+    """
+    unidades_grade = [
+        "AMA/UBS ENGENHEIRO GOULART - DR JOSE PIRES",
+        "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO",
+        "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO",
+        "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA",
+        "AMA/UBS INTEGRADA VILA SILVIA",
+        "CAPS ADULTO III VILA MATILDE",
+        "CAPS ALCOOL E DROGAS II CANGAIBA",
+        "CAPS ALCOOL E DROGAS III PENHA",
+        "CAPS INFANTO JUVENIL III PENHA",
+        "CECCO PADRE MANOEL DA NOBREGA",
+        "CER III PENHA",
+        "CER PARQUE ARTHUR ALVIM",
+        "UBS ANTONIO ESTEVÃO DE CARVALHO",
+        "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR",
+        "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO",
+        "UBS ENGENHEIRO TRINDADE",
+        "UBS JARDIM MARINGA - VILA TALARICO",
+        "UBS JARDIM SAO FRANCISCO I",
+        "UBS JARDIM SAO NICOLAU",
+        "UBS PADRE JOSE DE ANCHIETA",
+        "UBS PARQUE ARTHUR ALVIM",
+        "UBS VILA ARICANDUVA",
+        "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO",
+        "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA",
+        "UBS VILA GRANADA - DR. ALFREDO FERREIRA PAULINO FILHO",
+        "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO",
+        "UBS VILA MATILDE - DR. RUBENS DO VAL",
+    ]
+
+    import unicodedata
+    import re
+
+    def normaliza_str(txt):
+        if not txt:
+            return ""
+        txt = unicodedata.normalize('NFKD', str(txt)).encode('ASCII', 'ignore').decode('utf-8')
+        txt = txt.upper()
+        txt = re.sub(r'[^A-Z0-9\s]', ' ', txt)
+        txt = re.sub(r'\s+', ' ', txt).strip()
+        return txt
+
+    def mapear_unidade_rel12(nome_estab):
+        n = normaliza_str(nome_estab)
+        if "EMAB ANCHIETA VILLALOBO" in n or "VILLALOBO" in n:
+            return "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO"
+        if "EMAB CHACARA PATRIARCA" in n:
+            return "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR"
+        if "EMAB VILA MATILDE MARINGA" in n:
+            return "UBS JARDIM MARINGA - VILA TALARICO"
+        if "EMAB SAO FRANCISCO VILA SILVIA" in n:
+            return "AMA/UBS INTEGRADA VILA SILVIA"
+        if "EMAB ARTHUR ALVIM GUILHERMINA" in n:
+            return "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO"
+        if "EMAB ENG GOULART CANGAIBA" in n:
+            return "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO"
+        if "EMAB ESPERANCA EMILIO" in n:
+            return "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA"
+        if "EMAB GRANADA TRINDADE" in n:
+            return "UBS ENGENHEIRO TRINDADE"
+            
+        if "EMAB AE CARVALHO" in n:
+            return "UBS ANTONIO ESTEVÃO DE CARVALHO"
+        if "EMAB ANCHIETA" in n:
+            return "UBS PADRE JOSE DE ANCHIETA"
+        if "EMAB ARICANDUVA" in n:
+            return "UBS VILA ARICANDUVA"
+        if "EMAB ARTHUR ALVIM" in n:
+            return "UBS PARQUE ARTHUR ALVIM"
+        if "EMAB CHACARA CRUZEIRO" in n:
+            return "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO"
+        if "EMAB ENG GOULART" in n:
+            return "AMA/UBS ENGENHEIRO GOULART - DR JOSE PIRES"
+        if "EMAB ESPERANCA" in n:
+            return "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO"
+        if "EMAB SAO FRANCISCO" in n:
+            return "UBS JARDIM SAO FRANCISCO I"
+        if "EMAB VILA MATILDE" in n:
+            return "UBS VILA MATILDE - DR. RUBENS DO VAL"
+            
+        if "CECCO" in n and "PADRE MANOEL" in n:
+            return "CECCO PADRE MANOEL DA NOBREGA"
+        if "PADRE MANOEL DA NOBREGA" in n:
+            return "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA"
+        if "CANGAIBA" in n and "CAPS" in n:
+            return "CAPS ALCOOL E DROGAS II CANGAIBA"
+        if "CANGAIBA" in n:
+            return "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO"
+        if "CHACARA CRUZEIRO" in n:
+            return "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO"
+        if "VILA SILVIA" in n and "PAI" in n:
+            return "PAI VILA SILVIA"
+        if "VILA SILVIA" in n:
+            return "AMA/UBS INTEGRADA VILA SILVIA"
+        if "CAPS" in n and "ADULTO" in n:
+            return "CAPS ADULTO III VILA MATILDE"
+        if "CAPS" in n and "PENHA" in n and ("INFANT" in n or "JUVENIL" in n):
+            return "CAPS INFANTO JUVENIL III PENHA"
+        if "CAPS" in n and "PENHA" in n:
+            return "CAPS ALCOOL E DROGAS III PENHA"
+        if "CER" in n and "ARTHUR ALVIM" in n:
+            return "CER PARQUE ARTHUR ALVIM"
+        if "CER" in n and "PENHA" in n:
+            return "CER III PENHA"
+        if "JARDIM NORDESTE" in n:
+            return "AMA JARDIM NORDESTE"
+        if "MAURICE PATE" in n:
+            return "AMA MAURICE PATE"
+        if "HOSPITAL DIA" in n:
+            return "HOSPITAL DIA PENHA"
+        if "PAI" in n and "ESPERANCA" in n:
+            return "PAI VILA ESPERANÇA"
+        if "PAI" in n and "GRANADA" in n:
+            return "PAI VILA GRANADA"
+        if "PAI" in n and "SILVIA" in n:
+            return "PAI VILA SILVIA"
+        if "AE CARVALHO" in n or "ESTEVAO DE CARVALHO" in n:
+            return "UBS ANTONIO ESTEVÃO DE CARVALHO"
+        if "PATRIARCA" in n:
+            return "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR"
+        if "VILLALOBO" in n:
+            return "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO"
+        if "TRINDADE" in n:
+            return "UBS ENGENHEIRO TRINDADE"
+        if "MARINGA" in n or "TALARICO" in n:
+            return "UBS JARDIM MARINGA - VILA TALARICO"
+        if "SAO FRANCISCO" in n:
+            return "UBS JARDIM SAO FRANCISCO I"
+        if "SAO NICOLAU" in n:
+            return "UBS JARDIM SAO NICOLAU"
+        if "ANCHIETA" in n:
+            return "UBS PADRE JOSE DE ANCHIETA"
+        if "ARTHUR ALVIM" in n:
+            return "UBS PARQUE ARTHUR ALVIM"
+        if "ARICANDUVA" in n:
+            return "UBS VILA ARICANDUVA"
+        if "CASSIO" in n:
+            return "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO"
+        if "EMILIO" in n:
+            return "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA"
+        if "GRANADA" in n:
+            return "UBS VILA GRANADA - DR. ALFREDO FERREIRA PAULINO FILHO"
+        if "GUILHERMINA" in n:
+            return "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO"
+        if "MATILDE" in n:
+            return "UBS VILA MATILDE - DR. RUBENS DO VAL"
+        if "GOULART" in n:
+            return "AMA/UBS ENGENHEIRO GOULART - DR JOSE PIRES"
+            
+        return nome_estab
+
+    with app.app_context():
+        query = f"""
+        SELECT 
+            estabelecimento,
+            SUM(quantidade_procedimento) as qtd
+        FROM 'AT-02'
+        WHERE ano_mes = {periodo}
+          AND UPPER(procedimento) LIKE '%AURICULOTERAPIA%'
+        GROUP BY estabelecimento
+        """
+        df_raw = pd.read_sql(query, con=db.engine)
+        
+        prod_por_unidade = {}
+        if not df_raw.empty:
+            df_raw['unidade_padrao'] = df_raw['estabelecimento'].apply(mapear_unidade_rel12)
+            prod_por_unidade = df_raw.groupby('unidade_padrao')['qtd'].sum().to_dict()
+
+        linhas = []
+        for u in unidades_grade:
+            qtd_proc = int(prod_por_unidade.get(u, 0))
+            total_pontos = int(qtd_proc * 20)
+            placas = round(total_pontos / 70.0, 7) if total_pontos > 0 else 0
+            
+            linhas.append({
+                "SUPERVISÃO PENHA - Unidades de Saúde": u,
+                "Nº procedimentos": qtd_proc,
+                "Total de pontos": total_pontos,
+                "Placa adesiva com semente vacaria (70 pontos)": placas
+            })
+
+        df_final = pd.DataFrame(linhas)
+        return df_final
+
 def gera_relatorio_13(periodo):
     with app.app_context():
     
