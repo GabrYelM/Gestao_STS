@@ -47,6 +47,7 @@ def processa_ag04(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -80,6 +81,7 @@ def processa_at02(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -109,6 +111,7 @@ def processa_at03(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         ano = df_limpo['ano'].iloc[0]
@@ -139,6 +142,7 @@ def processa_fe02(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -168,6 +172,7 @@ def processa_vg02(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -199,6 +204,7 @@ def processa_vg04(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         periodo = df_limpo['ano_mes'].iloc[0]
@@ -223,6 +229,7 @@ def processa_cg01(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     if periodo:
         df_limpo['ano_mes_extracao'] = periodo
@@ -260,6 +267,7 @@ def processa_cg05(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     if periodo:
         df_limpo['ano_mes_extracao'] = periodo
@@ -301,6 +309,7 @@ def processa_cg06(caminho, periodo=None):
 
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
+    df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     if periodo:
         df_limpo['ano_mes_extracao'] = periodo
@@ -520,8 +529,9 @@ def processa_rel135(caminho, periodo=None):
         total_cadastros=('nome_cidadao', 'count')
     ).reset_index()
     
-    # Adiciona a coluna do período
+    # Adiciona a coluna do período e data de extração
     df_resumo['ano_mes_competencia'] = ano_mes_competencia
+    df_resumo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         try:
@@ -645,6 +655,7 @@ def processa_painel_monitoramento(html_content, tabela_db='REL-06', default_loca
         return False
 
     df_resultado = pd.DataFrame(registros)
+    df_resultado['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     with app.app_context():
         try:

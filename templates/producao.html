@@ -83,7 +83,7 @@ div.dt-button-collection button.dt-button:hover {
         <!-- Escolha do Relatório -->
         <div class="col-md-8">
             <label class="form-label">Qual Relatório de Produção deseja visualizar?</label>
-            <select class="form-select" name="indice_relatorio" onchange="document.getElementById('loading-overlay').classList.remove('d-none'); this.form.submit()">
+            <select class="form-select" name="indice_relatorio" onchange="aoMudarRelatorio(this)">
                 <option value="" {% if not relatorio_selecionado %}selected{% endif %} disabled>Selecione um relatório...</option>
                 <option value="03" {% if relatorio_selecionado == '03' %}selected{% endif %}>Relatório 03 - PLANILHA DE PRODUÇÃO POR ESPECIALIDADE (SIGA)</option>
                 <option value="04" {% if relatorio_selecionado == '04' %}selected{% endif %}>Relatório 04 - VAGAS OFERTADAS POR TIPO DE ATENDIMENTO DA AGENDA POR UNIDADE</option>
@@ -105,11 +105,17 @@ div.dt-button-collection button.dt-button:hover {
         <!-- Escolha do Período -->
         <div class="col-md-4">
             <label class="form-label">Competência</label>
-            <select class="form-select" name="periodo" onchange="if(document.querySelector('select[name=indice_relatorio]').value) { document.getElementById('loading-overlay').classList.remove('d-none'); this.form.submit(); }">
-                {% for valor, texto in periodos_disponiveis %}
-                    <option value="{{ valor }}" {% if periodo_selecionado == valor %}selected{% endif %}>{{ texto }}</option>
-                {% endfor %}
-            </select>
+            {% if relatorio_selecionado in ['06', '07'] %}
+                <select class="form-select bg-light text-muted" name="periodo" disabled title="Os relatórios de monitoramento exibem a série histórica consolidada dos últimos 12 meses.">
+                    <option value="" selected>Série Histórica (Últimos 12 meses)</option>
+                </select>
+            {% else %}
+                <select class="form-select" name="periodo" onchange="if(document.querySelector('select[name=indice_relatorio]').value) { document.getElementById('loading-overlay').classList.remove('d-none'); this.form.submit(); }">
+                    {% for valor, texto in periodos_disponiveis %}
+                        <option value="{{ valor }}" {% if periodo_selecionado == valor %}selected{% endif %}>{{ texto }}</option>
+                    {% endfor %}
+                </select>
+            {% endif %}
         </div>
         
         <!-- Overlay de Loading -->
@@ -134,7 +140,10 @@ div.dt-button-collection button.dt-button:hover {
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
                     <h5 class="mb-1 text-primary"><i class="bi bi-person-lines-fill me-2"></i>16. TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG</h5>
-                    <small class="text-muted">Selecione o status para alternar a visualização da tabela dinâmica:</small>
+                    <div class="text-muted small mt-1">
+                        <span class="me-3"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> {{ fonte_dados }}</span>
+                        <span><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> {{ data_geracao }}</span>
+                    </div>
                 </div>
                 <div class="btn-group" role="group" aria-label="Visualização AMG">
                     <input type="radio" class="btn-check" name="amg_view" id="view_ativos" autocomplete="off" checked onclick="alternarVisaoAMG('ativos')">
@@ -209,7 +218,15 @@ div.dt-button-collection button.dt-button:hover {
     </div>
     {% endif %}
         <div class="card shadow-sm p-3">
-            <h4>Resultado (Filtre antes de exportar):</h4>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom">
+                <h4 class="mb-0">Resultado:</h4>
+                {% if fonte_dados %}
+                <div class="text-muted small d-flex align-items-center flex-wrap gap-2">
+                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> {{ fonte_dados }}</span>
+                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> {{ data_geracao }}</span>
+                </div>
+                {% endif %}
+            </div>
             <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
                 <!-- O cabeçalho será injetado pelo DataTables via JSON -->
             </table>
@@ -410,6 +427,18 @@ div.dt-button-collection button.dt-button:hover {
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
 
 <script>
+    function aoMudarRelatorio(selectRel) {
+        var val = selectRel.value;
+        var selectPeriodo = document.querySelector('select[name=periodo]');
+        if (val === '06' || val === '07') {
+            if (selectPeriodo) {
+                selectPeriodo.disabled = true;
+            }
+        }
+        document.getElementById('loading-overlay').classList.remove('d-none');
+        selectRel.form.submit();
+    }
+
     $(document).ready(function() {
         var dadosEl = document.getElementById('dados-tabela-json');
         var colunasEl = document.getElementById('colunas-tabela-json');

@@ -1,3 +1,5 @@
+import os
+from datetime import datetime
 import pandas as pd
 import numpy as np
 from database import db
@@ -846,3 +848,149 @@ def gera_relatorio_17(periodo):
         
         df_pivot = df_pivot.reset_index()
         return df_pivot
+
+MAPA_RELATORIOS_INFO = {
+    '03': {
+        'fonte': 'SIGA Saúde (BI - AT-02)',
+        'tabela': 'AT-02',
+        'arquivos': ['AT-02.csv']
+    },
+    '04': {
+        'fonte': 'SIGA Saúde (BI - VG-04)',
+        'tabela': 'VG-04',
+        'arquivos': ['VG-04.csv', 'VG04.csv']
+    },
+    '06': {
+        'fonte': 'CEInfo (Painel de Monitoramento 3.2 - STS Penha)',
+        'tabela': 'REL-06',
+        'arquivos': ['painel_monitoramento.html']
+    },
+    '07': {
+        'fonte': 'CEInfo (Painel de Monitoramento 3.2 - Subprefeitura Penha)',
+        'tabela': 'REL-07',
+        'arquivos': ['painel_monitoramento_subprefeitura.html']
+    },
+    '08': {
+        'fonte': 'SIGA Saúde (BI - GAC-02, CG-01, CG-05, CG-06)',
+        'tabela': 'GAC-02',
+        'arquivos': ['GAC02.csv']
+    },
+    '09': {
+        'fonte': 'DTIC / SIGAPEP (REL 114)',
+        'tabela': 'REL-114',
+        'arquivos': ['(rel114) rel_sb_gestante_prev_parto.csv']
+    },
+    '10': {
+        'fonte': 'SIGA Saúde (BI - AT-03)',
+        'tabela': 'AT-03',
+        'arquivos': ['AT-03.csv']
+    },
+    '11': {
+        'fonte': 'SIGA Saúde (BI - FE-02)',
+        'tabela': 'FE-02',
+        'arquivos': ['FE-02.csv']
+    },
+    '12': {
+        'fonte': 'SIGA Saúde (BI - AT-02)',
+        'tabela': 'AT-02',
+        'arquivos': ['AT-02.csv']
+    },
+    '13': {
+        'fonte': 'SIGA Saúde (BI - VG-02)',
+        'tabela': 'VG-02',
+        'arquivos': ['VG-02.csv', 'VG02.csv']
+    },
+    '14': {
+        'fonte': 'SIGA Saúde (BI - AG-04)',
+        'tabela': 'AG-04',
+        'arquivos': ['AG-04.csv', 'AG04.csv']
+    },
+    '15': {
+        'fonte': 'DTIC (REL 135)',
+        'tabela': 'REL-135',
+        'arquivos': ['(rel135) penha.csv']
+    },
+    '16': {
+        'fonte': 'SIGAPEP (SIGA - AMG)',
+        'tabela': 'REL-16',
+        'arquivos': ['(rel16) siga_amg.csv']
+    },
+    '17': {
+        'fonte': 'DTIC (REL 134)',
+        'tabela': 'REL-134',
+        'arquivos': ['(rel134) atividade_coletiva_por_profissional.csv']
+    }
+}
+
+def obter_metadados_relatorio(indice, periodo=None):
+    info = MAPA_RELATORIOS_INFO.get(str(indice), {
+        'fonte': 'Sistema Municipal de Saúde',
+        'tabela': None,
+        'arquivos': []
+    })
+    
+    fonte = info['fonte']
+    data_geracao = None
+    
+    # 1. Tenta buscar a data específica da competência selecionada no banco de dados
+    if info.get('tabela'):
+        try:
+            with app.app_context():
+                df_chk = pd.read_sql(f"SELECT * FROM '{info['tabela']}' LIMIT 1", con=db.engine)
+                if 'data_extracao' in df_chk.columns:
+                    query = f"SELECT MAX(data_extracao) as dt FROM '{info['tabela']}'"
+                    if periodo:
+                        if 'ano_mes' in df_chk.columns:
+                            query += f" WHERE ano_mes = {int(periodo)}"
+                        elif 'ano_mes_extracao' in df_chk.columns:
+                            query += f" WHERE ano_mes_extracao = {int(periodo)}"
+                        elif 'ano_mes_competencia' in df_chk.columns:
+                            query += f" WHERE ano_mes_competencia = '{periodo}'"
+                        elif 'ano' in df_chk.columns and 'mes' in df_chk.columns:
+                            ano_p = int(str(periodo)[:4])
+                            mes_p = int(str(periodo)[4:])
+                            mapa_mes = {1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril', 5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto', 9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'}
+                            nome_mes = mapa_mes.get(mes_p, '')
+                            query += f" WHERE ano = {ano_p} AND mes = '{nome_mes}'"
+                        elif indice == '08' or info['tabela'] == 'GAC-02':
+                            mes_gac = f"{str(periodo)[:4]}-{str(periodo)[4:]}"
+                            query += f" WHERE data_extracao LIKE '{mes_gac}-%'"
+                        elif 'previsao_parto' in df_chk.columns:
+                            mes_p = str(periodo)[4:]
+                            ano_p = str(periodo)[:4]
+                            query += f" WHERE previsao_parto LIKE '%/{mes_p}/{ano_p}'"
+                    
+                    res = pd.read_sql(query, con=db.engine)
+                    if not res.empty and res.iloc[0]['dt']:
+                        raw_dt = str(res.iloc[0]['dt']).strip()
+                        if len(raw_dt) == 10 and '-' in raw_dt:
+                            partes = raw_dt.split('-')
+                            data_geracao = f"{partes[2]}/{partes[1]}/{partes[0]}"
+                        elif len(raw_dt) >= 16 and '-' in raw_dt:
+                            try:
+                                dt_obj = datetime.strptime(raw_dt[:16], '%Y-%m-%d %H:%M')
+                                data_geracao = dt_obj.strftime('%d/%m/%Y %H:%M')
+                            except Exception:
+                                data_geracao = raw_dt
+                        else:
+                            data_geracao = raw_dt
+        except Exception:
+            pass
+            
+    # 2. Se não encontrou no banco para aquela competência, busca a data de modificação do arquivo
+    if not data_geracao and info.get('arquivos'):
+        pasta = os.path.join(os.getcwd(), 'ARQUIVOS ORIGINAIS')
+        for nome_arq in info['arquivos']:
+            caminho = os.path.join(pasta, nome_arq)
+            if os.path.exists(caminho):
+                mtime = os.path.getmtime(caminho)
+                data_geracao = datetime.fromtimestamp(mtime).strftime('%d/%m/%Y %H:%M')
+                break
+                
+    if not data_geracao:
+        data_geracao = datetime.now().strftime('%d/%m/%Y')
+        
+    return {
+        'fonte': fonte,
+        'data_geracao': data_geracao
+    }

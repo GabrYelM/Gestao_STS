@@ -402,10 +402,19 @@ def producao():
     periodo_padrao = periodos_disponiveis[0][0]
     periodo = request.form.get("periodo") if request.method == "POST" else periodo_padrao
 
+    fonte_dados = None
+    data_geracao = None
+
     if request.method == "POST":
         # 1. Pega as opções que o usuário digitou/escolheu na tela
         indice = request.form.get("indice_relatorio")
         periodo = request.form.get("periodo")
+        
+        if indice:
+            meta = prod.obter_metadados_relatorio(indice, periodo)
+            fonte_dados = meta.get('fonte')
+            data_geracao = meta.get('data_geracao')
+
         # 2. Um "if" simples para decidir qual função rodar
         try:
             if indice == '03':
@@ -459,7 +468,9 @@ def producao():
                     json_colunas_inativo=json_colunas_inativo,
                     relatorio_selecionado=indice,
                     periodo_selecionado=periodo,
-                    periodos_disponiveis=periodos_disponiveis
+                    periodos_disponiveis=periodos_disponiveis,
+                    fonte_dados=fonte_dados,
+                    data_geracao=data_geracao
                 )
             elif indice == '17':
                 df = prod.gera_relatorio_17(periodo)
@@ -496,7 +507,17 @@ def producao():
         except Exception as e:
             tabela_html = f"<div class='alert alert-danger'>Erro ao gerar relatório: {e}</div>"
 
-    return render_template("producao.html", tabela_html=tabela_html, json_dados=json_dados, json_colunas=json_colunas, relatorio_selecionado=indice, periodo_selecionado=periodo, periodos_disponiveis=periodos_disponiveis)
+    return render_template(
+        "producao.html",
+        tabela_html=tabela_html,
+        json_dados=json_dados,
+        json_colunas=json_colunas,
+        relatorio_selecionado=indice,
+        periodo_selecionado=periodo,
+        periodos_disponiveis=periodos_disponiveis,
+        fonte_dados=fonte_dados,
+        data_geracao=data_geracao
+    )
 
 
 
