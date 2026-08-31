@@ -214,8 +214,18 @@ def gera_relatorio_08(periodo):
         mes_gac = f"{periodo[:4]}-{periodo[4:]}"
 
         query_gac02 = f"""SELECT * FROM 'GAC-02'
-        WHERE data_extracao LIKE '{mes_gac}-%' AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
+        WHERE data_extracao = (
+            SELECT MAX(data_extracao) 
+            FROM 'GAC-02' 
+            WHERE data_extracao LIKE '{mes_gac}-%'
+        ) 
+        AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
+
+        df_gac02 = pd.read_sql(query_gac02, con=db.engine)
+        if not df_gac02.empty:
+            df_gac02['cnes'] = df_gac02['cnes'].astype(str).str.replace('.', '')
+            
         query_cg01 = f"""SELECT * FROM 'CG-01'
         WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
@@ -229,12 +239,6 @@ def gera_relatorio_08(periodo):
         query_cg06 = f"""SELECT * FROM 'CG-06'
         WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
         """
-
-        df_gac02 = pd.read_sql(query_gac02, con=db.engine)
-        
-        
-            
-        df_gac02['cnes'] = df_gac02['cnes'].astype(str).str.replace('.', '')
 
         df_cg01 = pd.read_sql(query_cg01, con=db.engine)
         df_cg01['cnes'] = df_cg01['cnes'].astype(str).str.replace('.', '')

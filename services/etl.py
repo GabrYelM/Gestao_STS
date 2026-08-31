@@ -333,17 +333,24 @@ def processa_gac02(caminho, periodo=None):
     col = list(traduz_col.values())
     df_limpo = df[col].copy()
 
-    hoje = datetime.today().strftime('%Y-%m-%d')
-    mes_atual = datetime.today().strftime('%Y-%m')
-    df_limpo['data_extracao'] = hoje
+    if periodo:
+        ano_str = str(periodo)[:4]
+        mes_str = str(periodo)[4:]
+        data_referencia = f"{ano_str}-{mes_str}-01"
+        mes_filtro = f"{ano_str}-{mes_str}"
+    else:
+        data_referencia = datetime.today().strftime('%Y-%m-%d')
+        mes_filtro = datetime.today().strftime('%Y-%m')
+
+    df_limpo['data_extracao'] = data_referencia
 
     with app.app_context():
-        # Deleta do mesmo mês até o dia de hoje
-        db.session.execute(text(f"DELETE FROM 'GAC-02' WHERE data_extracao LIKE '{mes_atual}-%' AND data_extracao <= '{hoje}'"))
+        # Deleta do mesmo mês de competência antes de inserir
+        db.session.execute(text(f"DELETE FROM 'GAC-02' WHERE data_extracao LIKE '{mes_filtro}-%'"))
         db.session.commit()
         df_limpo.to_sql(name='GAC-02', con=db.engine, if_exists='append', index=False)
 
-    print('GAC-02 carregado')
+    print(f'GAC-02 carregado para a competência {mes_filtro}')
 
 def processa_rel114(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)

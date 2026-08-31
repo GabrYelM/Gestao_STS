@@ -114,6 +114,13 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
         else:
             funcoes_loop.append((bot_f, etl_f))
 
+    MAPA_MESES = {
+        "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
+        "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
+        "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
+    }
+    periodo_gac = f"{ano_inicio}{MAPA_MESES.get(mes_inicio, '01')}"
+
     if gac02_func:
         status_extracao["progresso"] = "Extraindo GAC02 (Snapshot Geral)..."
         try:
@@ -121,18 +128,12 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
             # Executa GAC02 1 única vez
             caminho_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
             if caminho_gac:
-                etl_gac(caminho_gac, None)
+                etl_gac(caminho_gac, periodo_gac)
         except Exception as e:
             print(f"Erro no GAC02: {e}")
 
     if relatorio_escolhido != "GAC02" and len(funcoes_loop) > 0:
         lista_periodos = gerar_lista_meses(mes_inicio, ano_inicio, mes_fim, ano_fim)
-        
-        MAPA_MESES = {
-            "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
-            "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
-            "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
-        }
 
         for mes, ano in lista_periodos:
             status_extracao["progresso"] = f"Extraindo {mes}/{ano}..."
@@ -377,15 +378,15 @@ def producao():
     hoje = datetime.today()
     primeiro_dia = hoje.replace(day=1)
     
-    # Gera a lista dos ultimos 12 meses (ano/mês)
+    # Gera a lista dos meses disponíveis incluindo o mês atual (fechamento) e os 12 meses anteriores
     periodos_disponiveis = []
-    for i in range(1, 13):
+    for i in range(0, 13):
         mes_calculado = primeiro_dia - relativedelta(months=i)
         valor = mes_calculado.strftime('%Y%m')
         texto = mes_calculado.strftime('%m/%Y')
         periodos_disponiveis.append((valor, texto))
         
-    # O default é o mês passado (index 0 da lista)
+    # O default é o mês mais recente disponível (index 0 da lista)
     periodo_padrao = periodos_disponiveis[0][0]
     periodo = request.form.get("periodo") if request.method == "POST" else periodo_padrao
 
