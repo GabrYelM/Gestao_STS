@@ -330,6 +330,18 @@ def download_excel(indice, periodo):
             df = prod.gera_relatorio_03(periodo)
         elif indice == '04':
             df = prod.gera_relatorio_04(periodo)
+        elif indice == '05':
+            df_pac, df_prof, df_acoes = prod.gera_relatorio_05(periodo)
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                if df_pac is not None and not df_pac.empty:
+                    df_pac.to_excel(writer, index=False, sheet_name='RAAS')
+                if df_prof is not None and not df_prof.empty:
+                    df_prof.to_excel(writer, index=False, sheet_name='RAAS_PROF')
+                if df_acoes is not None and not df_acoes.empty:
+                    df_acoes.to_excel(writer, index=False, sheet_name='CONS_ACOES')
+            output.seek(0)
+            return send_file(output, download_name=f"Relatorio_05_RAAS_CAPS_{periodo}.xlsx", as_attachment=True)
         elif indice == '08':
             df = prod.gera_relatorio_08(periodo)
         elif indice == '09':
@@ -425,6 +437,46 @@ def producao():
                 df = prod.gera_relatorio_03(periodo)
             elif indice == '04':
                 df = prod.gera_relatorio_04(periodo)
+            elif indice == '05':
+                df_pac, df_prof, df_acoes = prod.gera_relatorio_05(periodo)
+                import json
+                json_dados_pac = None
+                json_colunas_pac = None
+                json_dados_prof = None
+                json_colunas_prof = None
+                json_dados_acoes = None
+                json_colunas_acoes = None
+                
+                if df_pac is not None and not df_pac.empty:
+                    colunas_pac = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_pac.columns]
+                    json_colunas_pac = json.dumps(colunas_pac)
+                    json_dados_pac = json.dumps(df_pac.fillna("").to_dict(orient="records"))
+                    
+                if df_prof is not None and not df_prof.empty:
+                    colunas_prof = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_prof.columns]
+                    json_colunas_prof = json.dumps(colunas_prof)
+                    json_dados_prof = json.dumps(df_prof.fillna("").to_dict(orient="records"))
+
+                if df_acoes is not None and not df_acoes.empty:
+                    colunas_acoes = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_acoes.columns]
+                    json_colunas_acoes = json.dumps(colunas_acoes)
+                    json_dados_acoes = json.dumps(df_acoes.fillna("").to_dict(orient="records"))
+                
+                return render_template(
+                    "producao.html",
+                    tabela_html=tabela_html,
+                    json_dados_pac=json_dados_pac,
+                    json_colunas_pac=json_colunas_pac,
+                    json_dados_prof=json_dados_prof,
+                    json_colunas_prof=json_colunas_prof,
+                    json_dados_acoes=json_dados_acoes,
+                    json_colunas_acoes=json_colunas_acoes,
+                    relatorio_selecionado=indice,
+                    periodo_selecionado=periodo,
+                    periodos_disponiveis=periodos_disponiveis,
+                    fonte_dados=fonte_dados,
+                    data_geracao=data_geracao
+                )
             elif indice == '06':
                 df = prod.gera_relatorio_06(periodo)
             elif indice == '07':
@@ -566,9 +618,57 @@ def upload_dtic():
                         except Exception as err_rem:
                             print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
 
-            # 2. Arquivos .ZIP do DTIC / SIGAPEP
+            # 2. Arquivos RAAS das Unidades CAPS (Relatório 05)
+            elif any(nome_lower.endswith(ext) for ext in ['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas']) or (tipo_relatorio == "rel05") or (nome_lower.startswith('aa') and len(nome_lower) >= 8 and not nome_lower.endswith('.zip')):
+                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                caminho_final = os.path.join(pasta_destino, nome_arq)
+                arquivo.save(caminho_final)
+                
+                from services.etl import processa_raas_arquivo
+                try:
+                    if processa_raas_arquivo(caminho_final):
+                        sucessos += 1
+                except Exception as e:
+                    print(f"Erro ao processar RAAS {nome_arq}: {e}")
+                finally:
+                    if os.path.exists(caminho_final):
+                        try:
+                            os.remove(caminho_final)
+                        except Exception as err_rem:
+                            print(f"Erro ao remover arquivo temporário RAAS {caminho_final}: {err_rem}")
+
+            # 3. Arquivos .ZIP do DTIC / SIGAPEP ou pacotes RAAS
             elif nome_lower.endswith('.zip'):
                 nome_zip = nome_lower
+                
+                # Identifica se é ZIP do RAAS
+                if "raas" in nome_zip or tipo_relatorio == "rel05":
+                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
+                        for nome_arq_zip in zip_ref.namelist():
+                            nl_zip = nome_arq_zip.lower()
+                            if "_erro" in nl_zip or "_protocolo" in nl_zip:
+                                continue
+                            if any(nl_zip.endswith(ext) for ext in ['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas', '.txt']) or os.path.basename(nl_zip).startswith('aa'):
+                                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                                caminho_temp = os.path.join(pasta_destino, os.path.basename(nome_arq_zip))
+                                with open(caminho_temp, "wb") as f_out:
+                                    f_out.write(zip_ref.read(nome_arq_zip))
+                                
+                                from services.etl import processa_raas_arquivo
+                                try:
+                                    if processa_raas_arquivo(caminho_temp):
+                                        sucessos += 1
+                                except Exception as e:
+                                    print(f"Erro ao processar RAAS do ZIP {nome_arq_zip}: {e}")
+                                finally:
+                                    if os.path.exists(caminho_temp):
+                                        try:
+                                            os.remove(caminho_temp)
+                                        except Exception:
+                                            pass
+                    continue
+                
+                # Identifica por nome (regra das referências)
                 
                 # Identifica por nome (regra das referências)
                 tipo_identificado = None

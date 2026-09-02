@@ -914,6 +914,133 @@ def gera_relatorio_17(periodo):
         df_pivot = df_pivot.reset_index()
         return df_pivot
 
+
+def gera_relatorio_05(periodo):
+    """
+    Gera o Relatório 05 (Produção CAPS - RAAS).
+    Retorna 3 DataFrames:
+      1. df_pacientes: Série histórica de quantidade de pacientes atendidos por CAPS (Aba RAAS)
+      2. df_profissionais: Produção detalhada por Estabelecimento, CBO, Profissional e Procedimento (Aba RAAS_PROF)
+      3. df_acoes: Consolidado de Ações por Estabelecimento, CBO e Procedimento (CONS_ACOES)
+    """
+    from dateutil.relativedelta import relativedelta
+    with app.app_context():
+        # Gera lista dos últimos 12 meses até o período selecionado
+        try:
+            dt_fim = datetime.strptime(str(periodo), '%Y%m')
+        except Exception:
+            dt_fim = datetime.today()
+
+        meses_lista = []
+        for i in range(11, -1, -1):
+            m = dt_fim - relativedelta(months=i)
+            meses_lista.append(m.strftime('%Y%m'))
+
+        meses_str = "','".join(meses_lista)
+        mapa_rotulos = {m: datetime.strptime(m, '%Y%m').strftime('%m/%Y') for m in meses_lista}
+
+        ordem_caps = [
+            'CAPS ADULTO III VILA MATILDE',
+            'CAPS INFANTOJUVENIL II PENHA',
+            'CAPS AD III PENHA',
+            'CAPS AD II CANGAIBA'
+        ]
+
+        # 1. TABELA DE PACIENTES (Aba RAAS)
+        try:
+            query_pac = f"SELECT * FROM 'RAAS_PACIENTES' WHERE ano_mes IN ('{meses_str}')"
+            df_pac_raw = pd.read_sql(query_pac, con=db.engine)
+        except Exception:
+            df_pac_raw = None
+
+        if df_pac_raw is not None and not df_pac_raw.empty:
+            df_pac_raw['qt_pacientes'] = pd.to_numeric(df_pac_raw['qt_pacientes'], errors='coerce').fillna(0)
+            pivot_pac = pd.pivot_table(
+                df_pac_raw,
+                index='estabelecimento',
+                columns='ano_mes',
+                values='qt_pacientes',
+                aggfunc='sum',
+                fill_value=0
+            )
+            estab_existentes = [e for e in ordem_caps if e in pivot_pac.index]
+            for e in pivot_pac.index:
+                if e not in estab_existentes:
+                    estab_existentes.append(e)
+            pivot_pac = pivot_pac.reindex(estab_existentes)
+
+            cols_meses = [m for m in meses_lista if m in pivot_pac.columns]
+            pivot_pac = pivot_pac[cols_meses]
+
+            pivot_pac['Total Geral'] = pivot_pac.sum(axis=1)
+            linha_total = pivot_pac.sum(axis=0)
+            linha_total.name = 'Total Geral'
+            pivot_pac = pd.concat([pivot_pac, pd.DataFrame([linha_total])])
+
+            pivot_pac.rename(columns=mapa_rotulos, inplace=True)
+            pivot_pac.index.name = 'ESTABELECIMENTO'
+            pivot_pac.columns.name = None
+            df_pacientes = pivot_pac.reset_index().astype(object)
+        else:
+            df_pacientes = None
+
+        # 2. TABELA DE AÇÕES POR PROFISSIONAL (Aba RAAS_PROF)
+        try:
+            query_prof = f"SELECT * FROM 'RAAS_ACOES_PROF' WHERE ano_mes IN ('{meses_str}')"
+            df_prof_raw = pd.read_sql(query_prof, con=db.engine)
+        except Exception:
+            df_prof_raw = None
+
+        if df_prof_raw is not None and not df_prof_raw.empty:
+            df_prof_raw['quantidade'] = pd.to_numeric(df_prof_raw['quantidade'], errors='coerce').fillna(0)
+            pivot_prof = pd.pivot_table(
+                df_prof_raw,
+                index=['estabelecimento', 'descr_cbo', 'nome_prof', 'procedimento'],
+                columns='ano_mes',
+                values='quantidade',
+                aggfunc='sum',
+                fill_value=0
+            )
+            cols_meses_prof = [m for m in meses_lista if m in pivot_prof.columns]
+            pivot_prof = pivot_prof[cols_meses_prof]
+            pivot_prof['Total Geral'] = pivot_prof.sum(axis=1)
+            pivot_prof.rename(columns=mapa_rotulos, inplace=True)
+            pivot_prof.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'NOME_PROF', 'PA_DC']
+            pivot_prof.columns.name = None
+            df_profissionais = pivot_prof.reset_index().astype(object)
+        else:
+            df_profissionais = None
+
+        # 3. TABELA DE AÇÕES CONSOLIDADAS POR CBO (CONS_ACOES)
+        try:
+            query_acoes = f"SELECT * FROM 'RAAS_ACOES' WHERE ano_mes IN ('{meses_str}')"
+            df_acoes_raw = pd.read_sql(query_acoes, con=db.engine)
+        except Exception:
+            df_acoes_raw = None
+
+        if df_acoes_raw is not None and not df_acoes_raw.empty:
+            df_acoes_raw['quantidade'] = pd.to_numeric(df_acoes_raw['quantidade'], errors='coerce').fillna(0)
+            pivot_acoes = pd.pivot_table(
+                df_acoes_raw,
+                index=['estabelecimento', 'descr_cbo', 'procedimento'],
+                columns='ano_mes',
+                values='quantidade',
+                aggfunc='sum',
+                fill_value=0
+            )
+            cols_meses_acoes = [m for m in meses_lista if m in pivot_acoes.columns]
+            pivot_acoes = pivot_acoes[cols_meses_acoes]
+            pivot_acoes['Total Geral'] = pivot_acoes.sum(axis=1)
+            pivot_acoes.rename(columns=mapa_rotulos, inplace=True)
+            pivot_acoes.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'PA_DC']
+            pivot_acoes.columns.name = None
+            df_acoes = pivot_acoes.reset_index().astype(object)
+        else:
+            df_acoes = None
+
+        return df_pacientes, df_profissionais, df_acoes
+
+
 MAPA_RELATORIOS_INFO = {
     '02': {
         'fonte': 'TabWin / BPAMAG',
@@ -929,6 +1056,11 @@ MAPA_RELATORIOS_INFO = {
         'fonte': 'SIGA Saúde (BI - VG-04)',
         'tabela': 'VG-04',
         'arquivos': ['VG-04.csv', 'VG04.csv']
+    },
+    '05': {
+        'fonte': 'RAAS - SIA/SUS (CAPS)',
+        'tabela': 'RAAS_PACIENTES',
+        'arquivos': ['AA968846.JUL', 'AA330456.JUL', 'AA202962.JUL', 'AA638764.JUL']
     },
     '06': {
         'fonte': 'CEInfo (Painel de Monitoramento 3.2 - STS Penha)',

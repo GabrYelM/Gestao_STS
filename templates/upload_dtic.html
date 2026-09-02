@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Importação de Arquivos (ZIP / DBF){% endblock %}
+{% block title %}Importação de Arquivos (ZIP / DBF / RAAS){% endblock %}
 {% block content %}
 <div class="container mt-4 mb-5">
     <div class="row justify-content-center g-4">
@@ -7,7 +7,7 @@
         <div class="col-lg-6">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Importação de Arquivos (ZIP / DBF)</h5>
+                    <h5 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Importação de Arquivos (ZIP / DBF / RAAS)</h5>
                 </div>
                 <div class="card-body">
                     {% if mensagem %}
@@ -23,23 +23,24 @@
                             <select class="form-select" name="tipo_relatorio" required>
                                 <option value="todos">Todos os Relatórios (Auto-identificação)</option>
                                 <option value="rel02">Relatório 02 - Produção por Unidades (DBF TabWin)</option>
+                                <option value="rel05">Relatório 05 - Produção CAPS (Arquivos RAAS)</option>
                                 <option value="rel09">REL 114 (Gestante Prev Parto)</option>
                                 <option value="rel15">REL 135 (Cadastros Individuais - Penha)</option>
                                 <option value="rel16">SIGA - AMG (Pacientes Cadastrados por Status)</option>
                                 <option value="rel17">REL 134 (Atividade Coletiva Por Profissional)</option>
                             </select>
-                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP ou .DBF).</small>
+                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, .DBF, .JUL, .AGO, etc.).</small>
                         </div>
                         
                         <div class="mb-4">
-                            <label class="form-label fw-bold">Arquivos ZIP ou .DBF</label>
+                            <label class="form-label fw-bold">Arquivos (ZIP, .DBF, RAAS)</label>
                             
                             <!-- Área de Arrastar e Soltar -->
                             <div id="dropzone" class="p-4 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
                                 <i class="bi bi-cloud-arrow-up display-4 text-primary"></i>
-                                <p class="mt-2 mb-1 fs-5">Arraste seus arquivos ZIP ou .DBF para cá</p>
-                                <small class="text-muted">ou clique para selecionar. Você pode adicionar vários arquivos aos poucos.</small>
-                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf" multiple>
+                                <p class="mt-2 mb-1 fs-5">Arraste seus arquivos para cá</p>
+                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos .ZIP, .DBF ou arquivos RAAS (.JUL, .AGO, etc.) das unidades.</small>
+                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf,.jul,.ago,.set,.out,.nov,.dez,.jan,.fev,.mar,.abr,.mai,.jun,.txt,.raas" multiple>
                             </div>
                             
                             <!-- Lista Visual dos Arquivos Acumulados -->
@@ -60,25 +61,34 @@
 
         <!-- Coluna de Instruções e Filtros -->
         <div class="col-lg-6">
-            <!-- Card Relatório 02 (BPA TabWin) -->
-            <div class="card shadow-sm mb-4 border-success">
-                <div class="card-header bg-success text-white fw-bold">
-                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Relatório 02 - Produção por Unidades (TabWin / BPA)
+            <!-- Card Relatório 05 (RAAS CAPS) -->
+            <div class="card shadow-sm mb-3 border-primary">
+                <div class="card-header bg-primary text-white fw-bold">
+                    <i class="bi bi-hospital me-2"></i>Relatório 05 - Produção CAPS (RAAS)
                 </div>
                 <div class="card-body p-3">
                     <p class="mb-2"><strong>Como importar:</strong></p>
                     <p class="text-muted small mb-2">
-                        Basta arrastar ou selecionar o arquivo <code>.DBF</code> gerado pelo TabWin (ex: <code>STS26_08.dbf</code>).
-                        O sistema identifica a competência automaticamente e grava os dados na tabela do Relatório 02.
+                        Basta arrastar ou selecionar os arquivos exportados pelos 4 CAPS (ex: <code>AA968846.JUL</code>, <code>AA330456.JUL</code>, <code>AA202962.JUL</code>, <code>AA638764.JUL</code>) ou um arquivo <code>.ZIP</code> contendo-os.
+                        O sistema faz o cruzamento automático com CBOs, SIGTAP e Profissionais.
                     </p>
-                    <div class="alert alert-success py-2 px-3 small mb-0">
-                        <i class="bi bi-check-circle me-1"></i> Não é necessário compactar em ZIP; o arquivo <code>.dbf</code> pode ser enviado diretamente!
-                    </div>
+                </div>
+            </div>
+
+            <!-- Card Relatório 02 (BPA TabWin) -->
+            <div class="card shadow-sm mb-3 border-success">
+                <div class="card-header bg-success text-white fw-bold">
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Relatório 02 - Produção por Unidades (TabWin / BPA)
+                </div>
+                <div class="card-body p-3">
+                    <p class="text-muted small mb-0">
+                        Arraste o arquivo <code>.DBF</code> gerado pelo TabWin (ex: <code>STS26_08.dbf</code>). O sistema grava no banco SQLite e remove o arquivo temporário.
+                    </p>
                 </div>
             </div>
 
             <!-- Card Relatório 16 (SIGA - AMG) -->
-            <div class="card shadow-sm border-primary">
+            <div class="card shadow-sm border-secondary">
                 <div class="card-header bg-primary text-white fw-bold">
                     <i class="bi bi-info-circle me-2"></i>Filtros para Solicitação do Relatório 16 (SIGA - AMG)
                 </div>
@@ -168,9 +178,10 @@
     });
 
     function adicionarArquivos(arquivosNovos) {
+        const extensoesValidas = ['.zip', '.dbf', '.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.txt', '.raas'];
         for (let i = 0; i < arquivosNovos.length; i++) {
             let nomeLower = arquivosNovos[i].name.toLowerCase();
-            if(nomeLower.endsWith('.zip') || nomeLower.endsWith('.dbf')) {
+            if(extensoesValidas.some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa')) {
                 acumulador.items.add(arquivosNovos[i]);
             }
         }
@@ -207,9 +218,12 @@
                 li.className = 'list-group-item d-flex justify-content-between align-items-center bg-white';
                 
                 let nomeLower = acumulador.files[i].name.toLowerCase();
-                let icone = nomeLower.endsWith('.dbf') 
-                    ? '<i class="bi bi-file-earmark-spreadsheet text-success me-2 fs-5"></i>' 
-                    : '<i class="bi bi-file-earmark-zip text-warning me-2 fs-5"></i>';
+                let icone = '<i class="bi bi-file-earmark-zip text-warning me-2 fs-5"></i>';
+                if (nomeLower.endsWith('.dbf')) {
+                    icone = '<i class="bi bi-file-earmark-spreadsheet text-success me-2 fs-5"></i>';
+                } else if (['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas'].some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa')) {
+                    icone = '<i class="bi bi-hospital text-primary me-2 fs-5"></i>';
+                }
                 
                 li.innerHTML = `
                     <span>${icone} ${acumulador.files[i].name}</span>
