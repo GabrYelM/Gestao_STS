@@ -88,6 +88,7 @@ div.dt-button-collection button.dt-button:hover {
                 <option value="02" {% if relatorio_selecionado == '02' %}selected{% endif %}>Relatório 02 - PRODUÇÃO POR UNIDADES (BPA)</option>
                 <option value="03" {% if relatorio_selecionado == '03' %}selected{% endif %}>Relatório 03 - PLANILHA DE PRODUÇÃO POR ESPECIALIDADE (SIGA)</option>
                 <option value="04" {% if relatorio_selecionado == '04' %}selected{% endif %}>Relatório 04 - VAGAS OFERTADAS POR TIPO DE ATENDIMENTO DA AGENDA POR UNIDADE</option>
+                <option value="05" {% if relatorio_selecionado == '05' %}selected{% endif %}>Relatório 05 - PRODUÇÃO CAPS (RAAS)</option>
                 <option value="06" {% if relatorio_selecionado == '06' %}selected{% endif %}>Relatório 06 - PAINEL DE MONITORAMENTO (STS PENHA)</option>
                 <option value="07" {% if relatorio_selecionado == '07' %}selected{% endif %}>Relatório 07 - PAINEL DE MONITORAMENTO (SUBPREFEITURA PENHA)</option>
                 <option value="08" {% if relatorio_selecionado == '08' %}selected{% endif %}>Relatório 08 - PLANILHA DE ACOMPANHAMENTO DE GESTANTES</option>
@@ -135,7 +136,73 @@ div.dt-button-collection button.dt-button:hover {
         </div>
     {% endif %}
     
-    {% if relatorio_selecionado == '16' and json_dados_ativo %}
+    {% if relatorio_selecionado == '05' and json_dados_pac %}
+        <!-- Seletor Dinâmico de Visualização para Relatório 05 (RAAS) -->
+        <div class="card shadow-sm p-3 mb-4 bg-light border">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <h5 class="mb-1 text-primary"><i class="bi bi-hospital me-2"></i>05. PRODUÇÃO CAPS (RAAS - REGISTRO DAS AÇÕES AMBULATORIAIS DE SAÚDE)</h5>
+                    <div class="text-muted small mt-1">
+                        <span class="me-3"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> {{ fonte_dados }}</span>
+                        <span><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> {{ data_geracao }}</span>
+                    </div>
+                </div>
+                <div class="btn-group" role="group" aria-label="Visualização RAAS">
+                    <input type="radio" class="btn-check" name="raas_view" id="view_pacientes" autocomplete="off" checked onclick="alternarVisaoRAAS('pacientes')">
+                    <label class="btn btn-outline-primary px-3 py-2 fw-bold" for="view_pacientes">
+                        <i class="bi bi-people-fill me-1"></i> 1. Quantidade de Pacientes (RAAS)
+                    </label>
+
+                    <input type="radio" class="btn-check" name="raas_view" id="view_prof" autocomplete="off" onclick="alternarVisaoRAAS('prof')">
+                    <label class="btn btn-outline-success px-3 py-2 fw-bold" for="view_prof">
+                        <i class="bi bi-person-badge-fill me-1"></i> 2. Produção por Profissional (RAAS_PROF)
+                    </label>
+
+                    <input type="radio" class="btn-check" name="raas_view" id="view_acoes" autocomplete="off" onclick="alternarVisaoRAAS('acoes')">
+                    <label class="btn btn-outline-info px-3 py-2 fw-bold" for="view_acoes">
+                        <i class="bi bi-list-check me-1"></i> 3. Ações por CBO (CONS_ACOES)
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <!-- Tabela 1: Quantidade de Pacientes -->
+            <div class="col-12" id="container-raas-pacientes">
+                <div class="card shadow-sm p-3 border-primary border-top border-3">
+                    <h4 class="text-primary mb-3"><i class="bi bi-people-fill me-2"></i>Série Histórica - Quantidade de Pacientes por CAPS</h4>
+                    <table id="tabela-raas-pacientes" class="table table-sm table-bordered w-100 small">
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Tabela 2: Produção por Profissional -->
+            <div class="col-12 d-none" id="container-raas-prof">
+                <div class="card shadow-sm p-3 border-success border-top border-3">
+                    <h4 class="text-success mb-3"><i class="bi bi-person-badge-fill me-2"></i>Série Histórica - Produção por Profissional e Procedimento</h4>
+                    <table id="tabela-raas-prof" class="table table-sm table-bordered w-100 small">
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tabela 3: Consolidado de Ações por CBO -->
+            <div class="col-12 d-none" id="container-raas-acoes">
+                <div class="card shadow-sm p-3 border-info border-top border-3">
+                    <h4 class="text-info mb-3"><i class="bi bi-list-check me-2"></i>Série Histórica - Consolidado de Ações por CBO e Procedimento</h4>
+                    <table id="tabela-raas-acoes" class="table table-sm table-bordered w-100 small">
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <script id="dados-raas-pac-json" type="application/json">{{ json_dados_pac | safe }}</script>
+        <script id="colunas-raas-pac-json" type="application/json">{{ json_colunas_pac | safe }}</script>
+        <script id="dados-raas-prof-json" type="application/json">{{ json_dados_prof | safe }}</script>
+        <script id="colunas-raas-prof-json" type="application/json">{{ json_colunas_prof | safe }}</script>
+        <script id="dados-raas-acoes-json" type="application/json">{{ json_dados_acoes | safe }}</script>
+        <script id="colunas-raas-acoes-json" type="application/json">{{ json_colunas_acoes | safe }}</script>
+
+    {% elif relatorio_selecionado == '16' and json_dados_ativo %}
         <!-- Seletor Dinâmico de Visualização para Relatório 16 -->
         <div class="card shadow-sm p-3 mb-4 bg-light border">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -569,6 +636,115 @@ div.dt-button-collection button.dt-button:hover {
         }
 
         // Inicialização especial para Relatório 16 (Duas Tabelas: Ativos e Inativos)
+        var dadosAtivosEl = document.getElementById('dados-ativos-json');
+        // ==========================================
+        // INICIALIZAÇÃO RELATÓRIO 05 (RAAS CAPS)
+        // ==========================================
+        var dadosRaasPacEl = document.getElementById('dados-raas-pac-json');
+        var colunasRaasPacEl = document.getElementById('colunas-raas-pac-json');
+        var dadosRaasProfEl = document.getElementById('dados-raas-prof-json');
+        var colunasRaasProfEl = document.getElementById('colunas-raas-prof-json');
+        var dadosRaasAcoesEl = document.getElementById('dados-raas-acoes-json');
+        var colunasRaasAcoesEl = document.getElementById('colunas-raas-acoes-json');
+
+        function initTabelaRAAS(tabelaId, dadosJson, colunasJson, nomeExportacao) {
+            var tData = JSON.parse(dadosJson || '[]');
+            var tCols = JSON.parse(colunasJson || '[]');
+            if (tData.length === 0 || tCols.length === 0) return;
+            
+            $(tabelaId).DataTable({
+                data: tData,
+                columns: tCols,
+                deferRender: true,
+                language: {
+                    url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+                },
+                pageLength: 50,
+                lengthMenu: [10, 25, 50, 100],
+                dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
+                     '<"table-responsive"t>' +
+                     '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                buttons: [
+                    {
+                        extend: 'colvis',
+                        text: '<i class="bi bi-layout-three-columns"></i> Selecionar Colunas',
+                        className: 'btn btn-outline-secondary me-2',
+                        postfixButtons: ['colvisRestore']
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: nomeExportacao,
+                        text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
+                        className: 'btn btn-success',
+                        exportOptions: {
+                            modifier: { search: 'applied' },
+                            format: {
+                                header: function(data, columnIdx, node) {
+                                    var clone = $(node).clone();
+                                    clone.find('select').remove();
+                                    return clone.text().trim();
+                                }
+                            }
+                        }
+                    }
+                ],
+                initComplete: function() {
+                    this.api().columns().every(function() {
+                        var column = this;
+                        var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
+                            .appendTo($(column.header()))
+                            .on('change', function() {
+                                var val = $.fn.dataTable.util.escapeRegex($(this).val());
+                                column.search(val ? '^' + val + '$' : '', true, false).draw();
+                            })
+                            .on('click', function(e) {
+                                e.stopPropagation();
+                            });
+                        
+                        column.data().unique().sort().each(function(d) {
+                            var text = $('<div>').html(d).text();
+                            if (text && text.trim() !== '') {
+                                select.append('<option value="' + text + '">' + text + '</option>');
+                            }
+                        });
+                    });
+                }
+            });
+        }
+
+        if (dadosRaasPacEl && colunasRaasPacEl) {
+            initTabelaRAAS('#tabela-raas-pacientes', dadosRaasPacEl.textContent, colunasRaasPacEl.textContent, 'RAAS_Quantidade_Pacientes_CAPS');
+        }
+        if (dadosRaasProfEl && colunasRaasProfEl) {
+            initTabelaRAAS('#tabela-raas-prof', dadosRaasProfEl.textContent, colunasRaasProfEl.textContent, 'RAAS_Producao_Profissionais_CAPS');
+        }
+        if (dadosRaasAcoesEl && colunasRaasAcoesEl) {
+            initTabelaRAAS('#tabela-raas-acoes', dadosRaasAcoesEl.textContent, colunasRaasAcoesEl.textContent, 'RAAS_Acoes_CBO_CAPS');
+        }
+
+        window.alternarVisaoRAAS = function(tipo) {
+            $('#container-raas-pacientes, #container-raas-prof, #container-raas-acoes').addClass('d-none');
+            if (tipo === 'pacientes') {
+                $('#container-raas-pacientes').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-raas-pacientes')) {
+                    $('#tabela-raas-pacientes').DataTable().columns.adjust().draw();
+                }
+            } else if (tipo === 'prof') {
+                $('#container-raas-prof').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-raas-prof')) {
+                    $('#tabela-raas-prof').DataTable().columns.adjust().draw();
+                }
+            } else if (tipo === 'acoes') {
+                $('#container-raas-acoes').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-raas-acoes')) {
+                    $('#tabela-raas-acoes').DataTable().columns.adjust().draw();
+                }
+            }
+        };
+
+        // ==========================================
+        // INICIALIZAÇÃO RELATÓRIO 16 (AMG)
+        // ==========================================
         var dadosAtivosEl = document.getElementById('dados-ativos-json');
         var colunasAtivosEl = document.getElementById('colunas-ativos-json');
         var dadosInativosEl = document.getElementById('dados-inativos-json');

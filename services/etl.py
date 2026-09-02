@@ -786,3 +786,150 @@ def processa_bpa_dbf(caminho, periodo=None):
 
     return True
 
+
+def processa_raas_arquivo(caminho, periodo=None):
+    """
+    Processa arquivos de exportação do RAAS (Registro das Ações Ambulatoriais de Saúde) das unidades CAPS.
+    Lê as linhas:
+      - Tipo 15 (Folha RAAS / Pacientes): Contagem de pacientes por CAPS e competência.
+      - Tipo 16 (Ações Realizadas): Produção por Estabelecimento, CBO, CNS/Profissional e Procedimento SIGTAP.
+    Grava nas tabelas SQLite:
+      - 'RAAS_PACIENTES'
+      - 'RAAS_ACOES_PROF'
+      - 'RAAS_ACOES'
+    """
+    import os
+    import json
+    
+    catalogo_path = os.path.join(os.path.dirname(__file__), 'raas_catalogo.json')
+    cbos_map = {}
+    proced_map = {}
+    profs_map = {}
+    estab_map = {
+        '2029626': 'CAPS ADULTO III VILA MATILDE',
+        '3304566': 'CAPS AD III PENHA',
+        '6387640': 'CAPS INFANTOJUVENIL II PENHA',
+        '9688463': 'CAPS AD II CANGAIBA'
+    }
+    
+    if os.path.exists(catalogo_path):
+        with open(catalogo_path, 'r', encoding='utf-8') as f:
+            cat = json.load(f)
+            cbos_map = cat.get('cbos', {})
+            proced_map = cat.get('procedimentos', {})
+            profs_map = cat.get('profissionais', {})
+            estab_map.update(cat.get('estabelecimentos', {}))
+
+    linhas_15 = []
+    linhas_16 = []
+
+    with open(caminho, 'r', encoding='latin1', errors='ignore') as f:
+        for linha in f:
+            tipo = linha[:2]
+            if tipo == '15':
+                cmp = linha[4:10].strip()
+                cnes = linha[10:17].strip()
+                cns_pac = linha[17:32].strip()
+                nome_pac = linha[50:80].strip()
+                if cmp and cnes:
+                    linhas_15.append({
+                        'competencia': cmp,
+                        'cnes': cnes,
+                        'cns_paciente': cns_pac,
+                        'nome_paciente': nome_pac
+                    })
+            elif tipo == '16':
+                cmp = linha[4:10].strip()
+                cnes = linha[10:17].strip()
+                cns_pac = linha[17:32].strip()
+                cod_acao = linha[40:50].strip()
+                cod_cbo = linha[50:56].strip()
+                cns_prof = linha[56:71].strip()
+                dt_exec = linha[71:79].strip()
+                qtde_str = linha[85:91].strip()
+                try:
+                    qtde = int(qtde_str)
+                except Exception:
+                    qtde = 1
+                if cmp and cnes and cod_acao:
+                    linhas_16.append({
+                        'competencia': cmp,
+                        'cnes': cnes,
+                        'cns_paciente': cns_pac,
+                        'cod_acao': cod_acao,
+                        'cod_cbo': cod_cbo,
+                        'cns_prof': cns_prof,
+                        'dt_exec': dt_exec,
+                        'qtde': qtde
+                    })
+
+    if not linhas_15 and not linhas_16:
+        print(f"Nenhum registro RAAS (tipo 15 ou 16) encontrado no arquivo {caminho}.")
+        return False
+
+    hoje_ts = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    with app.app_context():
+        # 1. Processa Pacientes (Linhas 15)
+        if linhas_15:
+            df15 = pd.DataFrame(linhas_15)
+            # Agrupa quantidade de pacientes por competência e cnes
+            df_pac = df15.groupby(['competencia', 'cnes'], as_index=False)['nome_paciente'].count()
+            df_pac.rename(columns={'competencia': 'ano_mes', 'nome_paciente': 'qt_pacientes'}, inplace=True)
+            df_pac['estabelecimento'] = df_pac['cnes'].map(estab_map).fillna(df_pac['cnes'].apply(lambda x: f"CAPS CNES {x}"))
+            df_pac['data_extracao'] = hoje_ts
+
+            for _, r in df_pac.iterrows():
+                comp = r['ano_mes']
+                cnes_val = r['cnes']
+                try:
+                    db.session.execute(text(f"DELETE FROM 'RAAS_PACIENTES' WHERE ano_mes = '{comp}' AND cnes = '{cnes_val}'"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+
+            df_pac.to_sql(name='RAAS_PACIENTES', con=db.engine, if_exists='append', index=False)
+            print(f"RAAS_PACIENTES gravado: {len(df_pac)} registros.")
+
+        # 2. Processa Ações por Profissional (Linhas 16)
+        if linhas_16:
+            df16 = pd.DataFrame(linhas_16)
+            df16['estabelecimento'] = df16['cnes'].map(estab_map).fillna(df16['cnes'].apply(lambda x: f"CAPS CNES {x}"))
+            df16['descr_cbo'] = df16['cod_cbo'].map(cbos_map).fillna(df16['cod_cbo'])
+            df16['procedimento'] = df16['cod_acao'].map(proced_map).fillna(df16['cod_acao'])
+            df16['nome_prof'] = df16['cns_prof'].map(profs_map).fillna(df16['cns_prof'])
+
+            # Agrupa produção por profissional
+            df_prof = df16.groupby(
+                ['competencia', 'cnes', 'estabelecimento', 'cod_cbo', 'descr_cbo', 'cns_prof', 'nome_prof', 'cod_acao', 'procedimento'],
+                as_index=False
+            )['qtde'].sum()
+            df_prof.rename(columns={'competencia': 'ano_mes', 'cod_cbo': 'co_cbo', 'qtde': 'quantidade'}, inplace=True)
+            df_prof['data_extracao'] = hoje_ts
+
+            # Agrupa consolidado de ações por CBO
+            df_acoes = df16.groupby(
+                ['competencia', 'cnes', 'estabelecimento', 'cod_cbo', 'descr_cbo', 'cod_acao', 'procedimento'],
+                as_index=False
+            )['qtde'].sum()
+            df_acoes.rename(columns={'competencia': 'ano_mes', 'cod_cbo': 'co_cbo', 'qtde': 'quantidade'}, inplace=True)
+            df_acoes['data_extracao'] = hoje_ts
+
+            # Limpa e grava no banco por competência e unidade
+            competencias = df_prof['ano_mes'].unique()
+            cnes_list = df_prof['cnes'].unique()
+            for comp in competencias:
+                for cnes_val in cnes_list:
+                    try:
+                        db.session.execute(text(f"DELETE FROM 'RAAS_ACOES_PROF' WHERE ano_mes = '{comp}' AND cnes = '{cnes_val}'"))
+                        db.session.execute(text(f"DELETE FROM 'RAAS_ACOES' WHERE ano_mes = '{comp}' AND cnes = '{cnes_val}'"))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+            df_prof.to_sql(name='RAAS_ACOES_PROF', con=db.engine, if_exists='append', index=False)
+            df_acoes.to_sql(name='RAAS_ACOES', con=db.engine, if_exists='append', index=False)
+            print(f"RAAS_ACOES_PROF ({len(df_prof)} reg) e RAAS_ACOES ({len(df_acoes)} reg) gravados.")
+
+    return True
+
