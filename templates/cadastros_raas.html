@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+                <div>
+                    <h2><i class="bi bi-person-gear text-primary me-2"></i>Gerenciar Cadastros do RAAS</h2>
+                    <p class="text-muted mb-0">Cadastre e gerencie nomes de profissionais pelo CNS, descrições de procedimentos SIGTAP e cargos CBOs.</p>
+                </div>
+            </div>
+
+            {% if mensagem %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i>{{ mensagem }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endif %}
+
+            <!-- ALERTA DE PENDÊNCIAS DETECTADAS NA PRODUÇÃO -->
+            {% if pendentes_prof or pendentes_proc or pendentes_cbo %}
+            <div class="card border-warning shadow-sm mb-4">
+                <div class="card-header bg-warning bg-opacity-25 text-dark fw-bold">
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2 fs-5"></i>Atenção: Novos Itens Detectados na Produção do RAAS!
+                </div>
+                <div class="card-body">
+                    <p class="small text-muted mb-3">Os seguintes itens foram encontrados nos arquivos importados do RAAS mas ainda não possuem nomes cadastrados. Preencha abaixo para salvar em lote e atualizar os relatórios automaticamente:</p>
+
+                    <!-- Formulário de Lote -->
+                    <form action="{{ url_for('cadastros_raas') }}" method="POST">
+                        <input type="hidden" name="acao" value="salvar_lote_pendentes">
+
+                        <!-- 1. Profissionais Pendentes -->
+                        {% if pendentes_prof %}
+                        <h6 class="text-primary fw-bold"><i class="bi bi-person-badge me-1"></i> Profissionais Pendentes de Nome ({{ pendentes_prof|length }})</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-bordered align-middle small">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 20%;">CNS do Profissional</th>
+                                        <th style="width: 25%;">Estabelecimento</th>
+                                        <th style="width: 20%;">Cargo (CBO)</th>
+                                        <th>Nome Completo do Profissional</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in pendentes_prof %}
+                                    <tr>
+                                        <td><code>{{ p.cns_prof }}</code></td>
+                                        <td>{{ p.estabelecimento }}</td>
+                                        <td>{{ p.descr_cbo }}</td>
+                                        <td>
+                                            <input type="text" name="prof_{{ p.cns_prof }}" class="form-control form-control-sm" placeholder="Digite o nome completo...">
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+
+                        <!-- 2. Procedimentos Pendentes -->
+                        {% if pendentes_proc %}
+                        <h6 class="text-success fw-bold"><i class="bi bi-journal-medical me-1"></i> Procedimentos Pendentes de Descrição ({{ pendentes_proc|length }})</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-bordered align-middle small">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 25%;">Código SIGTAP</th>
+                                        <th>Nome / Descrição do Procedimento</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for proc in pendentes_proc %}
+                                    <tr>
+                                        <td><code>{{ proc.cod_acao }}</code></td>
+                                        <td>
+                                            <input type="text" name="proc_{{ proc.cod_acao }}" class="form-control form-control-sm" placeholder="Digite a descrição oficial do procedimento...">
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+
+                        <!-- 3. CBOs Pendentes -->
+                        {% if pendentes_cbo %}
+                        <h6 class="text-info fw-bold"><i class="bi bi-briefcase me-1"></i> CBOs Pendentes de Descrição ({{ pendentes_cbo|length }})</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-bordered align-middle small">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 25%;">Código CBO</th>
+                                        <th>Descrição do Cargo / CBO</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for c in pendentes_cbo %}
+                                    <tr>
+                                        <td><code>{{ c.co_cbo }}</code></td>
+                                        <td>
+                                            <input type="text" name="cbo_{{ c.co_cbo }}" class="form-control form-control-sm" placeholder="Digite a descrição do CBO...">
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+
+                        <div class="text-end mt-2">
+                            <button type="submit" class="btn btn-warning fw-bold px-4">
+                                <i class="bi bi-check2-all me-1"></i> Salvar Todos Preenchidos em Lote
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- ABAS DE NAVEGAÇÃO DOS CADASTROS -->
+            <ul class="nav nav-tabs mb-3" id="raasTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fw-bold" id="prof-tab" data-bs-toggle="tab" data-bs-target="#tab-prof" type="button" role="tab">
+                        <i class="bi bi-person-badge-fill me-1 text-primary"></i> 1. Profissionais ({{ total_prof }})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold" id="proc-tab" data-bs-toggle="tab" data-bs-target="#tab-proc" type="button" role="tab">
+                        <i class="bi bi-journal-medical me-1 text-success"></i> 2. Procedimentos SIGTAP ({{ total_proc }})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold" id="cbo-tab" data-bs-toggle="tab" data-bs-target="#tab-cbo" type="button" role="tab">
+                        <i class="bi bi-briefcase-fill me-1 text-info"></i> 3. CBOs / Cargos ({{ total_cbo }})
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="raasTabsContent">
+                <!-- ================= ABA 1: PROFISSIONAIS ================= -->
+                <div class="tab-pane fade show active" id="tab-prof" role="tabpanel">
+                    <div class="card shadow-sm p-3 mb-4">
+                        <h5 class="text-primary mb-3"><i class="bi bi-person-plus-fill me-2"></i>Adicionar / Atualizar Profissional</h5>
+                        <form action="{{ url_for('cadastros_raas') }}" method="POST" class="row g-3 align-items-end">
+                            <input type="hidden" name="acao" value="salvar_prof">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Cartão Nacional de Saúde (CNS)</label>
+                                <input type="text" name="cns" class="form-control" placeholder="Ex: 708200640232041" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Nome Completo</label>
+                                <input type="text" name="nome" class="form-control" placeholder="Ex: MARIA SILVA SANTOS" required>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-save me-1"></i> Salvar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card shadow-sm p-3">
+                        <h5 class="mb-3">Todos os Profissionais Cadastrados</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover table-sm w-100 align-middle" id="tabelaProf">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 30%;">CNS</th>
+                                        <th>Nome do Profissional</th>
+                                        <th style="width: 15%;">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cns, nome in profissionais.items() %}
+                                    <tr>
+                                        <td><code>{{ cns }}</code></td>
+                                        <td>{{ nome }}</td>
+                                        <td>
+                                            <form action="{{ url_for('cadastros_raas') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir o cadastro deste profissional?');">
+                                                <input type="hidden" name="acao" value="excluir_prof">
+                                                <input type="hidden" name="codigo_chave" value="{{ cns }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir Profissional">
+                                                    <i class="bi bi-trash me-1"></i> Excluir
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= ABA 2: PROCEDIMENTOS ================= -->
+                <div class="tab-pane fade" id="tab-proc" role="tabpanel">
+                    <div class="card shadow-sm p-3 mb-4">
+                        <h5 class="text-success mb-3"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar / Atualizar Procedimento</h5>
+                        <form action="{{ url_for('cadastros_raas') }}" method="POST" class="row g-3 align-items-end">
+                            <input type="hidden" name="acao" value="salvar_proc">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Código SIGTAP (10 dígitos)</label>
+                                <input type="text" name="codigo" class="form-control" placeholder="Ex: 0301080208" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Descrição do Procedimento</label>
+                                <input type="text" name="nome" class="form-control" placeholder="Ex: ACOLHIMENTO NOTURNO DE PACIENTE..." required>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-success w-100">
+                                    <i class="bi bi-save me-1"></i> Salvar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card shadow-sm p-3">
+                        <h5 class="mb-3">Todos os Procedimentos Cadastrados</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover table-sm w-100 align-middle" id="tabelaProc">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 25%;">Código SIGTAP</th>
+                                        <th>Descrição do Procedimento</th>
+                                        <th style="width: 15%;">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cod, desc in procedimentos.items() %}
+                                    <tr>
+                                        <td><code>{{ cod }}</code></td>
+                                        <td>{{ desc }}</td>
+                                        <td>
+                                            <form action="{{ url_for('cadastros_raas') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este procedimento?');">
+                                                <input type="hidden" name="acao" value="excluir_proc">
+                                                <input type="hidden" name="codigo_chave" value="{{ cod }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir Procedimento">
+                                                    <i class="bi bi-trash me-1"></i> Excluir
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= ABA 3: CBOS ================= -->
+                <div class="tab-pane fade" id="tab-cbo" role="tabpanel">
+                    <div class="card shadow-sm p-3 mb-4">
+                        <h5 class="text-info mb-3"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar / Atualizar CBO</h5>
+                        <form action="{{ url_for('cadastros_raas') }}" method="POST" class="row g-3 align-items-end">
+                            <input type="hidden" name="acao" value="salvar_cbo">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Código CBO (6 dígitos)</label>
+                                <input type="text" name="codigo" class="form-control" placeholder="Ex: 225133" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Descrição do Cargo / CBO</label>
+                                <input type="text" name="descricao" class="form-control" placeholder="Ex: MEDICO PSIQUIATRA" required>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-info text-white w-100">
+                                    <i class="bi bi-save me-1"></i> Salvar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card shadow-sm p-3">
+                        <h5 class="mb-3">Todos os CBOs Cadastrados</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover table-sm w-100 align-middle" id="tabelaCBO">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width: 25%;">Código CBO</th>
+                                        <th>Descrição do Cargo</th>
+                                        <th style="width: 15%;">Ação</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cod, desc in cbos.items() %}
+                                    <tr>
+                                        <td><code>{{ cod }}</code></td>
+                                        <td>{{ desc }}</td>
+                                        <td>
+                                            <form action="{{ url_for('cadastros_raas') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este CBO?');">
+                                                <input type="hidden" name="acao" value="excluir_cbo">
+                                                <input type="hidden" name="codigo_chave" value="{{ cod }}">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir CBO">
+                                                    <i class="bi bi-trash me-1"></i> Excluir
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Estilos do DataTables -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.bootstrap5.min.css">
+
+<!-- Scripts do DataTables -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<!-- Scripts para Botões, Exportação e Impressão -->
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        function criarTabela(selector, titulo) {
+            $(selector).DataTable({
+                language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" },
+                pageLength: 25,
+                lengthMenu: [10, 25, 50, 100],
+                dom: '<"d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2"<"d-flex align-items-center"l><"d-flex flex-wrap gap-2 justify-content-center"B><"d-flex align-items-center"f>>' +
+                     '<"table-responsive"t>' +
+                     '<"d-flex flex-wrap justify-content-between align-items-center mt-3"<"text-muted small"i><""p>>',
+                buttons: [
+                    {
+                        extend: 'colvis',
+                        text: '<i class="bi bi-layout-three-columns"></i> Selecionar Colunas',
+                        className: 'btn btn-outline-secondary',
+                        postfixButtons: ['colvisRestore']
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: titulo,
+                        text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
+                        className: 'btn btn-success',
+                        exportOptions: {
+                            columns: [0, 1],
+                            modifier: { search: 'applied' }
+                        }
+                    },
+                    {
+                        extend: 'print',
+                        title: titulo,
+                        text: '<i class="bi bi-printer"></i> Imprimir',
+                        className: 'btn btn-outline-dark',
+                        exportOptions: {
+                            columns: [0, 1],
+                            modifier: { search: 'applied' }
+                        }
+                    }
+                ],
+                initComplete: function() {
+                    this.api().columns([0, 1]).every(function() {
+                        var column = this;
+                        var title = $(column.header()).text().trim();
+                        var input = $('<input type="text" class="form-control form-control-sm mt-2" placeholder="Filtrar ' + title + '..." style="font-weight: normal; font-size: 0.8rem;" />')
+                            .appendTo($(column.header()))
+                            .on('keyup change clear', function() {
+                                if (column.search() !== this.value) {
+                                    column.search(this.value).draw();
+                                }
+                            })
+                            .on('click', function(e) {
+                                e.stopPropagation();
+                            });
+                    });
+                }
+            });
+        }
+
+        criarTabela('#tabelaProf', 'Cadastros_Profissionais_RAAS');
+        criarTabela('#tabelaProc', 'Cadastros_Procedimentos_SIGTAP_RAAS');
+        criarTabela('#tabelaCBO', 'Cadastros_CBOs_RAAS');
+
+        // Ajusta colunas quando o usuário troca de aba
+        $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
+            $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+        });
+    });
+</script>
+{% endblock %}
