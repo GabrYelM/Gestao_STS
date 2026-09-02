@@ -324,7 +324,9 @@ def download_excel(indice, periodo):
         return redirect(url_for("login"))
         
     try:
-        if indice == '03':
+        if indice == '02':
+            df = prod.gera_relatorio_02(periodo)
+        elif indice == '03':
             df = prod.gera_relatorio_03(periodo)
         elif indice == '04':
             df = prod.gera_relatorio_04(periodo)
@@ -417,7 +419,9 @@ def producao():
 
         # 2. Um "if" simples para decidir qual função rodar
         try:
-            if indice == '03':
+            if indice == '02':
+                df = prod.gera_relatorio_02(periodo)
+            elif indice == '03':
                 df = prod.gera_relatorio_03(periodo)
             elif indice == '04':
                 df = prod.gera_relatorio_04(periodo)
@@ -537,8 +541,34 @@ def upload_dtic():
         
         sucessos = 0
         for arquivo in arquivos:
-            if arquivo and arquivo.filename.endswith('.zip'):
-                nome_zip = arquivo.filename.lower()
+            if not arquivo or not arquivo.filename:
+                continue
+            nome_arq = arquivo.filename
+            nome_lower = nome_arq.lower()
+            
+            # 1. Arquivo .DBF do TabWin (Relatório 02 - Produção BPA)
+            if nome_lower.endswith('.dbf'):
+                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                caminho_final = os.path.join(pasta_destino, nome_arq)
+                arquivo.save(caminho_final)
+                
+                from services.etl import processa_bpa_dbf
+                try:
+                    if processa_bpa_dbf(caminho_final):
+                        sucessos += 1
+                except Exception as e:
+                    print(f"Erro ao processar DBF {nome_arq}: {e}")
+                finally:
+                    # Remove o arquivo .DBF bruto do disco após a gravação no banco SQLite
+                    if os.path.exists(caminho_final):
+                        try:
+                            os.remove(caminho_final)
+                        except Exception as err_rem:
+                            print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
+
+            # 2. Arquivos .ZIP do DTIC / SIGAPEP
+            elif nome_lower.endswith('.zip'):
+                nome_zip = nome_lower
                 
                 # Identifica por nome (regra das referências)
                 tipo_identificado = None
@@ -556,14 +586,14 @@ def upload_dtic():
                     pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
                     
                     with zipfile.ZipFile(arquivo, 'r') as zip_ref:
-                        for nome_arq in zip_ref.namelist():
-                            if nome_arq.endswith('.csv') or nome_arq.endswith('.xls') or nome_arq.endswith('.xlsx'):
-                                ext = os.path.splitext(nome_arq)[1]
+                        for nome_arq_zip in zip_ref.namelist():
+                            if nome_arq_zip.endswith('.csv') or nome_arq_zip.endswith('.xls') or nome_arq_zip.endswith('.xlsx'):
+                                ext = os.path.splitext(nome_arq_zip)[1]
                                 nome_final = f"{tipo_identificado}{ext}"
                                 caminho_final = os.path.join(pasta_destino, nome_final)
                                 
                                 # Extrai, filtra e salva o arquivo
-                                with zip_ref.open(nome_arq) as fonte:
+                                with zip_ref.open(nome_arq_zip) as fonte:
                                     import pandas as pd
                                     
                                     # Definir regras de filtro baseadas no relatório
@@ -613,7 +643,7 @@ def upload_dtic():
                                 
                     sucessos += 1
                     
-        mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e extraído(s) para ARQUIVOS ORIGINAIS!"
+        mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e importado(s) para o banco de dados!"
         
     return render_template("upload_dtic.html", mensagem=mensagem)
 
@@ -670,6 +700,4 @@ def gerenciar_equipes():
     return render_template('equipes.html', equipes=equipes, pendentes=pendentes)
 
 if __name__ == '__main__':
-
-
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
