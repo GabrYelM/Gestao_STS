@@ -1,6 +1,9 @@
 import os
+import json
+import io
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, jsonify, request, session, url_for
+from sqlalchemy import text
 from concurrent.futures import ThreadPoolExecutor
 from decorators import *
 app = Flask(__name__)
@@ -781,6 +784,14 @@ def gerenciar_equipes():
                         db.session.add(equipe)
             db.session.commit()
             return redirect(url_for('gerenciar_equipes'))
+        elif request.form.get('acao') == 'excluir':
+            cod_ine = request.form.get('cod_ine')
+            if cod_ine:
+                equipe = models.Equipe.query.get(cod_ine)
+                if equipe:
+                    db.session.delete(equipe)
+                    db.session.commit()
+            return redirect(url_for('gerenciar_equipes'))
         else:
             # Atualiza a sigla de uma equipe existente ou cadastra uma nova individual
             cod_ine = request.form.get('cod_ine')
@@ -798,6 +809,196 @@ def gerenciar_equipes():
                 return redirect(url_for('gerenciar_equipes'))
 
     return render_template('equipes.html', equipes=equipes, pendentes=pendentes)
+
+
+@app.route('/cadastros_raas', methods=['GET', 'POST'])
+def cadastros_raas():
+    if "usuario_id" not in session:
+        return redirect(url_for("login"))
+
+    catalogo_path = os.path.join(os.getcwd(), 'services', 'raas_catalogo.json')
+    cat_data = {'cbos': {}, 'procedimentos': {}, 'profissionais': {}, 'estabelecimentos': {}}
+    if os.path.exists(catalogo_path):
+        with open(catalogo_path, 'r', encoding='utf-8') as f:
+            cat_data = json.load(f)
+
+    profissionais = cat_data.get('profissionais', {})
+    procedimentos = cat_data.get('procedimentos', {})
+    cbos = cat_data.get('cbos', {})
+
+    mensagem = None
+
+    if request.method == 'POST':
+        acao = request.form.get('acao')
+        alterou = False
+
+        if acao == 'salvar_lote_pendentes':
+            # 1. Salva Profissionais em Lote
+            for key, val in request.form.items():
+                if key.startswith('prof_') and val and val.strip():
+                    cns = key.replace('prof_', '').strip()
+                    nome = val.strip().upper()
+                    profissionais[cns] = nome
+                    alterou = True
+                    try:
+                        db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET nome_prof = :nome WHERE cns_prof = :cns"), {'nome': nome, 'cns': cns})
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                elif key.startswith('proc_') and val and val.strip():
+                    cod = key.replace('proc_', '').strip()
+                    desc = val.strip().upper()
+                    procedimentos[cod] = desc
+                    alterou = True
+                    try:
+                        db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+                elif key.startswith('cbo_') and val and val.strip():
+                    cod = key.replace('cbo_', '').strip()
+                    desc = val.strip().upper()
+                    cbos[cod] = desc
+                    alterou = True
+                    try:
+                        db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
+            mensagem = "Cadastros em lote salvos e propagados no banco de dados com sucesso!"
+
+        elif acao == 'salvar_prof' or acao == 'salvar_prof_modal':
+            cns = request.form.get('cns') or request.form.get('codigo_chave')
+            nome = request.form.get('nome') or request.form.get('valor')
+            if cns and nome:
+                cns = cns.strip()
+                nome = nome.strip().upper()
+                profissionais[cns] = nome
+                alterou = True
+                try:
+                    db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET nome_prof = :nome WHERE cns_prof = :cns"), {'nome': nome, 'cns': cns})
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                mensagem = f"Profissional {nome} cadastrado com sucesso!"
+
+        elif acao == 'salvar_proc' or acao == 'salvar_proc_modal':
+            cod = request.form.get('codigo') or request.form.get('codigo_chave')
+            desc = request.form.get('nome') or request.form.get('valor')
+            if cod and desc:
+                cod = cod.strip()
+                desc = desc.strip().upper()
+                procedimentos[cod] = desc
+                alterou = True
+                try:
+                    db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                mensagem = f"Procedimento {cod} atualizado com sucesso!"
+
+        elif acao == 'salvar_cbo' or acao == 'salvar_cbo_modal':
+            cod = request.form.get('codigo') or request.form.get('codigo_chave')
+            desc = request.form.get('descricao') or request.form.get('valor')
+            if cod and desc:
+                cod = cod.strip()
+                desc = desc.strip().upper()
+                cbos[cod] = desc
+                alterou = True
+                try:
+                    db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                mensagem = f"CBO {cod} atualizado com sucesso!"
+
+        elif acao == 'excluir_prof':
+            cns = request.form.get('codigo_chave') or request.form.get('cns')
+            if cns and cns in profissionais:
+                nome_removido = profissionais.pop(cns)
+                alterou = True
+                mensagem = f"Profissional {nome_removido} ({cns}) excluído do cadastro!"
+
+        elif acao == 'excluir_proc':
+            cod = request.form.get('codigo_chave') or request.form.get('codigo')
+            if cod and cod in procedimentos:
+                proc_removido = procedimentos.pop(cod)
+                alterou = True
+                mensagem = f"Procedimento {cod} - {proc_removido} excluído do cadastro!"
+
+        elif acao == 'excluir_cbo':
+            cod = request.form.get('codigo_chave') or request.form.get('codigo')
+            if cod and cod in cbos:
+                cbo_removido = cbos.pop(cod)
+                alterou = True
+                mensagem = f"CBO {cod} - {cbo_removido} excluído do cadastro!"
+
+        if alterou:
+            cat_data['profissionais'] = profissionais
+            cat_data['procedimentos'] = procedimentos
+            cat_data['cbos'] = cbos
+            with open(catalogo_path, 'w', encoding='utf-8') as f:
+                json.dump(cat_data, f, ensure_ascii=False, indent=2)
+
+    # Identifica pendências no banco de dados SQLite
+    pendentes_prof = []
+    pendentes_proc = []
+    pendentes_cbo = []
+
+    try:
+        df_pend_prof = pd.read_sql("""
+            SELECT DISTINCT cns_prof, estabelecimento, co_cbo, descr_cbo
+            FROM 'RAAS_ACOES_PROF'
+            WHERE nome_prof = cns_prof OR nome_prof IS NULL OR nome_prof = ''
+            ORDER BY estabelecimento, descr_cbo
+        """, con=db.engine)
+        pendentes_prof = df_pend_prof.to_dict('records')
+    except Exception:
+        pass
+
+    try:
+        df_pend_proc = pd.read_sql("""
+            SELECT DISTINCT cod_acao, procedimento
+            FROM 'RAAS_ACOES_PROF'
+            WHERE procedimento = cod_acao OR procedimento LIKE 'Procedimento %' OR procedimento IS NULL OR procedimento = ''
+            ORDER BY cod_acao
+        """, con=db.engine)
+        pendentes_proc = df_pend_proc.to_dict('records')
+    except Exception:
+        pass
+
+    try:
+        df_pend_cbo = pd.read_sql("""
+            SELECT DISTINCT co_cbo, descr_cbo
+            FROM 'RAAS_ACOES_PROF'
+            WHERE descr_cbo = co_cbo OR descr_cbo IS NULL OR descr_cbo = ''
+            ORDER BY co_cbo
+        """, con=db.engine)
+        pendentes_cbo = df_pend_cbo.to_dict('records')
+    except Exception:
+        pass
+
+    return render_template(
+        'cadastros_raas.html',
+        profissionais=profissionais,
+        procedimentos=procedimentos,
+        cbos=cbos,
+        total_prof=len(profissionais),
+        total_proc=len(procedimentos),
+        total_cbo=len(cbos),
+        pendentes_prof=pendentes_prof,
+        pendentes_proc=pendentes_proc,
+        pendentes_cbo=pendentes_cbo,
+        mensagem=mensagem
+    )
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
