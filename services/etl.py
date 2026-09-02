@@ -669,3 +669,120 @@ def processa_painel_monitoramento(html_content, tabela_db='REL-06', default_loca
         
     return True
 
+
+def processa_bpa_dbf(caminho, periodo=None):
+    """
+    Processa arquivos .DBF do TabWin / BPAMAG (Relatório 02 - Produção por Unidades).
+    Lê os campos:
+      - PRD_UID: Código CNES da unidade
+      - PRD_CMP: Competência (ex: '202608')
+      - PRD_PA: Código do Procedimento
+      - PRD_QT_P: Quantidade Produzida
+    Relaciona com o catálogo de unidades e procedimentos e salva na tabela 'REL-02'.
+    """
+    import os
+    import json
+    from dbfread import DBF
+    
+    # Carrega catálogo
+    catalogo_path = os.path.join(os.path.dirname(__file__), 'bpa_catalogo.json')
+    unidades_map = {}
+    procedimentos_map = {}
+    if os.path.exists(catalogo_path):
+        with open(catalogo_path, 'r', encoding='utf-8') as f:
+            cat_data = json.load(f)
+            for u in cat_data.get('unidades', []):
+                cnes_clean = str(u['cnes']).strip().zfill(7)
+                unidades_map[cnes_clean] = u['coluna']
+                unidades_map[str(int(cnes_clean))] = u['coluna']
+            procedimentos_map = cat_data.get('procedimentos', {})
+
+    table = DBF(caminho, encoding='latin1')
+    df = pd.DataFrame(iter(table))
+    
+    if df.empty or 'PRD_UID' not in df.columns or 'PRD_PA' not in df.columns:
+        print("Arquivo DBF inválido ou sem colunas essenciais.")
+        return False
+
+    # Normaliza campos
+    df['cnes'] = df['PRD_UID'].astype(str).str.strip().str.replace('.0', '', regex=False).str.zfill(7)
+    df['codigo_procedimento'] = df['PRD_PA'].astype(str).str.strip()
+    df['quantidade_produzida'] = pd.to_numeric(df.get('PRD_QT_P', 0), errors='coerce').fillna(0)
+    
+    # 1. Identifica a competência alvo do arquivo (ex: STS26_07.dbf -> 202607)
+    comp_alvo = None
+    if periodo:
+        comp_alvo = str(periodo).strip()
+    else:
+        import re
+        nome_arq = os.path.basename(caminho)
+        m = re.search(r'(?:STS|PRD)?(\d{2})_(\d{2})', nome_arq, re.IGNORECASE)
+        if m:
+            comp_alvo = f"20{m.group(1)}{m.group(2)}"
+        else:
+            m4 = re.search(r'(20\d{2})(\d{2})', nome_arq)
+            if m4:
+                comp_alvo = f"{m4.group(1)}{m4.group(2)}"
+
+    # 2. Filtra estritamente a competência alvo (reproduz o filtro do TabWin 'Seleções ativas: Competência')
+    # Isso evita que resíduos retroativos de meses anteriores (ex: 06 e 05 dentro do arquivo de 07) contaminem outros meses
+    if 'PRD_CMP' in df.columns and df['PRD_CMP'].notna().any():
+        df['PRD_CMP'] = df['PRD_CMP'].astype(str).str.strip()
+        if comp_alvo:
+            df = df[df['PRD_CMP'] == comp_alvo]
+            df['ano_mes'] = comp_alvo
+        else:
+            comp_majoritaria = df['PRD_CMP'].value_counts().index[0]
+            df = df[df['PRD_CMP'] == comp_majoritaria]
+            df['ano_mes'] = comp_majoritaria
+    elif comp_alvo:
+        df['ano_mes'] = comp_alvo
+    else:
+        df['ano_mes'] = datetime.today().strftime('%Y%m')
+
+    if df.empty:
+        print(f"Nenhum registro encontrado no DBF para a competência {comp_alvo}.")
+        return False
+
+    # Resolve nome da unidade
+    df['unidade'] = df['cnes'].map(unidades_map).fillna(df['PRD_UID'].astype(str))
+    
+    # Resolve nome do procedimento
+    def resolver_nome_proc(cod):
+        cod_str = str(cod).strip()
+        if cod_str in procedimentos_map:
+            return procedimentos_map[cod_str]
+        cod_10d = cod_str.zfill(10)
+        if cod_10d in procedimentos_map:
+            return procedimentos_map[cod_10d]
+        if len(cod_str) == 10:
+            cod_8d = cod_str[1:9]
+            if cod_8d in procedimentos_map:
+                return procedimentos_map[cod_8d]
+        cod_strip = cod_str.lstrip('0')
+        if cod_strip in procedimentos_map:
+            return procedimentos_map[cod_strip]
+        return f"Procedimento {cod_str}"
+
+    df['procedimento'] = df['codigo_procedimento'].apply(resolver_nome_proc)
+
+    # Agrupa por competência, cnes, unidade, codigo_procedimento e procedimento
+    df_agrupado = df.groupby(['ano_mes', 'cnes', 'unidade', 'codigo_procedimento', 'procedimento'], as_index=False)['quantidade_produzida'].sum()
+    
+    df_agrupado['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    with app.app_context():
+        # Deleta registros anteriores da mesma competência para evitar duplicidade
+        competencias = df_agrupado['ano_mes'].unique()
+        for comp in competencias:
+            try:
+                db.session.execute(text(f"DELETE FROM 'REL-02' WHERE ano_mes = '{comp}'"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        df_agrupado.to_sql(name='REL-02', con=db.engine, if_exists='append', index=False)
+        print(f"REL-02 gravado com sucesso! {len(df_agrupado)} registros para competências {list(competencias)}.")
+
+    return True
+

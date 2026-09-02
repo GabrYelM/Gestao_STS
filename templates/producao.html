@@ -85,6 +85,7 @@ div.dt-button-collection button.dt-button:hover {
             <label class="form-label">Qual Relatório de Produção deseja visualizar?</label>
             <select class="form-select" name="indice_relatorio" onchange="aoMudarRelatorio(this)">
                 <option value="" {% if not relatorio_selecionado %}selected{% endif %} disabled>Selecione um relatório...</option>
+                <option value="02" {% if relatorio_selecionado == '02' %}selected{% endif %}>Relatório 02 - PRODUÇÃO POR UNIDADES (BPA)</option>
                 <option value="03" {% if relatorio_selecionado == '03' %}selected{% endif %}>Relatório 03 - PLANILHA DE PRODUÇÃO POR ESPECIALIDADE (SIGA)</option>
                 <option value="04" {% if relatorio_selecionado == '04' %}selected{% endif %}>Relatório 04 - VAGAS OFERTADAS POR TIPO DE ATENDIMENTO DA AGENDA POR UNIDADE</option>
                 <option value="06" {% if relatorio_selecionado == '06' %}selected{% endif %}>Relatório 06 - PAINEL DE MONITORAMENTO (STS PENHA)</option>

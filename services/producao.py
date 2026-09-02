@@ -1,9 +1,74 @@
 import os
+import json
 from datetime import datetime
 import pandas as pd
 import numpy as np
 from database import db
 from app import app
+
+def gera_relatorio_02(periodo):
+    """
+    Gera o Relatório 02 (Produção por Unidades - BPA / TabWin).
+    Lê a tabela 'REL-02' para a competência informada,
+    e monta a tabela dinâmica:
+      - Linhas: CÓD PROCEDIMENTO, Procedimentos
+      - Colunas: Unidades (na ordem padrão das 34 unidades de saúde)
+      - Valores: Soma de quantidade_produzida (Qt Produzida)
+      - Suprime linhas zeradas (Total Geral > 0)
+    """
+    with app.app_context():
+        try:
+            query = f"SELECT * FROM 'REL-02' WHERE ano_mes = '{periodo}'"
+            df_rel02 = pd.read_sql(query, con=db.engine)
+        except Exception:
+            return None
+
+        if df_rel02 is None or df_rel02.empty:
+            return None
+
+        # Carrega catálogo para manter a ordenação padrão das unidades
+        catalogo_path = os.path.join(os.path.dirname(__file__), 'bpa_catalogo.json')
+        ordem_unidades = []
+        if os.path.exists(catalogo_path):
+            with open(catalogo_path, 'r', encoding='utf-8') as f:
+                cat_data = json.load(f)
+                ordem_unidades = [u['coluna'] for u in cat_data.get('unidades', [])]
+
+        df_rel02['quantidade_produzida'] = pd.to_numeric(df_rel02['quantidade_produzida'], errors='coerce').fillna(0)
+
+        df_pivot = pd.pivot_table(
+            df_rel02,
+            index=['codigo_procedimento', 'procedimento'],
+            columns='unidade',
+            values='quantidade_produzida',
+            aggfunc='sum',
+            fill_value=0
+        )
+
+        # Reordena colunas das unidades
+        colunas_existentes = list(df_pivot.columns)
+        colunas_ordenadas = [u for u in ordem_unidades if u in colunas_existentes]
+        # Adiciona eventuais unidades que não estavam no catálogo original
+        for c in colunas_existentes:
+            if c not in colunas_ordenadas:
+                colunas_ordenadas.append(c)
+
+        df_pivot = df_pivot[colunas_ordenadas]
+
+        # Converte para int
+        df_pivot = df_pivot.astype(int)
+
+        # Adiciona Total Geral por linha
+        df_pivot['Total Geral'] = df_pivot.sum(axis=1)
+
+        # Suprime linhas zeradas
+        df_pivot = df_pivot[df_pivot['Total Geral'] > 0]
+
+        # Renomeia índices
+        df_pivot.index.names = ['CÓD PROCEDIMENTO', 'Procedimentos']
+        df_pivot.columns.name = None
+
+        return df_pivot
 
 def gera_relatorio_03(periodo):
     with app.app_context():
@@ -850,6 +915,11 @@ def gera_relatorio_17(periodo):
         return df_pivot
 
 MAPA_RELATORIOS_INFO = {
+    '02': {
+        'fonte': 'TabWin / BPAMAG',
+        'tabela': 'REL-02',
+        'arquivos': ['STS26_08.dbf', 'PRODUCAO POR UNIDADES.DEF']
+    },
     '03': {
         'fonte': 'SIGA Saúde (BI - AT-02)',
         'tabela': 'AT-02',
