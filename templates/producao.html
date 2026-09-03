@@ -3,9 +3,24 @@
 
 {% block content %}
 <style>
+#tabela-dinamica {
+    width: 100% !important;
+}
 #tabela-dinamica th, #tabela-dinamica td {
-    white-space: nowrap !important;
     vertical-align: middle;
+    white-space: nowrap;
+    padding: 0.45rem 0.65rem;
+}
+#tabela-dinamica th.sorting,
+#tabela-dinamica th.sorting_asc,
+#tabela-dinamica th.sorting_desc {
+    padding-right: 28px !important;
+}
+.dataTables_scrollHeadInner, .dataTables_scrollHeadInner table {
+    width: 100% !important;
+}
+.dataTables_wrapper .dataTables_scroll {
+    overflow-x: auto !important;
 }
 
 /* Botões do DataTables - Garante texto sempre visível e nítido */
@@ -295,9 +310,11 @@ div.dt-button-collection button.dt-button:hover {
                 </div>
                 {% endif %}
             </div>
-            <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
-                <!-- O cabeçalho será injetado pelo DataTables via JSON -->
-            </table>
+            <div class="table-responsive">
+                <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
+                    <!-- O cabeçalho será injetado pelo DataTables via JSON -->
+                </table>
+            </div>
         </div>
 
         <!-- Dados JSON embutidos de forma segura para evitar erros de sintaxe no editor -->
@@ -495,12 +512,29 @@ div.dt-button-collection button.dt-button:hover {
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
 
 <script>
+    window.mapaCompetencias = {{ json_competencias_por_relatorio | safe or '{}' }};
+
     function aoMudarRelatorio(selectRel) {
         var val = selectRel.value;
         var selectPeriodo = document.querySelector('select[name=periodo]');
+        
         if (val === '06' || val === '07') {
             if (selectPeriodo) {
+                selectPeriodo.innerHTML = '<option value="" selected>Série Histórica (Últimos 12 meses)</option>';
                 selectPeriodo.disabled = true;
+            }
+        } else if (selectPeriodo && window.mapaCompetencias && window.mapaCompetencias[val]) {
+            var comps = window.mapaCompetencias[val];
+            if (comps && comps.length > 0) {
+                selectPeriodo.disabled = false;
+                selectPeriodo.innerHTML = '';
+                comps.forEach(function(item, idx) {
+                    var opt = document.createElement('option');
+                    opt.value = item[0];
+                    opt.textContent = item[1];
+                    if (idx === 0) opt.selected = true;
+                    selectPeriodo.appendChild(opt);
+                });
             }
         }
         document.getElementById('loading-overlay').classList.remove('d-none');
@@ -521,6 +555,7 @@ div.dt-button-collection button.dt-button:hover {
                 columns: tableCols,
                 deferRender: true,
                 scrollX: false,
+                autoWidth: false,
                 rowCallback: function(row, data) {
                     if (relIndice === '15') {
                         var sigla = data['SIGLA'];
@@ -635,6 +670,8 @@ div.dt-button-collection button.dt-button:hover {
                 data: tData,
                 columns: tCols,
                 deferRender: true,
+                scrollX: false,
+                autoWidth: false,
                 language: {
                     url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
                 },
@@ -717,6 +754,8 @@ div.dt-button-collection button.dt-button:hover {
                 data: tData,
                 columns: tCols,
                 deferRender: true,
+                scrollX: false,
+                autoWidth: false,
                 language: {
                     url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
                 },

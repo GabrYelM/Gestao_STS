@@ -43,6 +43,7 @@ import services.bot as sb
 import pandas as pd
 import services.etl as etl
 import services.producao as prod
+from services.competencias import obter_competencias_por_relatorio, sincronizar_todas_competencias, registrar_competencia
 
 gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
 
@@ -164,6 +165,11 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                 except Exception as e:
                     print(f"Erro no ETL do arquivo {caminho}: {e}")
 
+        try:
+            sincronizar_todas_competencias()
+        except Exception:
+            pass
+
     print("100% CONCLUÍDO COM SUCESSO!")
     status_extracao["em_andamento"] = False
     status_extracao["concluido"] = True
@@ -198,6 +204,11 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
                 if html_subpref:
                     status_extracao["progresso"] = "Gravando dados de Subprefeitura (REL-07) no BD..."
                     processa_painel_monitoramento(html_subpref, tabela_db='REL-07', default_localidade='Subprefeitura PENHA')
+            
+            try:
+                sincronizar_todas_competencias()
+            except Exception:
+                pass
                     
             status_extracao["progresso"] = "Extração do Painel concluída com sucesso!"
             status_extracao["status"] = "sucesso"
@@ -392,6 +403,7 @@ def download_excel(indice, periodo):
     except Exception as e:
         return str(e), 500
 
+
 @app.route("/producao", methods=["GET", "POST"])
 def producao():
     if "usuario_id" not in session:
@@ -402,22 +414,22 @@ def producao():
     json_colunas = None
     indice = request.form.get("indice_relatorio") if request.method == "POST" else None
     
-    from datetime import datetime, timedelta
-    from dateutil.relativedelta import relativedelta
-    hoje = datetime.today()
-    primeiro_dia = hoje.replace(day=1)
+    mapa_competencias = obter_competencias_por_relatorio()
     
-    # Gera a lista dos meses disponíveis incluindo o mês atual (fechamento) e os 12 meses anteriores
-    periodos_disponiveis = []
-    for i in range(0, 13):
-        mes_calculado = primeiro_dia - relativedelta(months=i)
-        valor = mes_calculado.strftime('%Y%m')
-        texto = mes_calculado.strftime('%m/%Y')
-        periodos_disponiveis.append((valor, texto))
+    if indice and indice in mapa_competencias and mapa_competencias[indice]:
+        periodos_disponiveis = mapa_competencias[indice]
+    else:
+        todos = set()
+        for l in mapa_competencias.values():
+            for p, txt in l:
+                todos.add(p)
+        ord_todos = sorted(list(todos), reverse=True)
+        periodos_disponiveis = [(p, f"{p[4:6]}/{p[:4]}") for p in ord_todos] if ord_todos else [('202607', '07/2026')]
         
-    # O default é o mês mais recente disponível (index 0 da lista)
-    periodo_padrao = periodos_disponiveis[0][0]
-    periodo = request.form.get("periodo") if request.method == "POST" else periodo_padrao
+    periodo_padrao = periodos_disponiveis[0][0] if periodos_disponiveis else '202607'
+    periodo = request.form.get("periodo") if request.method == "POST" else None
+    if not periodo or periodo not in [p[0] for p in periodos_disponiveis]:
+        periodo = periodo_padrao
 
     fonte_dados = None
     data_geracao = None
@@ -425,7 +437,10 @@ def producao():
     if request.method == "POST":
         # 1. Pega as opções que o usuário digitou/escolheu na tela
         indice = request.form.get("indice_relatorio")
-        periodo = request.form.get("periodo")
+        if not request.form.get("periodo"):
+            periodo = periodo_padrao
+        else:
+            periodo = request.form.get("periodo")
         
         if indice:
             meta = prod.obter_metadados_relatorio(indice, periodo)
@@ -442,7 +457,6 @@ def producao():
                 df = prod.gera_relatorio_04(periodo)
             elif indice == '05':
                 df_pac, df_prof, df_acoes = prod.gera_relatorio_05(periodo)
-                import json
                 json_dados_pac = None
                 json_colunas_pac = None
                 json_dados_prof = None
@@ -477,6 +491,7 @@ def producao():
                     relatorio_selecionado=indice,
                     periodo_selecionado=periodo,
                     periodos_disponiveis=periodos_disponiveis,
+                    json_competencias_por_relatorio=json.dumps(mapa_competencias),
                     fonte_dados=fonte_dados,
                     data_geracao=data_geracao
                 )
@@ -502,7 +517,6 @@ def producao():
                 df = prod.gera_relatorio_15(periodo)
             elif indice == '16':
                 df_ativo, df_inativo = prod.gera_relatorio_16(periodo)
-                import json
                 json_dados_ativo = None
                 json_colunas_ativo = None
                 json_dados_inativo = None
@@ -528,6 +542,7 @@ def producao():
                     relatorio_selecionado=indice,
                     periodo_selecionado=periodo,
                     periodos_disponiveis=periodos_disponiveis,
+                    json_competencias_por_relatorio=json.dumps(mapa_competencias),
                     fonte_dados=fonte_dados,
                     data_geracao=data_geracao
                 )
@@ -547,9 +562,6 @@ def producao():
 
                 if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
                     df = df.reset_index()
-                
-                # Prepara JSON
-                import json
                 
                 # Prepara definições de colunas para o DataTables (escapa pontos para evitar erro de objeto aninhado no DataTables)
                 colunas = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df.columns]
@@ -574,6 +586,7 @@ def producao():
         relatorio_selecionado=indice,
         periodo_selecionado=periodo,
         periodos_disponiveis=periodos_disponiveis,
+        json_competencias_por_relatorio=json.dumps(mapa_competencias),
         fonte_dados=fonte_dados,
         data_geracao=data_geracao
     )
@@ -744,6 +757,12 @@ def upload_dtic():
                                 except Exception as e:
                                     print(f"Erro ao processar ETL do {tipo_identificado}: {e}")
                                 
+        if sucessos > 0:
+            try:
+                sincronizar_todas_competencias()
+            except Exception as e:
+                print(f"Erro ao sincronizar competencias pós-upload: {e}")
+                
         mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e importado(s) para o banco de dados!"
         
     return render_template("upload_dtic.html", mensagem=mensagem)

@@ -5,26 +5,75 @@ from app import app
 from database import db
 from sqlalchemy import text
 import models
+from services.competencias import registrar_competencia, registrar_competencias_lote
 
 import io
+import re
+import unicodedata
+
+def _normalizar_str(s):
+    if not s:
+        return ''
+    s = str(s).strip().lower()
+    s = unicodedata.normalize('NFKD', s)
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r'[^a-z0-9]', '', s)
+    return s
+
+def renomear_colunas_flexivel(df, traduz_col):
+    mapa_norm = {_normalizar_str(orig): dest for orig, dest in traduz_col.items()}
+    novos_nomes = {}
+    for c in df.columns:
+        c_norm = _normalizar_str(c)
+        if c_norm in mapa_norm:
+            novos_nomes[c] = mapa_norm[c_norm]
+        elif c in traduz_col:
+            novos_nomes[c] = traduz_col[c]
+    return df.rename(columns=novos_nomes)
 
 def read_clean_csv(caminho, primeira_coluna):
     """
-    Lê o arquivo nativamente, ignora todo o lixo do cabeçalho da prefeitura,
-    e entrega para o pandas apenas a partir da linha onde as colunas reais começam.
-    Isso evita qualquer erro de parsing de aspas duplas ou linhas em branco.
+    Lê o arquivo nativamente, detecta encodings (utf-8-sig, utf-8, latin1),
+    identifica a linha onde as colunas reais começam ignorando cabeçalhos/filtros do SSRS,
+    e entrega para o pandas de forma limpa.
     """
-    with open(caminho, 'r', encoding='latin1', errors='ignore') as f:
-        linhas = f.readlines()
-        
+    linhas = []
+    for enc in ['utf-8-sig', 'utf-8', 'latin1', 'cp1252']:
+        try:
+            with open(caminho, 'r', encoding=enc) as f:
+                linhas = f.readlines()
+            if linhas:
+                break
+        except Exception:
+            continue
+            
+    if not linhas:
+        with open(caminho, 'r', encoding='latin1', errors='ignore') as f:
+            linhas = f.readlines()
+            
+    norm_primeira = _normalizar_str(primeira_coluna) if primeira_coluna else ''
     inicio = 0
     for i, linha in enumerate(linhas):
-        if primeira_coluna in linha:
+        norm_linha = _normalizar_str(linha)
+        # Ignora linhas de cabeçalho e metadados SSRS
+        if 'reporttitle' in norm_linha or 'rdl' in norm_linha or 'filto' in norm_linha or 'filtro' in norm_linha or 'hierarquia' in norm_linha or 'data da extra' in norm_linha:
+            continue
+        if norm_primeira and norm_primeira in norm_linha:
+            inicio = i
+            break
+        if linha.count(';') >= 4 and any(k in norm_linha for k in ['numeroanomes', 'codigocnes', 'cbo', 'procedimento', 'especialidade', 'nmmunicipio', 'nmcoordenadoria', 'faixaetaria']):
             inicio = i
             break
             
     conteudo_limpo = ''.join(linhas[inicio:])
-    return pd.read_csv(io.StringIO(conteudo_limpo), sep=';')
+    try:
+        df = pd.read_csv(io.StringIO(conteudo_limpo), sep=';', low_memory=False)
+        if len(df.columns) <= 1 and ',' in linhas[inicio]:
+            df = pd.read_csv(io.StringIO(conteudo_limpo), sep=',', low_memory=False)
+    except Exception:
+        df = pd.read_csv(io.StringIO(conteudo_limpo), sep=None, engine='python')
+        
+    return df
 
 def processa_ag04(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes1')
@@ -32,62 +81,92 @@ def processa_ag04(caminho, periodo=None):
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
         'Nome_Tipo_Agenda1': 'tipo_agenda',
+        'Nome_Tipo_Agenda': 'tipo_agenda',
         'H1___Nome_Estabelecimento1': 'estabelecimento',
+        'H1___Nome_Estabelecimento': 'estabelecimento',
         'Código_CNES': 'cnes',
         'Nome_Especialidade1': 'especialidade',
+        'Nome_Especialidade': 'especialidade',
         'Nome_Tipo_Atendimento_Agenda1': 'tipo_atendimento_agenda',
+        'Nome_Tipo_Atendimento_Agenda': 'tipo_atendimento_agenda',
         'Nome_Procedimento1': 'procedimento',
+        'Nome_Procedimento': 'procedimento',
         'Nome_Situação_Agendamento1': 'situacao_agendamento',
+        'Nome_Situação_Agendamento': 'situacao_agendamento',
         'Nome_Tipo_Entidade1': 'tipo_entidade',
+        'Nome_Tipo_Entidade': 'tipo_entidade',
         'Quantidade_Agendamento1': 'quantidade_agendamento',
+        'Quantidade_Agendamento': 'quantidade_agendamento',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in ['ano_mes', 'tipo_agenda', 'estabelecimento', 'cnes', 'especialidade', 'tipo_atendimento_agenda', 'procedimento', 'situacao_agendamento', 'tipo_entidade', 'quantidade_agendamento'] if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
-        periodo = df_limpo['ano_mes'].iloc[0]
-        db.session.execute(text(f"DELETE FROM 'AG-04' WHERE ano_mes = {periodo}"))
-        db.session.commit()
-        df_limpo.to_sql(name='AG-04', con=db.engine, if_exists='append', index=False)
+        if not df_limpo.empty and 'ano_mes' in df_limpo.columns:
+            periodo = df_limpo['ano_mes'].dropna().iloc[0]
+            db.session.execute(text(f"DELETE FROM 'AG-04' WHERE ano_mes = {periodo}"))
+            db.session.commit()
+            df_limpo.to_sql(name='AG-04', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('13', periodo)
 
     print('AG-04 carregado')
 
 def processa_at02(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Nome_Mes')
+    df = read_clean_csv(caminho, 'Número_Ano_Mes__AAAAMM_')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
         'Código_CNES': 'cnes',
         'H1___Nome_Estabelecimento2': 'estabelecimento',
+        'H1___Nome_Estabelecimento': 'estabelecimento',
         'H1___Código_CMES': 'cmes',
         'Tipo_Estabelecimento': 'tipo_estabelecimento',
         'Código_CBO_no_SUS': 'cbo_no_sus',
         'Nome_CBO1': 'nome_cbo',
+        'Nome_CBO': 'nome_cbo',
         'Nome_Especialidade2': 'especialidade',
+        'Nome_Especialidade': 'especialidade',
         'Código_Procedimento': 'codigo_procedimento',
         'Nome_Procedimento2': 'procedimento',
+        'Nome_Procedimento': 'procedimento',
         'Nome_Profissional_Siga1': 'profissional',
+        'Nome_Profissional_Siga': 'profissional',
         'Quantidade_Procedimento2': 'quantidade_procedimento',
+        'Quantidade_Procedimento': 'quantidade_procedimento',
         'Contagem_Paciente2': 'contagem_paciente',
+        'Contagem_Paciente': 'contagem_paciente',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    cols_desejadas = ['ano_mes', 'cnes', 'estabelecimento', 'cmes', 'tipo_estabelecimento', 'cbo_no_sus', 'nome_cbo', 'especialidade', 'codigo_procedimento', 'procedimento', 'profissional', 'quantidade_procedimento', 'contagem_paciente']
+    col = [c for c in cols_desejadas if c in df.columns]
     df_limpo = df[col].copy()
+
+    # Validação estrita de ano_mes
+    df_limpo = df_limpo.dropna(subset=['ano_mes', 'cnes']).copy()
+    df_limpo['ano_mes_str'] = df_limpo['ano_mes'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+    df_limpo = df_limpo[df_limpo['ano_mes_str'].str.match(r'^202[0-9](0[1-9]|1[0-2])$')].copy()
+    df_limpo['ano_mes'] = df_limpo['ano_mes_str'].astype(int)
+    df_limpo = df_limpo.drop(columns=['ano_mes_str'])
+
+    df_limpo['quantidade_procedimento'] = pd.to_numeric(df_limpo['quantidade_procedimento'], errors='coerce').fillna(0).astype(int)
+    if 'contagem_paciente' in df_limpo.columns:
+        df_limpo['contagem_paciente'] = pd.to_numeric(df_limpo['contagem_paciente'], errors='coerce').fillna(0).astype(int)
+
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
-        periodo = df_limpo['ano_mes'].iloc[0]
-        db.session.execute(text(f"DELETE FROM 'AT-02' WHERE ano_mes = {periodo}"))
-        db.session.commit()
-        df_limpo.to_sql(name='AT-02', con=db.engine, if_exists='append', index=False)
+        meses_no_arquivo = df_limpo['ano_mes'].unique().tolist()
+        if meses_no_arquivo:
+            meses_sql = ','.join(str(m) for m in meses_no_arquivo)
+            db.session.execute(text(f"DELETE FROM 'AT-02' WHERE ano_mes IN ({meses_sql})"))
+            db.session.commit()
+            df_limpo.to_sql(name='AT-02', con=db.engine, if_exists='append', index=False)
+            registrar_competencias_lote('03', meses_no_arquivo)
+            registrar_competencias_lote('10', meses_no_arquivo)
 
     print('AT-02 carregado')
 
@@ -106,19 +185,19 @@ def processa_at03(caminho, periodo=None):
         'Quantidade_Procedimento': 'quantidade_procedimento',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in ['ano', 'mes', 'sts', 'estabelecimento', 'faixa_etaria', 'nome_cbo', 'nome_procedimento', 'sexo', 'quantidade_procedimento'] if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
-        ano = df_limpo['ano'].iloc[0]
-        mes = df_limpo['mes'].iloc[0]
-        db.session.execute(text(f"DELETE FROM 'AT-03' WHERE ano = {ano} AND mes = '{mes}'"))
-        db.session.commit()
-        df_limpo.to_sql(name='AT-03', con=db.engine, if_exists='append', index=False)
+        if not df_limpo.empty and 'ano' in df_limpo.columns and 'mes' in df_limpo.columns:
+            ano = df_limpo['ano'].dropna().iloc[0]
+            mes = df_limpo['mes'].dropna().iloc[0]
+            db.session.execute(text(f"DELETE FROM 'AT-03' WHERE ano = {ano} AND mes = '{mes}'"))
+            db.session.commit()
+            df_limpo.to_sql(name='AT-03', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('10', f"{ano}01")
 
     print('AT-03 carregado')
 
@@ -128,27 +207,33 @@ def processa_fe02(caminho, periodo=None):
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
         'H1___Nome_Nível_31': 'sts',
+        'H1___Nome_Nível_3': 'sts',
         'H1___Nome_Estabelecimento': 'estabelecimento',
         'Código_CNES': 'cnes',
         'Nome_Procedimento5': 'nome_procedimento',
+        'Nome_Procedimento': 'nome_procedimento',
         'Nome_Especialidade1': 'nome_especialidade',
+        'Nome_Especialidade': 'nome_especialidade',
         'Quantidade_de_Pacientes_que_Entraram_em_Espera_no_Mês6': 'entrou_em_espera',
+        'Quantidade_de_Pacientes_que_Entraram_em_Espera_no_Mês': 'entrou_em_espera',
         'Quantidade_de_Pacientes_que_Saíram_de_Espera_no_Mês6': 'saiu_da_espera',
+        'Quantidade_de_Pacientes_que_Saíram_de_Espera_no_Mês': 'saiu_da_espera',
         'Quantidade_Total_de_Pacientes_Ativos6': 'pacientes_ativos',
+        'Quantidade_Total_de_Pacientes_Ativos': 'pacientes_ativos',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in ['ano_mes', 'sts', 'estabelecimento', 'cnes', 'nome_procedimento', 'nome_especialidade', 'entrou_em_espera', 'saiu_da_espera', 'pacientes_ativos'] if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
-        periodo = df_limpo['ano_mes'].iloc[0]
-        db.session.execute(text(f"DELETE FROM 'FE-02' WHERE ano_mes = {periodo}"))
-        db.session.commit()
-        df_limpo.to_sql(name='FE-02', con=db.engine, if_exists='append', index=False)
+        if not df_limpo.empty and 'ano_mes' in df_limpo.columns:
+            periodo = df_limpo['ano_mes'].dropna().iloc[0]
+            db.session.execute(text(f"DELETE FROM 'FE-02' WHERE ano_mes = {periodo}"))
+            db.session.commit()
+            df_limpo.to_sql(name='FE-02', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('11', periodo)
 
     print('FE-02 carregado')
 
@@ -159,26 +244,32 @@ def processa_vg02(caminho, periodo=None):
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
         'Código_CNES': 'cnes',
         'H1___Nome_Estabelecimento1': 'estabelecimento',
+        'H1___Nome_Estabelecimento': 'estabelecimento',
         'Nome_Procedimento2': 'procedimento',
+        'Nome_Procedimento': 'procedimento',
         'Nome_Especialidade2': 'nome_especialidade',
+        'Nome_Especialidade': 'nome_especialidade',
         'Nome_Tipo_Agenda': 'tipo_agenda',
         'Nome_Tipo_Atendimento_Agenda2': 'tipo_atendimento_agenda',
+        'Nome_Tipo_Atendimento_Agenda': 'tipo_atendimento_agenda',
         'Nome_Situação_Vaga2': 'situacao_vaga',
+        'Nome_Situação_Vaga': 'situacao_vaga',
         'Qtde_Vaga_Ofertada2': 'qtde_vaga_ofertada',
+        'Qtde_Vaga_Ofertada': 'qtde_vaga_ofertada',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in ['ano_mes', 'cnes', 'estabelecimento', 'procedimento', 'nome_especialidade', 'tipo_agenda', 'tipo_atendimento_agenda', 'situacao_vaga', 'qtde_vaga_ofertada'] if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
-        periodo = df_limpo['ano_mes'].iloc[0]
-        db.session.execute(text(f"DELETE FROM 'VG-02' WHERE ano_mes = {periodo}"))
-        db.session.commit()
-        df_limpo.to_sql(name='VG-02', con=db.engine, if_exists='append', index=False)
+        if not df_limpo.empty and 'ano_mes' in df_limpo.columns:
+            periodo = df_limpo['ano_mes'].dropna().iloc[0]
+            db.session.execute(text(f"DELETE FROM 'VG-02' WHERE ano_mes = {periodo}"))
+            db.session.commit()
+            df_limpo.to_sql(name='VG-02', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('14', periodo)
 
     print('VG-02 carregado')
 
@@ -188,29 +279,38 @@ def processa_vg04(caminho, periodo=None):
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
         'Nome_Tipo_Agenda_': 'tipo_agenda',
+        'Nome_Tipo_Agenda': 'tipo_agenda',
         'Nome_Tipo_Atendimento_Agenda': 'tipo_atendimento_agenda',
         'Nome_Procedimento_': 'nome_procedimento',
+        'Nome_Procedimento': 'nome_procedimento',
         'Nome_Especialidade_': 'nome_especialidade',
+        'Nome_Especialidade': 'nome_especialidade',
         'Código_CNES1': 'cnes',
+        'Código_CNES': 'cnes',
         'H1___Nome_Estabelecimento_': 'estabelecimento',
+        'H1___Nome_Estabelecimento': 'estabelecimento',
         'Nome_Entidade_Completo_': 'entidade',
+        'Nome_Entidade_Completo': 'entidade',
         'Qtde_Vaga_Ofertada_': 'qtde_vaga_ofertada',
+        'Qtde_Vaga_Ofertada': 'qtde_vaga_ofertada',
         'Qtde_Agendamento_': 'qtde_agendamento',
+        'Qtde_Agendamento': 'qtde_agendamento',
         'Qtde_Atendimento_': 'qtde_atendimento',
+        'Qtde_Atendimento': 'qtde_atendimento',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in ['ano_mes', 'tipo_agenda', 'tipo_atendimento_agenda', 'nome_procedimento', 'nome_especialidade', 'cnes', 'estabelecimento', 'entidade', 'qtde_vaga_ofertada', 'qtde_agendamento', 'qtde_atendimento'] if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
-        periodo = df_limpo['ano_mes'].iloc[0]
-        db.session.execute(text(f"DELETE FROM 'VG-04' WHERE ano_mes = {periodo}"))
-        db.session.commit()
-        df_limpo.to_sql(name='VG-04', con=db.engine, if_exists='append', index=False)
+        if not df_limpo.empty and 'ano_mes' in df_limpo.columns:
+            periodo = df_limpo['ano_mes'].dropna().iloc[0]
+            db.session.execute(text(f"DELETE FROM 'VG-04' WHERE ano_mes = {periodo}"))
+            db.session.commit()
+            df_limpo.to_sql(name='VG-04', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('04', periodo)
 
     print('VG-04 carregado')
 
@@ -224,10 +324,8 @@ def processa_cg01(caminho, periodo=None):
         'qtde_atendimentos_maior_igual_9': 'atendimentos_maior_igual_9',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     
@@ -262,10 +360,8 @@ def processa_cg05(caminho, periodo=None):
         'qtde_consultas': 'qtde_consultas',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
@@ -304,10 +400,8 @@ def processa_cg06(caminho, periodo=None):
         'TOTG_75g': 'totg_75g',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
@@ -358,6 +452,7 @@ def processa_gac02(caminho, periodo=None):
         db.session.execute(text(f"DELETE FROM 'GAC-02' WHERE data_extracao LIKE '{mes_filtro}-%'"))
         db.session.commit()
         df_limpo.to_sql(name='GAC-02', con=db.engine, if_exists='append', index=False)
+        registrar_competencia('08', mes_filtro)
 
     print(f'GAC-02 carregado para a competência {mes_filtro}')
 
@@ -407,6 +502,7 @@ def processa_rel114(caminho, periodo=None):
         df_limpo = df_limpo[df_limpo['previsao_parto'].str.endswith(f"/{mes_alvo}/{ano_alvo}", na=False)]
         
         df_limpo.to_sql(name='REL-114', con=db.engine, if_exists='append', index=False)
+        registrar_competencia('09', f"{ano_alvo}{mes_alvo}")
     print('REL-114 carregado com sucesso!')
 
 def processa_rel134(caminho, periodo=None):
@@ -439,6 +535,7 @@ def processa_rel134(caminho, periodo=None):
         except Exception:
             db.session.rollback()
         df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
+        registrar_competencia('17', hoje.replace('-', '')[:6])
     print('REL-134 carregado com sucesso!')
 
 def processa_rel16(caminho, periodo=None):
@@ -483,6 +580,7 @@ def processa_rel16(caminho, periodo=None):
         except Exception:
             db.session.rollback()
         df_limpo.to_sql(name='REL-16', con=db.engine, if_exists='append', index=False)
+        registrar_competencia('16', hoje.replace('-', '')[:6])
     print('REL-16 (SIGA - AMG) carregado com sucesso!')
 
 def processa_rel135(caminho, periodo=None):
@@ -542,6 +640,7 @@ def processa_rel135(caminho, periodo=None):
             db.session.rollback()
             
         df_resumo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
+        registrar_competencia('15', ano_mes_competencia)
     print('REL-135 carregado e agrupado com sucesso!')
 
 def processa_painel_monitoramento(html_content, tabela_db='REL-06', default_localidade='STS PENHA'):
@@ -782,6 +881,7 @@ def processa_bpa_dbf(caminho, periodo=None):
                 db.session.rollback()
 
         df_agrupado.to_sql(name='REL-02', con=db.engine, if_exists='append', index=False)
+        registrar_competencias_lote('02', list(competencias))
         print(f"REL-02 gravado com sucesso! {len(df_agrupado)} registros para competências {list(competencias)}.")
 
     return True
@@ -889,6 +989,7 @@ def processa_raas_arquivo(caminho, periodo=None):
                     db.session.rollback()
 
             df_pac.to_sql(name='RAAS_PACIENTES', con=db.engine, if_exists='append', index=False)
+            registrar_competencias_lote('05', list(df_pac['ano_mes'].dropna().unique()))
             print(f"RAAS_PACIENTES gravado: {len(df_pac)} registros.")
 
         # 2. Processa Ações por Profissional (Linhas 16)
@@ -929,6 +1030,7 @@ def processa_raas_arquivo(caminho, periodo=None):
 
             df_prof.to_sql(name='RAAS_ACOES_PROF', con=db.engine, if_exists='append', index=False)
             df_acoes.to_sql(name='RAAS_ACOES', con=db.engine, if_exists='append', index=False)
+            registrar_competencias_lote('05', list(competencias))
             print(f"RAAS_ACOES_PROF ({len(df_prof)} reg) e RAAS_ACOES ({len(df_acoes)} reg) gravados.")
 
     return True

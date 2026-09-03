@@ -244,3 +244,14 @@ class Equipe(db.Model):
     cod_ine = db.Column(db.String(50), primary_key=True)
     sigla = db.Column(db.String(50))
     unidade = db.Column(db.String(255))
+
+class RelatorioCompetencia(db.Model):
+    __tablename__ = 'relatorio_competencias'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    relatorio_id = db.Column(db.String(10), nullable=False, index=True)
+    competencia = db.Column(db.String(10), nullable=False, index=True)
+    descricao = db.Column(db.String(50), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('relatorio_id', 'competencia', name='uq_rel_competencia'),
+    )
