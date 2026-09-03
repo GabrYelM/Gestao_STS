@@ -30,7 +30,7 @@ window.initExcelFilters = function(dtApi, colIndices) {
         // Limpa texto puro e envolve em estrutura flex com botão de funil
         $header.html(`
             <div class="d-flex align-items-center justify-content-between gap-1 w-100 header-excel-container">
-                <span class="header-text text-truncate" title="${headerText}">${headerText}</span>
+                <span class="header-text text-nowrap" title="${headerText}">${headerText}</span>
                 <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col="${colIdx}">
                     <i class="bi bi-funnel filter-icon"></i>
                 </button>

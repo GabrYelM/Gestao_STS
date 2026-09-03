@@ -83,16 +83,18 @@ def gera_relatorio_03(periodo):
         if df_at02.empty:
             return None
 
+        df_at02['quantidade_procedimento'] = pd.to_numeric(df_at02['quantidade_procedimento'], errors='coerce').fillna(0)
+
         df_final = pd.pivot_table(
             df_at02,
             columns = 'ano_mes',
             index = ['estabelecimento', 'nome_cbo', 'profissional', 'procedimento'],
             values = 'quantidade_procedimento',
             aggfunc='sum'
-        ).fillna(0).astype(int).astype(int)
+        ).fillna(0).astype(int)
         
-        # Rotaciona o texto dos meses para a vertical
-        df_final.columns = [f'<div class="vertical-text">{col}</div>' for col in df_final.columns]
+        # Converte colunas de meses para string limpa
+        df_final.columns = [str(col) for col in df_final.columns]
         
         return df_final
 
