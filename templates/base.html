@@ -31,9 +31,7 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="/bi_producao">Arquivos BI para Produção</a></li>
                             <li><a class="dropdown-item" href="/upload_zip">Importação de Arquivos (ZIP / DBF / RAAS)</a></li>
-                            <li><a class="dropdown-item" href="/painel_monitoramento">Painel de Monitoramento (CEInfo)</a></li>
-                            <li><a class="dropdown-item" href="/equipes">Gerenciar Equipes</a></li>
-                            <li><a class="dropdown-item" href="/cadastros_raas">Gerenciar Cadastros do RAAS</a></li>
+                            <li><a class="dropdown-item" href="/cadastros">Gerenciar Cadastros do Sistema</a></li>
                         </ul>
                     </li>
                     <li class="nav-item">
@@ -60,6 +58,7 @@
     {% endblock %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <script src="/static/excel_filter.js"></script>
     
     {% block scripts %}
     {% endblock %}

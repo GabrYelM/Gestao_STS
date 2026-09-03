@@ -684,8 +684,8 @@ def processa_bpa_dbf(caminho, periodo=None):
     import json
     from dbfread import DBF
     
-    # Carrega catálogo
-    catalogo_path = os.path.join(os.path.dirname(__file__), 'bpa_catalogo.json')
+    # Carrega catálogo unificado
+    catalogo_path = os.path.join(os.path.dirname(__file__), 'raas_catalogo.json')
     unidades_map = {}
     procedimentos_map = {}
     if os.path.exists(catalogo_path):
