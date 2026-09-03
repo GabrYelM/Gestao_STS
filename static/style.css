@@ -135,3 +135,101 @@ div.dt-button-background {
     background: rgba(0, 0, 0, 0.2) !important;
     z-index: 1040 !important;
 }
+
+/* =========================================================
+   FILTROS ESTILO EXCEL NAS COLUNAS DO DATATABLES
+   ========================================================= */
+
+.header-excel-container {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 4px !important;
+    width: 100% !important;
+}
+
+.btn-excel-filter {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+    font-size: 0.85rem !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+/* Tabelas com thead claro */
+.table:not(.table-dark) thead .btn-excel-filter {
+    color: #6c757d !important;
+}
+
+.btn-excel-filter:hover {
+    color: #ffffff !important;
+    background-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.table:not(.table-dark) thead .btn-excel-filter:hover {
+    color: #0d6efd !important;
+    background-color: #e9ecef !important;
+}
+
+/* Filtro ATIVO (Coluna filtrada) */
+.btn-excel-filter.btn-excel-filter-active {
+    color: #0d6efd !important;
+    background-color: #ffffff !important;
+    box-shadow: 0 0 5px rgba(13, 110, 253, 0.5) !important;
+}
+
+.table-dark .btn-excel-filter.btn-excel-filter-active {
+    color: #ffc107 !important;
+    background-color: rgba(0, 0, 0, 0.3) !important;
+    box-shadow: 0 0 5px rgba(255, 193, 7, 0.6) !important;
+}
+
+/* Dropdown Popup do Filtro Excel */
+.excel-filter-dropdown {
+    font-family: inherit;
+    font-size: 0.85rem;
+    background-color: #ffffff !important;
+    border: 1px solid #dee2e6 !important;
+    border-radius: 0.5rem !important;
+    box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2) !important;
+    animation: fadeInDown 0.15s ease-out;
+}
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.excel-filter-dropdown .excel-filter-items-list {
+    scrollbar-width: thin;
+    scrollbar-color: #ced4da #f8f9fa;
+}
+
+.excel-filter-dropdown .excel-filter-items-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.excel-filter-dropdown .excel-filter-items-list::-webkit-scrollbar-track {
+    background: #f8f9fa;
+}
+
+.excel-filter-dropdown .excel-filter-items-list::-webkit-scrollbar-thumb {
+    background: #ced4da;
+    border-radius: 3px;
+}
+
+.excel-filter-dropdown .excel-item-row:hover {
+    background-color: #f8f9fa;
+    border-radius: 3px;
+}
+
+.excel-filter-dropdown .count-badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+

@@ -582,35 +582,14 @@ div.dt-button-collection button.dt-button:hover {
                             modifier: { search: 'applied' },
                             format: {
                                 header: function(data, columnIdx, node) {
-                                    var clone = $(node).clone();
-                                    clone.find('select').remove();
-                                    return clone.text().trim();
+                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
                                 }
                             }
                         }
                     }
                 ],
                 initComplete: function() {
-                    this.api().columns().every(function() {
-                        var column = this;
-                        
-                        var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
-                            .appendTo($(column.header()))
-                            .on('change', function() {
-                                var val = $.fn.dataTable.util.escapeRegex($(this).val());
-                                column.search(val ? '^' + val + '$' : '', true, false).draw();
-                            })
-                            .on('click', function(e) {
-                                e.stopPropagation();
-                            });
-                        
-                        column.data().unique().sort().each(function(d) {
-                            var text = $('<div>').html(d).text();
-                            if (text && text.trim() !== '') {
-                                select.append('<option value="' + text + '">' + text + '</option>');
-                            }
-                        });
-                    });
+                    window.initExcelFilters(this.api());
                     
                     if (relIndice === '15') {
                         function fixarColunasSticky() {
@@ -680,34 +659,14 @@ div.dt-button-collection button.dt-button:hover {
                             modifier: { search: 'applied' },
                             format: {
                                 header: function(data, columnIdx, node) {
-                                    var clone = $(node).clone();
-                                    clone.find('select').remove();
-                                    return clone.text().trim();
+                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
                                 }
                             }
                         }
                     }
                 ],
                 initComplete: function() {
-                    this.api().columns().every(function() {
-                        var column = this;
-                        var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
-                            .appendTo($(column.header()))
-                            .on('change', function() {
-                                var val = $.fn.dataTable.util.escapeRegex($(this).val());
-                                column.search(val ? '^' + val + '$' : '', true, false).draw();
-                            })
-                            .on('click', function(e) {
-                                e.stopPropagation();
-                            });
-                        
-                        column.data().unique().sort().each(function(d) {
-                            var text = $('<div>').html(d).text();
-                            if (text && text.trim() !== '') {
-                                select.append('<option value="' + text + '">' + text + '</option>');
-                            }
-                        });
-                    });
+                    window.initExcelFilters(this.api());
                 }
             });
         }
@@ -782,34 +741,14 @@ div.dt-button-collection button.dt-button:hover {
                             modifier: { search: 'applied' },
                             format: {
                                 header: function(data, columnIdx, node) {
-                                    var clone = $(node).clone();
-                                    clone.find('select').remove();
-                                    return clone.text().trim();
+                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
                                 }
                             }
                         }
                     }
                 ],
                 initComplete: function() {
-                    this.api().columns().every(function() {
-                        var column = this;
-                        var select = $('<select class="form-select form-select-sm mt-2" style="font-weight: normal; min-width: 80px;"><option value="">Todos</option></select>')
-                            .appendTo($(column.header()))
-                            .on('change', function() {
-                                var val = $.fn.dataTable.util.escapeRegex($(this).val());
-                                column.search(val ? '^' + val + '$' : '', true, false).draw();
-                            })
-                            .on('click', function(e) {
-                                e.stopPropagation();
-                            });
-                        
-                        column.data().unique().sort().each(function(d) {
-                            var text = $('<div>').html(d).text();
-                            if (text && text.trim() !== '') {
-                                select.append('<option value="' + text + '">' + text + '</option>');
-                            }
-                        });
-                    });
+                    window.initExcelFilters(this.api());
                 }
             });
         }

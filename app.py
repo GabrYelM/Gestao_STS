@@ -744,75 +744,13 @@ def upload_dtic():
                                 except Exception as e:
                                     print(f"Erro ao processar ETL do {tipo_identificado}: {e}")
                                 
-                    sucessos += 1
-                    
         mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e importado(s) para o banco de dados!"
         
     return render_template("upload_dtic.html", mensagem=mensagem)
 
 
-@app.route('/equipes', methods=['GET', 'POST'])
-def gerenciar_equipes():
-    # Obtém todas as equipes cadastradas
-    equipes = pd.read_sql("SELECT * FROM equipes ORDER BY unidade, sigla", con=db.engine).to_dict('records')
-    
-    # Identifica INEs que estão no REL-135 mas não estão mapeadas na tabela equipes
-    # Isso serve para alertar o usuário de equipes novas
-    query_pendentes = '''
-        SELECT DISTINCT r.cod_ine, r.unidade 
-        FROM "REL-135" r 
-        LEFT JOIN equipes e ON r.cod_ine = e.cod_ine 
-        WHERE e.sigla IS NULL OR e.sigla = ''
-    '''
-    try:
-        pendentes = pd.read_sql(query_pendentes, con=db.engine).to_dict('records')
-    except Exception as e:
-        pendentes = []
-
-    if request.method == 'POST':
-        if 'lote' in request.form:
-            # Salvar em lote
-            for key, value in request.form.items():
-                if key.startswith('sigla_') and value:
-                    cod_ine = key.replace('sigla_', '')
-                    unidade = request.form.get(f'unidade_{cod_ine}')
-                    equipe = models.Equipe.query.get(cod_ine)
-                    if equipe:
-                        equipe.sigla = value
-                    else:
-                        equipe = models.Equipe(cod_ine=cod_ine, sigla=value, unidade=unidade)
-                        db.session.add(equipe)
-            db.session.commit()
-            return redirect(url_for('gerenciar_equipes'))
-        elif request.form.get('acao') == 'excluir':
-            cod_ine = request.form.get('cod_ine')
-            if cod_ine:
-                equipe = models.Equipe.query.get(cod_ine)
-                if equipe:
-                    db.session.delete(equipe)
-                    db.session.commit()
-            return redirect(url_for('gerenciar_equipes'))
-        else:
-            # Atualiza a sigla de uma equipe existente ou cadastra uma nova individual
-            cod_ine = request.form.get('cod_ine')
-            sigla = request.form.get('sigla')
-            unidade = request.form.get('unidade')
-            
-            if cod_ine and sigla:
-                equipe = models.Equipe.query.get(cod_ine)
-                if equipe:
-                    equipe.sigla = sigla
-                else:
-                    equipe = models.Equipe(cod_ine=cod_ine, sigla=sigla, unidade=unidade)
-                    db.session.add(equipe)
-                db.session.commit()
-                return redirect(url_for('gerenciar_equipes'))
-
-    return render_template('equipes.html', equipes=equipes, pendentes=pendentes)
-
-
-@app.route('/cadastros_raas', methods=['GET', 'POST'])
-def cadastros_raas():
+@app.route('/cadastros', methods=['GET', 'POST'])
+def cadastros():
     if "usuario_id" not in session:
         return redirect(url_for("login"))
 
@@ -832,45 +770,89 @@ def cadastros_raas():
         acao = request.form.get('acao')
         alterou = False
 
-        if acao == 'salvar_lote_pendentes':
-            # 1. Salva Profissionais em Lote
+        if acao == 'salvar_lote_pendentes' or 'lote' in request.form:
+            # 1. Salva Equipes em Lote
             for key, val in request.form.items():
-                if key.startswith('prof_') and val and val.strip():
+                if key.startswith('sigla_') and val and val.strip():
+                    cod_ine = key.replace('sigla_', '').strip()
+                    unidade = request.form.get(f'unidade_{cod_ine}')
+                    sigla = val.strip()
+                    equipe = models.Equipe.query.get(cod_ine)
+                    if equipe:
+                        equipe.sigla = sigla
+                    else:
+                        equipe = models.Equipe(cod_ine=cod_ine, sigla=sigla, unidade=unidade)
+                        db.session.add(equipe)
+
+                # 2. Salva Profissionais em Lote
+                elif key.startswith('prof_') and val and val.strip():
                     cns = key.replace('prof_', '').strip()
                     nome = val.strip().upper()
                     profissionais[cns] = nome
                     alterou = True
                     try:
-                        db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET nome_prof = :nome WHERE cns_prof = :cns"), {'nome': nome, 'cns': cns})
-                        db.session.commit()
+                        db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET nome_prof = :nome WHERE cns_prof = :cns"), {'nome': nome, 'cns': cns})
                     except Exception:
-                        db.session.rollback()
+                        pass
 
+                # 3. Salva Procedimentos em Lote
                 elif key.startswith('proc_') and val and val.strip():
                     cod = key.replace('proc_', '').strip()
                     desc = val.strip().upper()
                     procedimentos[cod] = desc
                     alterou = True
                     try:
-                        db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                        db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                        db.session.commit()
+                        db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.execute(text('UPDATE "REL-02" SET procedimento = :nome WHERE codigo_procedimento = :cod OR codigo_procedimento = :cod_pad'), {'nome': desc, 'cod': cod, 'cod_pad': cod.zfill(10)})
                     except Exception:
-                        db.session.rollback()
+                        pass
 
+                # 4. Salva CBOs em Lote
                 elif key.startswith('cbo_') and val and val.strip():
                     cod = key.replace('cbo_', '').strip()
                     desc = val.strip().upper()
                     cbos[cod] = desc
                     alterou = True
                     try:
-                        db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
-                        db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
-                        db.session.commit()
+                        db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                        db.session.execute(text("UPDATE 'RAAS_ACOES' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
                     except Exception:
-                        db.session.rollback()
+                        pass
+
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
             mensagem = "Cadastros em lote salvos e propagados no banco de dados com sucesso!"
+
+        elif acao == 'salvar_equipe':
+            cod_ine = request.form.get('cod_ine')
+            sigla = request.form.get('sigla')
+            unidade = request.form.get('unidade')
+            if cod_ine and sigla:
+                cod_ine = cod_ine.strip()
+                sigla = sigla.strip()
+                equipe = models.Equipe.query.get(cod_ine)
+                if equipe:
+                    equipe.sigla = sigla
+                    if unidade:
+                        equipe.unidade = unidade.strip()
+                else:
+                    equipe = models.Equipe(cod_ine=cod_ine, sigla=sigla, unidade=unidade.strip() if unidade else "")
+                    db.session.add(equipe)
+                db.session.commit()
+                mensagem = f"Equipe {cod_ine} ({sigla}) salva com sucesso!"
+
+        elif acao == 'excluir_equipe':
+            cod_ine = request.form.get('cod_ine')
+            if cod_ine:
+                equipe = models.Equipe.query.get(cod_ine.strip())
+                if equipe:
+                    db.session.delete(equipe)
+                    db.session.commit()
+                    mensagem = f"Equipe {cod_ine} excluída do cadastro!"
 
         elif acao == 'salvar_prof' or acao == 'salvar_prof_modal':
             cns = request.form.get('cns') or request.form.get('codigo_chave')
@@ -881,7 +863,7 @@ def cadastros_raas():
                 profissionais[cns] = nome
                 alterou = True
                 try:
-                    db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET nome_prof = :nome WHERE cns_prof = :cns"), {'nome': nome, 'cns': cns})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET nome_prof = :nome WHERE cns_prof = :cns"), {'nome': nome, 'cns': cns})
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
@@ -896,8 +878,9 @@ def cadastros_raas():
                 procedimentos[cod] = desc
                 alterou = True
                 try:
-                    db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                    db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text('UPDATE "REL-02" SET procedimento = :nome WHERE codigo_procedimento = :cod OR codigo_procedimento = :cod_pad'), {'nome': desc, 'cod': cod, 'cod_pad': cod.zfill(10)})
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
@@ -912,8 +895,8 @@ def cadastros_raas():
                 cbos[cod] = desc
                 alterou = True
                 try:
-                    db.session.execute(text(f"UPDATE 'RAAS_ACOES_PROF' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
-                    db.session.execute(text(f"UPDATE 'RAAS_ACOES' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES' SET descr_cbo = :nome WHERE co_cbo = :cod"), {'nome': desc, 'cod': cod})
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
@@ -947,11 +930,23 @@ def cadastros_raas():
             with open(catalogo_path, 'w', encoding='utf-8') as f:
                 json.dump(cat_data, f, ensure_ascii=False, indent=2)
 
-    # Identifica pendências no banco de dados SQLite
-    pendentes_prof = []
-    pendentes_proc = []
-    pendentes_cbo = []
+    # 1. Equipes Mapeadas e Pendentes
+    equipes = []
+    pendentes_equipes = []
+    try:
+        equipes = pd.read_sql("SELECT * FROM equipes ORDER BY unidade, sigla", con=db.engine).to_dict('records')
+        query_pend_eq = '''
+            SELECT DISTINCT r.cod_ine, r.unidade 
+            FROM "REL-135" r 
+            LEFT JOIN equipes e ON r.cod_ine = e.cod_ine 
+            WHERE e.sigla IS NULL OR e.sigla = ''
+        '''
+        pendentes_equipes = pd.read_sql(query_pend_eq, con=db.engine).to_dict('records')
+    except Exception:
+        pass
 
+    # 2. Pendências de Profissionais
+    pendentes_prof = []
     try:
         df_pend_prof = pd.read_sql("""
             SELECT DISTINCT cns_prof, estabelecimento, co_cbo, descr_cbo
@@ -963,17 +958,32 @@ def cadastros_raas():
     except Exception:
         pass
 
+    # 3. Pendências de Procedimentos (RAAS e REL-02)
+    pendentes_proc = []
     try:
-        df_pend_proc = pd.read_sql("""
+        df_raas_proc = pd.read_sql("""
             SELECT DISTINCT cod_acao, procedimento
             FROM 'RAAS_ACOES_PROF'
             WHERE procedimento = cod_acao OR procedimento LIKE 'Procedimento %' OR procedimento IS NULL OR procedimento = ''
-            ORDER BY cod_acao
         """, con=db.engine)
-        pendentes_proc = df_pend_proc.to_dict('records')
     except Exception:
-        pass
+        df_raas_proc = pd.DataFrame(columns=['cod_acao', 'procedimento'])
 
+    try:
+        df_rel02_proc = pd.read_sql("""
+            SELECT DISTINCT codigo_procedimento AS cod_acao, procedimento
+            FROM 'REL-02'
+            WHERE procedimento = codigo_procedimento OR procedimento LIKE 'Procedimento %' OR procedimento IS NULL OR procedimento = ''
+        """, con=db.engine)
+    except Exception:
+        df_rel02_proc = pd.DataFrame(columns=['cod_acao', 'procedimento'])
+
+    if not df_raas_proc.empty or not df_rel02_proc.empty:
+        df_comb_proc = pd.concat([df_raas_proc, df_rel02_proc]).drop_duplicates(subset=['cod_acao'])
+        pendentes_proc = df_comb_proc.to_dict('records')
+
+    # 4. Pendências de CBOs
+    pendentes_cbo = []
     try:
         df_pend_cbo = pd.read_sql("""
             SELECT DISTINCT co_cbo, descr_cbo
@@ -986,18 +996,31 @@ def cadastros_raas():
         pass
 
     return render_template(
-        'cadastros_raas.html',
+        'cadastros.html',
+        equipes=equipes,
+        total_equipes=len(equipes),
+        pendentes_equipes=pendentes_equipes,
         profissionais=profissionais,
-        procedimentos=procedimentos,
-        cbos=cbos,
         total_prof=len(profissionais),
-        total_proc=len(procedimentos),
-        total_cbo=len(cbos),
         pendentes_prof=pendentes_prof,
+        procedimentos=procedimentos,
+        total_proc=len(procedimentos),
         pendentes_proc=pendentes_proc,
+        cbos=cbos,
+        total_cbo=len(cbos),
         pendentes_cbo=pendentes_cbo,
         mensagem=mensagem
     )
+
+
+@app.route('/equipes', methods=['GET', 'POST'])
+def gerenciar_equipes():
+    return redirect(url_for('cadastros'))
+
+
+@app.route('/cadastros_raas', methods=['GET', 'POST'])
+def cadastros_raas():
+    return redirect(url_for('cadastros'))
 
 
 if __name__ == '__main__':

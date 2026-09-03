@@ -27,7 +27,7 @@ def gera_relatorio_02(periodo):
             return None
 
         # Carrega catálogo para manter a ordenação padrão das unidades
-        catalogo_path = os.path.join(os.path.dirname(__file__), 'bpa_catalogo.json')
+        catalogo_path = os.path.join(os.path.dirname(__file__), 'raas_catalogo.json')
         ordem_unidades = []
         if os.path.exists(catalogo_path):
             with open(catalogo_path, 'r', encoding='utf-8') as f:

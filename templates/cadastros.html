@@ -6,32 +6,68 @@
         <div class="col-md-12">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
                 <div>
-                    <h2><i class="bi bi-person-gear text-primary me-2"></i>Gerenciar Cadastros do RAAS</h2>
-                    <p class="text-muted mb-0">Cadastre e gerencie nomes de profissionais pelo CNS, descrições de procedimentos SIGTAP e cargos CBOs.</p>
+                    <h2><i class="bi bi-sliders text-primary me-2"></i>Gerenciar Cadastros do Sistema</h2>
+                    <p class="text-muted mb-0">Gestão centralizada de Equipes (INE/Sigla), Profissionais (CNS), Procedimentos SIGTAP e Cargos (CBO).</p>
                 </div>
             </div>
 
             {% if mensagem %}
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
                 <i class="bi bi-check-circle-fill me-2"></i>{{ mensagem }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
             {% endif %}
 
-            <!-- ALERTA DE PENDÊNCIAS DETECTADAS NA PRODUÇÃO -->
-            {% if pendentes_prof or pendentes_proc or pendentes_cbo %}
+            <!-- ALERTA DE PENDÊNCIAS DETECTADAS NOS ARQUIVOS IMPORTADOS -->
+            {% if pendentes_equipes or pendentes_prof or pendentes_proc or pendentes_cbo %}
             <div class="card border-warning shadow-sm mb-4">
                 <div class="card-header bg-warning bg-opacity-25 text-dark fw-bold">
-                    <i class="bi bi-exclamation-triangle-fill text-warning me-2 fs-5"></i>Atenção: Novos Itens Detectados na Produção do RAAS!
+                    <i class="bi bi-exclamation-triangle-fill text-warning me-2 fs-5"></i>Atenção: Novos Itens Detectados na Produção!
                 </div>
                 <div class="card-body">
-                    <p class="small text-muted mb-3">Os seguintes itens foram encontrados nos arquivos importados do RAAS mas ainda não possuem nomes cadastrados. Preencha abaixo para salvar em lote e atualizar os relatórios automaticamente:</p>
+                    <p class="small text-muted mb-3">Os seguintes itens foram encontrados nos arquivos importados mas ainda não possuem mapeamento/descrição cadastrados. Preencha abaixo para salvar em lote e atualizar os relatórios automaticamente:</p>
 
-                    <!-- Formulário de Lote -->
-                    <form action="{{ url_for('cadastros_raas') }}" method="POST">
+                    <!-- Formulário de Lote Geral -->
+                    <form action="{{ url_for('cadastros') }}" method="POST">
                         <input type="hidden" name="acao" value="salvar_lote_pendentes">
 
-                        <!-- 1. Profissionais Pendentes -->
+                        <!-- 1. Equipes Pendentes (REL-135) -->
+                        {% if pendentes_equipes %}
+                        <h6 class="text-secondary fw-bold"><i class="bi bi-people-fill me-1"></i> Equipes Pendentes de Sigla ({{ pendentes_equipes|length }})</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm table-bordered align-middle small">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 35%;">Unidade</th>
+                                        <th style="width: 25%;">Código INE</th>
+                                        <th>Definir Sigla da Equipe</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for p in pendentes_equipes %}
+                                    <tr>
+                                        <td>{{ p.unidade }}</td>
+                                        <td><code>{{ p.cod_ine }}</code></td>
+                                        <td>
+                                            <input type="hidden" name="unidade_{{ p.cod_ine }}" value="{{ p.unidade }}">
+                                            <select name="sigla_{{ p.cod_ine }}" class="form-select form-select-sm">
+                                                <option value="">Manter Pendente...</option>
+                                                <option value="ESF">ESF (Saúde da Família)</option>
+                                                <option value="ECR">ECR (Consultório na Rua)</option>
+                                                <option value="EAP20H">EAP 20H (Atenção Primária 20h)</option>
+                                                <option value="EAP30H">EAP 30H (Atenção Primária 30h)</option>
+                                                <option value="ESB">ESB (Saúde Bucal)</option>
+                                                <option value="eMulti">eMulti (Equipe Multiprofissional)</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+
+                        <!-- 2. Profissionais Pendentes (RAAS) -->
                         {% if pendentes_prof %}
                         <h6 class="text-primary fw-bold"><i class="bi bi-person-badge me-1"></i> Profissionais Pendentes de Nome ({{ pendentes_prof|length }})</h6>
                         <div class="table-responsive mb-3">
@@ -60,9 +96,9 @@
                         </div>
                         {% endif %}
 
-                        <!-- 2. Procedimentos Pendentes -->
+                        <!-- 3. Procedimentos Pendentes (BPA TabWin e RAAS) -->
                         {% if pendentes_proc %}
-                        <h6 class="text-success fw-bold"><i class="bi bi-journal-medical me-1"></i> Procedimentos Pendentes de Descrição ({{ pendentes_proc|length }})</h6>
+                        <h6 class="text-success fw-bold"><i class="bi bi-journal-medical me-1"></i> Procedimentos SIGTAP Pendentes de Descrição ({{ pendentes_proc|length }})</h6>
                         <div class="table-responsive mb-3">
                             <table class="table table-sm table-bordered align-middle small">
                                 <thead class="table-light">
@@ -85,7 +121,7 @@
                         </div>
                         {% endif %}
 
-                        <!-- 3. CBOs Pendentes -->
+                        <!-- 4. CBOs Pendentes -->
                         {% if pendentes_cbo %}
                         <h6 class="text-info fw-bold"><i class="bi bi-briefcase me-1"></i> CBOs Pendentes de Descrição ({{ pendentes_cbo|length }})</h6>
                         <div class="table-responsive mb-3">
@@ -112,7 +148,7 @@
 
                         <div class="text-end mt-2">
                             <button type="submit" class="btn btn-warning fw-bold px-4">
-                                <i class="bi bi-check2-all me-1"></i> Salvar Todos Preenchidos em Lote
+                                <i class="bi bi-check2-all me-1"></i> Salvar Todas as Pendências Preenchidas em Lote
                             </button>
                         </div>
                     </form>
@@ -121,30 +157,140 @@
             {% endif %}
 
             <!-- ABAS DE NAVEGAÇÃO DOS CADASTROS -->
-            <ul class="nav nav-tabs mb-3" id="raasTabs" role="tablist">
+            <ul class="nav nav-tabs mb-3" id="cadastrosTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active fw-bold" id="prof-tab" data-bs-toggle="tab" data-bs-target="#tab-prof" type="button" role="tab">
-                        <i class="bi bi-person-badge-fill me-1 text-primary"></i> 1. Profissionais ({{ total_prof }})
+                    <button class="nav-link active fw-bold" id="equipes-tab" data-bs-toggle="tab" data-bs-target="#tab-equipes" type="button" role="tab">
+                        <i class="bi bi-people-fill me-1 text-primary"></i> 1. Equipes ({{ total_equipes }})
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-bold" id="prof-tab" data-bs-toggle="tab" data-bs-target="#tab-prof" type="button" role="tab">
+                        <i class="bi bi-person-badge-fill me-1 text-primary"></i> 2. Profissionais ({{ total_prof }})
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-bold" id="proc-tab" data-bs-toggle="tab" data-bs-target="#tab-proc" type="button" role="tab">
-                        <i class="bi bi-journal-medical me-1 text-success"></i> 2. Procedimentos SIGTAP ({{ total_proc }})
+                        <i class="bi bi-journal-medical me-1 text-success"></i> 3. Procedimentos SIGTAP ({{ total_proc }})
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link fw-bold" id="cbo-tab" data-bs-toggle="tab" data-bs-target="#tab-cbo" type="button" role="tab">
-                        <i class="bi bi-briefcase-fill me-1 text-info"></i> 3. CBOs / Cargos ({{ total_cbo }})
+                        <i class="bi bi-briefcase-fill me-1 text-info"></i> 4. CBOs / Cargos ({{ total_cbo }})
                     </button>
                 </li>
             </ul>
 
-            <div class="tab-content" id="raasTabsContent">
-                <!-- ================= ABA 1: PROFISSIONAIS ================= -->
-                <div class="tab-pane fade show active" id="tab-prof" role="tabpanel">
+            <div class="tab-content" id="cadastrosTabsContent">
+                <!-- ================= ABA 1: EQUIPES ================= -->
+                <div class="tab-pane fade show active" id="tab-equipes" role="tabpanel">
+                    <div class="card shadow-sm p-3 mb-4">
+                        <h5 class="text-primary mb-3"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar / Mapear Equipe Individual</h5>
+                        <form action="{{ url_for('cadastros') }}" method="POST" class="row g-3 align-items-end">
+                            <input type="hidden" name="acao" value="salvar_equipe">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Unidade de Saúde</label>
+                                <input type="text" name="unidade" class="form-control" placeholder="Ex: UBS VILA MATILDE" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Código INE (10 dígitos)</label>
+                                <input type="text" name="cod_ine" class="form-control" placeholder="Ex: 0001234567" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Sigla da Equipe</label>
+                                <select name="sigla" class="form-select" required>
+                                    <option value="ESF">ESF (Saúde da Família)</option>
+                                    <option value="ECR">ECR (Consultório na Rua)</option>
+                                    <option value="EAP20H">EAP 20H (Atenção Primária 20h)</option>
+                                    <option value="EAP30H">EAP 30H (Atenção Primária 30h)</option>
+                                    <option value="ESB">ESB (Saúde Bucal)</option>
+                                    <option value="eMulti">eMulti (Equipe Multiprofissional)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-save me-1"></i> Salvar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card shadow-sm p-3">
+                        <h5 class="mb-3">Todas as Equipes Mapeadas</h5>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover table-sm w-100 align-middle" id="tabelaEquipes">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Unidade</th>
+                                        <th>Código INE</th>
+                                        <th>Sigla Atual</th>
+                                        <th style="width: 280px;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for e in equipes %}
+                                    <tr>
+                                        <td>{{ e.unidade }}</td>
+                                        <td><code>{{ e.cod_ine }}</code></td>
+                                        <td>
+                                            {% if e.sigla == 'ESF' %}
+                                                <span class="badge bg-success">ESF</span>
+                                            {% elif e.sigla == 'ECR' %}
+                                                <span class="badge bg-info">ECR</span>
+                                            {% elif e.sigla == 'EAP20H' %}
+                                                <span class="badge bg-primary">EAP 20H</span>
+                                            {% elif e.sigla == 'EAP30H' %}
+                                                <span class="badge bg-primary">EAP 30H</span>
+                                            {% elif e.sigla == 'ESB' %}
+                                                <span class="badge bg-warning text-dark">ESB (Saúde Bucal)</span>
+                                            {% elif e.sigla == 'eMulti' %}
+                                                <span class="badge" style="background-color: #6f42c1; color: white;">eMulti</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ e.sigla }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-1">
+                                                <!-- Form Atualizar Sigla -->
+                                                <form action="{{ url_for('cadastros') }}" method="POST" class="d-flex gap-1 flex-grow-1">
+                                                    <input type="hidden" name="acao" value="salvar_equipe">
+                                                    <input type="hidden" name="cod_ine" value="{{ e.cod_ine }}">
+                                                    <input type="hidden" name="unidade" value="{{ e.unidade }}">
+                                                    <select name="sigla" class="form-select form-select-sm" required>
+                                                        <option value="ESF" {% if e.sigla == 'ESF' %}selected{% endif %}>ESF</option>
+                                                        <option value="ECR" {% if e.sigla == 'ECR' %}selected{% endif %}>ECR</option>
+                                                        <option value="EAP20H" {% if e.sigla == 'EAP20H' %}selected{% endif %}>EAP 20H</option>
+                                                        <option value="EAP30H" {% if e.sigla == 'EAP30H' %}selected{% endif %}>EAP 30H</option>
+                                                        <option value="ESB" {% if e.sigla == 'ESB' %}selected{% endif %}>ESB</option>
+                                                        <option value="eMulti" {% if e.sigla == 'eMulti' %}selected{% endif %}>eMulti</option>
+                                                    </select>
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Atualizar">
+                                                        <i class="bi bi-arrow-repeat"></i>
+                                                    </button>
+                                                </form>
+
+                                                <!-- Form Excluir Mapeamento -->
+                                                <form action="{{ url_for('cadastros') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir o mapeamento desta equipe?');">
+                                                    <input type="hidden" name="acao" value="excluir_equipe">
+                                                    <input type="hidden" name="cod_ine" value="{{ e.cod_ine }}">
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir Mapeamento">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= ABA 2: PROFISSIONAIS ================= -->
+                <div class="tab-pane fade" id="tab-prof" role="tabpanel">
                     <div class="card shadow-sm p-3 mb-4">
                         <h5 class="text-primary mb-3"><i class="bi bi-person-plus-fill me-2"></i>Adicionar / Atualizar Profissional</h5>
-                        <form action="{{ url_for('cadastros_raas') }}" method="POST" class="row g-3 align-items-end">
+                        <form action="{{ url_for('cadastros') }}" method="POST" class="row g-3 align-items-end">
                             <input type="hidden" name="acao" value="salvar_prof">
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Cartão Nacional de Saúde (CNS)</label>
@@ -179,7 +325,7 @@
                                         <td><code>{{ cns }}</code></td>
                                         <td>{{ nome }}</td>
                                         <td>
-                                            <form action="{{ url_for('cadastros_raas') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir o cadastro deste profissional?');">
+                                            <form action="{{ url_for('cadastros') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir o cadastro deste profissional?');">
                                                 <input type="hidden" name="acao" value="excluir_prof">
                                                 <input type="hidden" name="codigo_chave" value="{{ cns }}">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir Profissional">
@@ -195,11 +341,11 @@
                     </div>
                 </div>
 
-                <!-- ================= ABA 2: PROCEDIMENTOS ================= -->
+                <!-- ================= ABA 3: PROCEDIMENTOS ================= -->
                 <div class="tab-pane fade" id="tab-proc" role="tabpanel">
                     <div class="card shadow-sm p-3 mb-4">
-                        <h5 class="text-success mb-3"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar / Atualizar Procedimento</h5>
-                        <form action="{{ url_for('cadastros_raas') }}" method="POST" class="row g-3 align-items-end">
+                        <h5 class="text-success mb-3"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar / Atualizar Procedimento SIGTAP</h5>
+                        <form action="{{ url_for('cadastros') }}" method="POST" class="row g-3 align-items-end">
                             <input type="hidden" name="acao" value="salvar_proc">
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Código SIGTAP (10 dígitos)</label>
@@ -234,7 +380,7 @@
                                         <td><code>{{ cod }}</code></td>
                                         <td>{{ desc }}</td>
                                         <td>
-                                            <form action="{{ url_for('cadastros_raas') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este procedimento?');">
+                                            <form action="{{ url_for('cadastros') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este procedimento?');">
                                                 <input type="hidden" name="acao" value="excluir_proc">
                                                 <input type="hidden" name="codigo_chave" value="{{ cod }}">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir Procedimento">
@@ -250,11 +396,11 @@
                     </div>
                 </div>
 
-                <!-- ================= ABA 3: CBOS ================= -->
+                <!-- ================= ABA 4: CBOS ================= -->
                 <div class="tab-pane fade" id="tab-cbo" role="tabpanel">
                     <div class="card shadow-sm p-3 mb-4">
                         <h5 class="text-info mb-3"><i class="bi bi-plus-circle-fill me-2"></i>Adicionar / Atualizar CBO</h5>
-                        <form action="{{ url_for('cadastros_raas') }}" method="POST" class="row g-3 align-items-end">
+                        <form action="{{ url_for('cadastros') }}" method="POST" class="row g-3 align-items-end">
                             <input type="hidden" name="acao" value="salvar_cbo">
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Código CBO (6 dígitos)</label>
@@ -289,7 +435,7 @@
                                         <td><code>{{ cod }}</code></td>
                                         <td>{{ desc }}</td>
                                         <td>
-                                            <form action="{{ url_for('cadastros_raas') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este CBO?');">
+                                            <form action="{{ url_for('cadastros') }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este CBO?');">
                                                 <input type="hidden" name="acao" value="excluir_cbo">
                                                 <input type="hidden" name="codigo_chave" value="{{ cod }}">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Excluir CBO">
@@ -330,7 +476,7 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        function criarTabela(selector, titulo) {
+        function criarTabela(selector, titulo, colunasExport) {
             $(selector).DataTable({
                 language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" },
                 pageLength: 25,
@@ -351,8 +497,13 @@
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
                         className: 'btn btn-success',
                         exportOptions: {
-                            columns: [0, 1],
-                            modifier: { search: 'applied' }
+                            columns: colunasExport,
+                            modifier: { search: 'applied' },
+                            format: {
+                                header: function(data, columnIdx, node) {
+                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
+                                }
+                            }
                         }
                     },
                     {
@@ -361,33 +512,26 @@
                         text: '<i class="bi bi-printer"></i> Imprimir',
                         className: 'btn btn-outline-dark',
                         exportOptions: {
-                            columns: [0, 1],
-                            modifier: { search: 'applied' }
+                            columns: colunasExport,
+                            modifier: { search: 'applied' },
+                            format: {
+                                header: function(data, columnIdx, node) {
+                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
+                                }
+                            }
                         }
                     }
                 ],
                 initComplete: function() {
-                    this.api().columns([0, 1]).every(function() {
-                        var column = this;
-                        var title = $(column.header()).text().trim();
-                        var input = $('<input type="text" class="form-control form-control-sm mt-2" placeholder="Filtrar ' + title + '..." style="font-weight: normal; font-size: 0.8rem;" />')
-                            .appendTo($(column.header()))
-                            .on('keyup change clear', function() {
-                                if (column.search() !== this.value) {
-                                    column.search(this.value).draw();
-                                }
-                            })
-                            .on('click', function(e) {
-                                e.stopPropagation();
-                            });
-                    });
+                    window.initExcelFilters(this.api(), colunasExport);
                 }
             });
         }
 
-        criarTabela('#tabelaProf', 'Cadastros_Profissionais_RAAS');
-        criarTabela('#tabelaProc', 'Cadastros_Procedimentos_SIGTAP_RAAS');
-        criarTabela('#tabelaCBO', 'Cadastros_CBOs_RAAS');
+        criarTabela('#tabelaEquipes', 'Mapeamento_Equipes_STS_Penha', [0, 1, 2]);
+        criarTabela('#tabelaProf', 'Cadastros_Profissionais_SUS', [0, 1]);
+        criarTabela('#tabelaProc', 'Cadastros_Procedimentos_SIGTAP', [0, 1]);
+        criarTabela('#tabelaCBO', 'Cadastros_CBOs_SUS', [0, 1]);
 
         // Ajusta colunas quando o usuário troca de aba
         $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
