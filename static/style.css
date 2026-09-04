@@ -258,3 +258,45 @@ table.dataTable thead > tr > th.sorting_desc {
     font-weight: 500;
 }
 
+/* =========================================================
+   REDIMENSIONAMENTO DE COLUNAS (COLUMN RESIZE)
+   ========================================================= */
+
+table.dataTable thead th,
+.table thead th {
+    position: relative !important;
+}
+
+.dt-column-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    z-index: 10;
+    transition: background-color 0.15s ease-in-out, opacity 0.15s ease-in-out;
+}
+
+.dt-column-resizer:hover,
+.dt-column-resizer.is-resizing {
+    background-color: #0d6efd !important;
+    opacity: 0.9;
+    box-shadow: 0 0 4px rgba(13, 110, 253, 0.5);
+}
+
+body.is-resizing-column {
+    cursor: col-resize !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}
+
+body.is-resizing-column * {
+    cursor: col-resize !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+}
+
+

@@ -255,3 +255,13 @@ class RelatorioCompetencia(db.Model):
     __table_args__ = (
         db.UniqueConstraint('relatorio_id', 'competencia', name='uq_rel_competencia'),
     )
+
+class REL10(db.Model):
+    __tablename__ = 'REL-10'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    ano = db.Column(db.Integer, default=0, index=True)
+    mes = db.Column(db.String(50), nullable=True)
+    ano_mes = db.Column(db.Integer, default=0, index=True)
+    estabelecimento = db.Column(db.String(255), nullable=True, index=True)
+    quantidade_procedimento = db.Column(db.Integer, default=0)
+    data_extracao = db.Column(db.String(50), nullable=True)

@@ -27,7 +27,7 @@ window.initExcelFilters = function(dtApi, colIndices) {
             return this.nodeType === 3;
         }).text().trim() || $header.text().trim();
 
-        // Limpa texto puro e envolve em estrutura flex com botão de funil
+        // Limpa texto puro e envolve em estrutura flex com botão de funil e alça de redimensionamento
         $header.html(`
             <div class="d-flex align-items-center justify-content-between gap-1 w-100 header-excel-container">
                 <span class="header-text text-nowrap" title="${headerText}">${headerText}</span>
@@ -35,14 +35,79 @@ window.initExcelFilters = function(dtApi, colIndices) {
                     <i class="bi bi-funnel filter-icon"></i>
                 </button>
             </div>
+            <div class="dt-column-resizer" title="Arraste para redimensionar a coluna | Duplo clique para auto-ajustar"></div>
         `);
 
         var $btn = $header.find('.btn-excel-filter');
+        var $resizer = $header.find('.dt-column-resizer');
 
+        // Impede que o clique no filtro abra o dropdown ou acione ordenação
         $btn.on('click', function(e) {
             e.stopPropagation();
             fecharTodosDropdowns();
             abrirDropdownFiltro(column, $btn);
+        });
+
+        // Eventos de Redimensionamento da Coluna (Estilo Excel)
+        $resizer.on('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+        });
+
+        $resizer.on('mousedown', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+
+            var $th = $header;
+            var startX = e.pageX;
+            var startWidth = $th.outerWidth();
+            var minWidth = 50;
+            var $table = $th.closest('table');
+
+            // Permite que a tabela se expanda horizontalmente de forma suave
+            $table.css({
+                'min-width': '100%',
+                'width': 'max-content'
+            });
+
+            $('body').addClass('is-resizing-column');
+            $resizer.addClass('is-resizing');
+
+            function onMouseMove(moveEvent) {
+                moveEvent.preventDefault();
+                var diffX = moveEvent.pageX - startX;
+                var newWidth = Math.max(minWidth, startWidth + diffX);
+                $th.css({
+                    'width': newWidth + 'px',
+                    'min-width': newWidth + 'px',
+                    'max-width': newWidth + 'px'
+                });
+            }
+
+            function onMouseUp(upEvent) {
+                upEvent.preventDefault();
+                $('body').removeClass('is-resizing-column');
+                $resizer.removeClass('is-resizing');
+                $(document).off('mousemove', onMouseMove);
+                $(document).off('mouseup', onMouseUp);
+            }
+
+            $(document).on('mousemove', onMouseMove);
+            $(document).on('mouseup', onMouseUp);
+        });
+
+        // Duplo clique na divisória: Restaura o tamanho automático da coluna
+        $resizer.on('dblclick', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            $header.css({
+                'width': '',
+                'min-width': '',
+                'max-width': ''
+            });
+            if (dtApi && dtApi.columns && dtApi.columns.adjust) {
+                dtApi.columns.adjust().draw(false);
+            }
         });
     });
 

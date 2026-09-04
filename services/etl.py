@@ -192,14 +192,50 @@ def processa_at03(caminho, periodo=None):
 
     with app.app_context():
         if not df_limpo.empty and 'ano' in df_limpo.columns and 'mes' in df_limpo.columns:
-            ano = df_limpo['ano'].dropna().iloc[0]
-            mes = df_limpo['mes'].dropna().iloc[0]
-            db.session.execute(text(f"DELETE FROM 'AT-03' WHERE ano = {ano} AND mes = '{mes}'"))
+            ano = int(df_limpo['ano'].dropna().iloc[0])
+            mes_raw = str(df_limpo['mes'].dropna().iloc[0]).strip()
+            
+            # Limpa registro anterior do mesmo ano/mês na tabela bruta
+            db.session.execute(text(f"DELETE FROM 'AT-03' WHERE ano = {ano} AND (mes = '{mes_raw}' OR mes LIKE '{mes_raw[:3]}%')"))
             db.session.commit()
             df_limpo.to_sql(name='AT-03', con=db.engine, if_exists='append', index=False)
-            registrar_competencia('10', f"{ano}01")
 
-    print('AT-03 carregado')
+            # Pre-consolidação automática do Relatório 10 (REL-10)
+            faixas_validas = [
+                '20 a 24 anos', '25 a 29 anos', '30 a 34 anos', '35 a 39 anos',
+                '40 a 44 anos', '45 a 49 anos', '50 a 54 anos', '55 a 59 anos', '60 a 64 anos'
+            ]
+            mapa_mes_num = {
+                'Janeiro': '01', 'Fevereiro': '02', 'Março': '03', 'Marco': '03',
+                'Abril': '04', 'Maio': '05', 'Junho': '06', 'Julho': '07',
+                'Agosto': '08', 'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12'
+            }
+            
+            df_rel10_sub = df_limpo[
+                (df_limpo['sts'].astype(str).str.upper().str.contains('STS PENHA', na=False)) &
+                (~df_limpo['estabelecimento'].astype(str).str.lower().str.contains('sae dst/aids penha', na=False)) &
+                (df_limpo['faixa_etaria'].astype(str).isin(faixas_validas))
+            ].copy()
+
+            if not df_rel10_sub.empty:
+                df_rel10_agg = df_rel10_sub.groupby(['ano', 'mes', 'estabelecimento'], as_index=False)['quantidade_procedimento'].sum()
+                df_rel10_agg['mes_clean'] = df_rel10_agg['mes'].apply(lambda m: 'Março' if 'Mar' in str(m) else str(m).strip())
+                df_rel10_agg['mes_num'] = df_rel10_agg['mes_clean'].map(mapa_mes_num).fillna('01')
+                df_rel10_agg['ano_mes'] = (df_rel10_agg['ano'].astype(str) + df_rel10_agg['mes_num']).astype(int)
+                df_rel10_agg['mes'] = df_rel10_agg['mes_clean']
+                df_rel10_agg['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+                
+                cols_rel10 = ['ano', 'mes', 'ano_mes', 'estabelecimento', 'quantidade_procedimento', 'data_extracao']
+                df_rel10_final = df_rel10_agg[cols_rel10]
+
+                db.session.execute(text(f"DELETE FROM 'REL-10' WHERE ano = {ano} AND (mes = '{mes_raw}' OR mes LIKE '{mes_raw[:3]}%')"))
+                db.session.commit()
+                df_rel10_final.to_sql(name='REL-10', con=db.engine, if_exists='append', index=False)
+
+                for comp_val in df_rel10_final['ano_mes'].unique():
+                    registrar_competencia('10', str(comp_val))
+
+    print('AT-03 e REL-10 carregados com sucesso')
 
 def processa_fe02(caminho, periodo=None):
     df = read_clean_csv(caminho, 'Nome_Mes6')
@@ -784,7 +820,7 @@ def processa_bpa_dbf(caminho, periodo=None):
     from dbfread import DBF
     
     # Carrega catálogo unificado
-    catalogo_path = os.path.join(os.path.dirname(__file__), 'raas_catalogo.json')
+    catalogo_path = os.path.join(os.path.dirname(__file__), 'catalogo_geral.json')
     unidades_map = {}
     procedimentos_map = {}
     if os.path.exists(catalogo_path):
@@ -901,7 +937,7 @@ def processa_raas_arquivo(caminho, periodo=None):
     import os
     import json
     
-    catalogo_path = os.path.join(os.path.dirname(__file__), 'raas_catalogo.json')
+    catalogo_path = os.path.join(os.path.dirname(__file__), 'catalogo_geral.json')
     cbos_map = {}
     proced_map = {}
     profs_map = {}
@@ -918,7 +954,8 @@ def processa_raas_arquivo(caminho, periodo=None):
             cbos_map = cat.get('cbos', {})
             proced_map = cat.get('procedimentos', {})
             profs_map = cat.get('profissionais', {})
-            estab_map.update(cat.get('estabelecimentos', {}))
+            for u in cat.get('unidades', []):
+                estab_map[str(u['cnes']).strip()] = u.get('nome', u.get('coluna', ''))
 
     linhas_15 = []
     linhas_16 = []

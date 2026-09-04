@@ -773,8 +773,8 @@ def cadastros():
     if "usuario_id" not in session:
         return redirect(url_for("login"))
 
-    catalogo_path = os.path.join(os.getcwd(), 'services', 'raas_catalogo.json')
-    cat_data = {'cbos': {}, 'procedimentos': {}, 'profissionais': {}, 'estabelecimentos': {}}
+    catalogo_path = os.path.join(os.getcwd(), 'services', 'catalogo_geral.json')
+    cat_data = {'cbos': {}, 'procedimentos': {}, 'profissionais': {}, 'unidades': []}
     if os.path.exists(catalogo_path):
         with open(catalogo_path, 'r', encoding='utf-8') as f:
             cat_data = json.load(f)

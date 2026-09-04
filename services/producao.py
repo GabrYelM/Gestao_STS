@@ -27,7 +27,7 @@ def gera_relatorio_02(periodo):
             return None
 
         # Carrega catálogo para manter a ordenação padrão das unidades
-        catalogo_path = os.path.join(os.path.dirname(__file__), 'raas_catalogo.json')
+        catalogo_path = os.path.join(os.path.dirname(__file__), 'catalogo_geral.json')
         ordem_unidades = []
         if os.path.exists(catalogo_path):
             with open(catalogo_path, 'r', encoding='utf-8') as f:
@@ -84,11 +84,13 @@ def gera_relatorio_03(periodo):
             return None
 
         df_at02['quantidade_procedimento'] = pd.to_numeric(df_at02['quantidade_procedimento'], errors='coerce').fillna(0)
+        df_at02['codigo_procedimento'] = df_at02['codigo_procedimento'].fillna('').astype(str).str.strip()
+        df_at02['procedimento'] = df_at02['procedimento'].fillna('').astype(str).str.strip()
 
         df_final = pd.pivot_table(
             df_at02,
             columns = 'ano_mes',
-            index = ['estabelecimento', 'nome_cbo', 'profissional', 'procedimento'],
+            index = ['estabelecimento', 'nome_cbo', 'profissional', 'codigo_procedimento', 'procedimento'],
             values = 'quantidade_procedimento',
             aggfunc='sum'
         ).fillna(0).astype(int)
@@ -459,54 +461,29 @@ def gera_relatorio_09(periodo):
         return df_final
 
 def gera_relatorio_10(periodo):
-
-    mapa_mes = {
-        '01': 'Janeiro',   '1': 'Janeiro',
-        '02': 'Fevereiro', '2': 'Fevereiro',
-        '03': 'Março',     '3': 'Março',
-        '04': 'Abril',     '4': 'Abril',
-        '05': 'Maio',      '5': 'Maio',
-        '06': 'Junho',     '6': 'Junho',
-        '07': 'Julho',     '7': 'Julho',
-        '08': 'Agosto',    '8': 'Agosto',
-        '09': 'Setembro',  '9': 'Setembro',
-        '10': 'Outubro',
-        '11': 'Novembro',
-        '12': 'Dezembro'
-    }
-
-    ano = periodo[:4]
-    cd_mes = periodo[4:]
-    mes = mapa_mes.get(cd_mes)
-
+    """
+    Relatório 10: ATENDIMENTO POR PROCEDIMENTO SEGUNDO SEXO E FAIXA ETÁRIA (Pré-carregado no banco em REL-10)
+    Gera a série histórica acumulada mês a mês até a competência selecionada.
+    """
     with app.app_context():
-    
         query = f"""
-        SELECT * FROM 'AT-03' 
-        WHERE sts = 'SUDESTE - STS PENHA'
-        AND estabelecimento NOT IN ('Sae Dst/Aids Penha')
-        AND faixa_etaria IN ('20 a 24 anos', '25 a 29 anos', '30 a 34 anos', '35 a 39 anos', '40 a 44 anos', '45 a 49 anos', '50 a 54 anos', '55 a 59 anos', '60 a 64 anos')
+        SELECT ano, mes, ano_mes, estabelecimento, quantidade_procedimento 
+        FROM 'REL-10' 
+        WHERE ano_mes <= {int(periodo)}
+        ORDER BY ano_mes
         """
-        df_at03 = pd.read_sql(query, con=db.engine)
+        df_rel10 = pd.read_sql(query, con=db.engine)
         
-        if df_at03.empty:
+        if df_rel10.empty:
             return None
 
-        mapa_inverso = {v: k for k, v in mapa_mes.items() if len(k) == 2}
-        df_at03['mes_num'] = df_at03['mes'].map(mapa_inverso)
-        df_at03 = df_at03.dropna(subset=['mes_num'])
-        df_at03['ano_mes_int'] = (df_at03['ano'].astype(str) + df_at03['mes_num']).astype(int)
-        
-        # Filtra histórico até o selecionado
-        df_at03 = df_at03[df_at03['ano_mes_int'] <= int(periodo)]
-        df_at03 = df_at03.sort_values('ano_mes_int')
-        df_at03['Mês/Ano'] = df_at03['mes'] + '/' + df_at03['ano'].astype(str)
+        df_rel10['Mês/Ano'] = df_rel10['mes'] + '/' + df_rel10['ano'].astype(str)
 
         df_final = pd.pivot_table(
-            df_at03,
-            columns = 'estabelecimento',
-            index = ['ano_mes_int', 'Mês/Ano'],
-            values = 'quantidade_procedimento',
+            df_rel10,
+            columns='estabelecimento',
+            index=['ano_mes', 'Mês/Ano'],
+            values='quantidade_procedimento',
             aggfunc='sum'
         ).fillna(0).astype(int)
         
@@ -957,6 +934,8 @@ def gera_relatorio_05(periodo):
 
         if df_pac_raw is not None and not df_pac_raw.empty:
             df_pac_raw['qt_pacientes'] = pd.to_numeric(df_pac_raw['qt_pacientes'], errors='coerce').fillna(0)
+            df_pac_raw['estabelecimento'] = df_pac_raw['estabelecimento'].astype(str).str.strip()
+            df_pac_raw['ano_mes'] = df_pac_raw['ano_mes'].astype(str).str.strip()
             pivot_pac = pd.pivot_table(
                 df_pac_raw,
                 index='estabelecimento',
@@ -995,9 +974,16 @@ def gera_relatorio_05(periodo):
 
         if df_prof_raw is not None and not df_prof_raw.empty:
             df_prof_raw['quantidade'] = pd.to_numeric(df_prof_raw['quantidade'], errors='coerce').fillna(0)
+            df_prof_raw['estabelecimento'] = df_prof_raw['estabelecimento'].astype(str).str.strip()
+            df_prof_raw['descr_cbo'] = df_prof_raw['descr_cbo'].astype(str).str.strip()
+            df_prof_raw['nome_prof'] = df_prof_raw['nome_prof'].astype(str).str.strip()
+            df_prof_raw['cod_acao'] = df_prof_raw['cod_acao'].fillna('').astype(str).str.strip()
+            df_prof_raw['procedimento'] = df_prof_raw['procedimento'].fillna(df_prof_raw['cod_acao']).astype(str).str.strip()
+            df_prof_raw['ano_mes'] = df_prof_raw['ano_mes'].astype(str).str.strip()
+
             pivot_prof = pd.pivot_table(
                 df_prof_raw,
-                index=['estabelecimento', 'descr_cbo', 'nome_prof', 'procedimento'],
+                index=['estabelecimento', 'descr_cbo', 'nome_prof', 'cod_acao', 'procedimento'],
                 columns='ano_mes',
                 values='quantidade',
                 aggfunc='sum',
@@ -1007,7 +993,7 @@ def gera_relatorio_05(periodo):
             pivot_prof = pivot_prof[cols_meses_prof]
             pivot_prof['Total Geral'] = pivot_prof.sum(axis=1)
             pivot_prof.rename(columns=mapa_rotulos, inplace=True)
-            pivot_prof.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'NOME_PROF', 'PA_DC']
+            pivot_prof.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'NOME_PROF', 'COD_PROCEDIMENTO', 'PROCEDIMENTO']
             pivot_prof.columns.name = None
             df_profissionais = pivot_prof.reset_index().astype(object)
         else:
@@ -1022,9 +1008,15 @@ def gera_relatorio_05(periodo):
 
         if df_acoes_raw is not None and not df_acoes_raw.empty:
             df_acoes_raw['quantidade'] = pd.to_numeric(df_acoes_raw['quantidade'], errors='coerce').fillna(0)
+            df_acoes_raw['estabelecimento'] = df_acoes_raw['estabelecimento'].astype(str).str.strip()
+            df_acoes_raw['descr_cbo'] = df_acoes_raw['descr_cbo'].astype(str).str.strip()
+            df_acoes_raw['cod_acao'] = df_acoes_raw['cod_acao'].fillna('').astype(str).str.strip()
+            df_acoes_raw['procedimento'] = df_acoes_raw['procedimento'].fillna(df_acoes_raw['cod_acao']).astype(str).str.strip()
+            df_acoes_raw['ano_mes'] = df_acoes_raw['ano_mes'].astype(str).str.strip()
+
             pivot_acoes = pd.pivot_table(
                 df_acoes_raw,
-                index=['estabelecimento', 'descr_cbo', 'procedimento'],
+                index=['estabelecimento', 'descr_cbo', 'cod_acao', 'procedimento'],
                 columns='ano_mes',
                 values='quantidade',
                 aggfunc='sum',
@@ -1034,7 +1026,7 @@ def gera_relatorio_05(periodo):
             pivot_acoes = pivot_acoes[cols_meses_acoes]
             pivot_acoes['Total Geral'] = pivot_acoes.sum(axis=1)
             pivot_acoes.rename(columns=mapa_rotulos, inplace=True)
-            pivot_acoes.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'PA_DC']
+            pivot_acoes.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'COD_PROCEDIMENTO', 'PROCEDIMENTO']
             pivot_acoes.columns.name = None
             df_acoes = pivot_acoes.reset_index().astype(object)
         else:
@@ -1086,7 +1078,7 @@ MAPA_RELATORIOS_INFO = {
     },
     '10': {
         'fonte': 'SIGA Saúde (BI - AT-03)',
-        'tabela': 'AT-03',
+        'tabela': 'REL-10',
         'arquivos': ['AT-03.csv']
     },
     '11': {
