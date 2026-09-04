@@ -20,7 +20,7 @@ MAPA_RELATORIO_TABELAS = {
     '07': [],
     '08': [('GAC-02', 'data_extracao'), ('GAC-02', 'competencia')],
     '09': [('REL-114', 'ano_mes'), ('REL-114', 'data_extracao')],
-    '10': [('AT-03', 'ano'), ('AT-02', 'ano_mes')],
+    '10': [('REL-10', 'ano_mes'), ('AT-03', 'ano')],
     '11': [('FE-02', 'ano_mes')],
     '12': [('REL-12', 'ano_mes_extracao'), ('REL-12', 'data_extracao')],
     '13': [('AG-04', 'ano_mes')],

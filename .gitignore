@@ -1,14 +1,53 @@
-__pycache__/
-.env
-
-*.csv
-*.sqlite
-*.db
-
-ARQUIVOS ORIGINAIS/
-.venv
+# Ambiente Virtual e Dependências
+.venv/
+env/
+venv/
 node_modules/
+
+# Caches do Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Variáveis de Ambiente e Segredos
+.env
+.env.local
+
+# Banco de Dados e Logs do SQLite
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Arquivos Brutos e Dados Volumosos
+ARQUIVOS ORIGINAIS/
+*.csv
 *.xls
 *.xlsx
+*.xlsm
 *.zip
+*.rar
+*.7z
+*.dbf
+*.dbc
 *.txt
+*.pdf
+
+# Logs e Arquivos Temporários
+*.log
+*.tmp
+*.bak
+
+# Configurações de IDEs e Editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Sistema Operacional (Windows / MacOS)
+Thumbs.db
+desktop.ini
+.DS_Store
