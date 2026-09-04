@@ -38,14 +38,16 @@
                             <table class="table table-sm table-bordered align-middle small">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 35%;">Unidade</th>
-                                        <th style="width: 25%;">Código INE</th>
+                                        <th style="width: 25%;">Origem / Arquivo</th>
+                                        <th style="width: 30%;">Unidade</th>
+                                        <th style="width: 20%;">Código INE</th>
                                         <th>Definir Sigla da Equipe</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for p in pendentes_equipes %}
                                     <tr>
+                                        <td><span class="badge bg-secondary-subtle text-secondary border px-2 py-1"><i class="bi bi-file-earmark-spreadsheet me-1"></i>{{ p.origem or 'REL 135' }}</span></td>
                                         <td>{{ p.unidade }}</td>
                                         <td><code>{{ p.cod_ine }}</code></td>
                                         <td>
@@ -74,15 +76,17 @@
                             <table class="table table-sm table-bordered align-middle small">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 20%;">CNS do Profissional</th>
+                                        <th style="width: 22%;">Origem / Arquivo</th>
+                                        <th style="width: 18%;">CNS do Profissional</th>
                                         <th style="width: 25%;">Estabelecimento</th>
-                                        <th style="width: 20%;">Cargo (CBO)</th>
+                                        <th style="width: 15%;">Cargo (CBO)</th>
                                         <th>Nome Completo do Profissional</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for p in pendentes_prof %}
                                     <tr>
+                                        <td><span class="badge bg-primary-subtle text-primary border px-2 py-1"><i class="bi bi-file-earmark-medical me-1"></i>{{ p.origem or 'RAAS CAPS' }}</span></td>
                                         <td><code>{{ p.cns_prof }}</code></td>
                                         <td>{{ p.estabelecimento }}</td>
                                         <td>{{ p.descr_cbo }}</td>
@@ -103,13 +107,15 @@
                             <table class="table table-sm table-bordered align-middle small">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 25%;">Código SIGTAP</th>
+                                        <th style="width: 25%;">Origem / Arquivo</th>
+                                        <th style="width: 20%;">Código SIGTAP (10 Dígitos)</th>
                                         <th>Nome / Descrição do Procedimento</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for proc in pendentes_proc %}
                                     <tr>
+                                        <td><span class="badge bg-success-subtle text-success border px-2 py-1"><i class="bi bi-file-earmark-bar-graph me-1"></i>{{ proc.origem or 'BPA / RAAS' }}</span></td>
                                         <td><code>{{ proc.cod_acao }}</code></td>
                                         <td>
                                             <input type="text" name="proc_{{ proc.cod_acao }}" class="form-control form-control-sm" placeholder="Digite a descrição oficial do procedimento...">
@@ -128,13 +134,15 @@
                             <table class="table table-sm table-bordered align-middle small">
                                 <thead class="table-light">
                                     <tr>
-                                        <th style="width: 25%;">Código CBO</th>
+                                        <th style="width: 25%;">Origem / Arquivo</th>
+                                        <th style="width: 20%;">Código CBO</th>
                                         <th>Descrição do Cargo / CBO</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for c in pendentes_cbo %}
                                     <tr>
+                                        <td><span class="badge bg-info-subtle text-info border px-2 py-1"><i class="bi bi-file-earmark-medical me-1"></i>{{ c.origem or 'RAAS CAPS' }}</span></td>
                                         <td><code>{{ c.co_cbo }}</code></td>
                                         <td>
                                             <input type="text" name="cbo_{{ c.co_cbo }}" class="form-control form-control-sm" placeholder="Digite a descrição do CBO...">

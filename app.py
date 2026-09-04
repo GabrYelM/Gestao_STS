@@ -817,13 +817,14 @@ def cadastros():
                 # 3. Salva Procedimentos em Lote
                 elif key.startswith('proc_') and val and val.strip():
                     cod = key.replace('proc_', '').strip()
+                    cod_10 = cod.zfill(10)
                     desc = val.strip().upper()
-                    procedimentos[cod] = desc
+                    procedimentos[cod_10] = desc
                     alterou = True
                     try:
-                        db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                        db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                        db.session.execute(text('UPDATE "REL-02" SET procedimento = :nome WHERE codigo_procedimento = :cod OR codigo_procedimento = :cod_pad'), {'nome': desc, 'cod': cod, 'cod_pad': cod.zfill(10)})
+                        db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome, cod_acao = :c10 WHERE cod_acao = :cod OR cod_acao = :c10"), {'nome': desc, 'cod': cod, 'c10': cod_10})
+                        db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome, cod_acao = :c10 WHERE cod_acao = :cod OR cod_acao = :c10"), {'nome': desc, 'cod': cod, 'c10': cod_10})
+                        db.session.execute(text('UPDATE "REL-02" SET procedimento = :nome, codigo_procedimento = :c10 WHERE codigo_procedimento = :cod OR codigo_procedimento = :c10'), {'nome': desc, 'cod': cod, 'c10': cod_10})
                     except Exception:
                         pass
 
@@ -893,17 +894,18 @@ def cadastros():
             desc = request.form.get('nome') or request.form.get('valor')
             if cod and desc:
                 cod = cod.strip()
+                cod_10 = cod.zfill(10)
                 desc = desc.strip().upper()
-                procedimentos[cod] = desc
+                procedimentos[cod_10] = desc
                 alterou = True
                 try:
-                    db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                    db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome WHERE cod_acao = :cod"), {'nome': desc, 'cod': cod})
-                    db.session.execute(text('UPDATE "REL-02" SET procedimento = :nome WHERE codigo_procedimento = :cod OR codigo_procedimento = :cod_pad'), {'nome': desc, 'cod': cod, 'cod_pad': cod.zfill(10)})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome, cod_acao = :c10 WHERE cod_acao = :cod OR cod_acao = :c10"), {'nome': desc, 'cod': cod, 'c10': cod_10})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome, cod_acao = :c10 WHERE cod_acao = :cod OR cod_acao = :c10"), {'nome': desc, 'cod': cod, 'c10': cod_10})
+                    db.session.execute(text('UPDATE "REL-02" SET procedimento = :nome, codigo_procedimento = :c10 WHERE codigo_procedimento = :cod OR codigo_procedimento = :c10'), {'nome': desc, 'cod': cod, 'c10': cod_10})
                     db.session.commit()
                 except Exception:
                     db.session.rollback()
-                mensagem = f"Procedimento {cod} atualizado com sucesso!"
+                mensagem = f"Procedimento {cod_10} atualizado com sucesso!"
 
         elif acao == 'salvar_cbo' or acao == 'salvar_cbo_modal':
             cod = request.form.get('codigo') or request.form.get('codigo_chave')
@@ -930,10 +932,12 @@ def cadastros():
 
         elif acao == 'excluir_proc':
             cod = request.form.get('codigo_chave') or request.form.get('codigo')
-            if cod and cod in procedimentos:
-                proc_removido = procedimentos.pop(cod)
-                alterou = True
-                mensagem = f"Procedimento {cod} - {proc_removido} excluído do cadastro!"
+            if cod:
+                cod_10 = cod.strip().zfill(10)
+                proc_removido = procedimentos.pop(cod_10, None) or procedimentos.pop(cod, None)
+                if proc_removido:
+                    alterou = True
+                    mensagem = f"Procedimento {cod_10} - {proc_removido} excluído do cadastro!"
 
         elif acao == 'excluir_cbo':
             cod = request.form.get('codigo_chave') or request.form.get('codigo')
@@ -955,10 +959,11 @@ def cadastros():
     try:
         equipes = pd.read_sql("SELECT * FROM equipes ORDER BY unidade, sigla", con=db.engine).to_dict('records')
         query_pend_eq = '''
-            SELECT DISTINCT r.cod_ine, r.unidade 
+            SELECT DISTINCT r.cod_ine, r.unidade, 'REL 135 (Cadastros Individuais)' AS origem
             FROM "REL-135" r 
             LEFT JOIN equipes e ON r.cod_ine = e.cod_ine 
             WHERE e.sigla IS NULL OR e.sigla = ''
+            ORDER BY r.unidade, r.cod_ine
         '''
         pendentes_equipes = pd.read_sql(query_pend_eq, con=db.engine).to_dict('records')
     except Exception:
@@ -968,7 +973,7 @@ def cadastros():
     pendentes_prof = []
     try:
         df_pend_prof = pd.read_sql("""
-            SELECT DISTINCT cns_prof, estabelecimento, co_cbo, descr_cbo
+            SELECT DISTINCT cns_prof, estabelecimento, co_cbo, descr_cbo, 'RAAS CAPS (Relatório 05)' AS origem
             FROM 'RAAS_ACOES_PROF'
             WHERE nome_prof = cns_prof OR nome_prof IS NULL OR nome_prof = ''
             ORDER BY estabelecimento, descr_cbo
@@ -977,35 +982,68 @@ def cadastros():
     except Exception:
         pass
 
-    # 3. Pendências de Procedimentos (RAAS e REL-02)
+    # 3. Pendências de Procedimentos (BPA TabWin, RAAS CAPS, SIGA AT-02)
     pendentes_proc = []
     try:
+        with open(catalogo_path, 'r', encoding='utf-8') as f:
+            cat_atual = json.load(f)
+        mapa_procs_atual = cat_atual.get('procedimentos', {})
+    except Exception:
+        mapa_procs_atual = {}
+
+    try:
         df_raas_proc = pd.read_sql("""
-            SELECT DISTINCT cod_acao, procedimento
+            SELECT DISTINCT cod_acao, procedimento, 'RAAS CAPS (Relatório 05)' AS origem
             FROM 'RAAS_ACOES_PROF'
             WHERE procedimento = cod_acao OR procedimento LIKE 'Procedimento %' OR procedimento IS NULL OR procedimento = ''
         """, con=db.engine)
     except Exception:
-        df_raas_proc = pd.DataFrame(columns=['cod_acao', 'procedimento'])
+        df_raas_proc = pd.DataFrame(columns=['cod_acao', 'procedimento', 'origem'])
 
     try:
         df_rel02_proc = pd.read_sql("""
-            SELECT DISTINCT codigo_procedimento AS cod_acao, procedimento
+            SELECT DISTINCT codigo_procedimento AS cod_acao, procedimento, 'BPA TabWin (Relatório 02)' AS origem
             FROM 'REL-02'
             WHERE procedimento = codigo_procedimento OR procedimento LIKE 'Procedimento %' OR procedimento IS NULL OR procedimento = ''
         """, con=db.engine)
     except Exception:
-        df_rel02_proc = pd.DataFrame(columns=['cod_acao', 'procedimento'])
+        df_rel02_proc = pd.DataFrame(columns=['cod_acao', 'procedimento', 'origem'])
 
-    if not df_raas_proc.empty or not df_rel02_proc.empty:
-        df_comb_proc = pd.concat([df_raas_proc, df_rel02_proc]).drop_duplicates(subset=['cod_acao'])
-        pendentes_proc = df_comb_proc.to_dict('records')
+    df_comb_proc = pd.concat([df_raas_proc, df_rel02_proc], ignore_index=True)
+    if not df_comb_proc.empty:
+        df_comb_proc['cod_acao_norm'] = df_comb_proc['cod_acao'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.zfill(10)
+        
+        linhas_pendentes = []
+        for _, row in df_comb_proc.iterrows():
+            c10 = row['cod_acao_norm']
+            c_orig = str(row['cod_acao']).strip()
+            
+            # Se o procedimento com 10 dígitos já existe no catálogo, auto-cura na base!
+            if c10 in mapa_procs_atual and mapa_procs_atual[c10]:
+                nome_cat = mapa_procs_atual[c10]
+                try:
+                    db.session.execute(text("UPDATE 'REL-02' SET procedimento = :nome, codigo_procedimento = :c10 WHERE codigo_procedimento = :c10 OR codigo_procedimento = :c_orig"), {'nome': nome_cat, 'c10': c10, 'c_orig': c_orig})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES_PROF' SET procedimento = :nome, cod_acao = :c10 WHERE cod_acao = :c10 OR cod_acao = :c_orig"), {'nome': nome_cat, 'c10': c10, 'c_orig': c_orig})
+                    db.session.execute(text("UPDATE 'RAAS_ACOES' SET procedimento = :nome, cod_acao = :c10 WHERE cod_acao = :c10 OR cod_acao = :c_orig"), {'nome': nome_cat, 'c10': c10, 'c_orig': c_orig})
+                    db.session.commit()
+                except Exception:
+                    pass
+            else:
+                linhas_pendentes.append({
+                    'cod_acao': c10,
+                    'procedimento': row['procedimento'],
+                    'origem': row['origem']
+                })
+        
+        if linhas_pendentes:
+            df_pend_final = pd.DataFrame(linhas_pendentes).drop_duplicates(subset=['cod_acao'])
+            pendentes_proc = df_pend_final.to_dict('records')
 
     # 4. Pendências de CBOs
     pendentes_cbo = []
     try:
         df_pend_cbo = pd.read_sql("""
-            SELECT DISTINCT co_cbo, descr_cbo
+            SELECT DISTINCT co_cbo, descr_cbo, 'RAAS CAPS (Relatório 05)' AS origem
             FROM 'RAAS_ACOES_PROF'
             WHERE descr_cbo = co_cbo OR descr_cbo IS NULL OR descr_cbo = ''
             ORDER BY co_cbo
