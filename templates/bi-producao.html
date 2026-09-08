@@ -171,7 +171,11 @@
                                 }
                                 if (status.concluido) {
                                     clearInterval(radar);
-                                    alert("Extratores e ETL concluídos com sucesso! Dados prontos no banco.");
+                                    if (status.erros && status.erros.length > 0) {
+                                        alert("⚠️ Atenção: A extração foi finalizada, mas ocorreram os seguintes erros ao baixar/processar:\n\n• " + status.erros.join("\n• "));
+                                    } else {
+                                        alert("Extratores e ETL concluídos com sucesso! Dados prontos no banco.");
+                                    }
                                     btnGerar.innerHTML = 'Gerar';
                                     btnGerar.classList.remove('disabled');
                                 }

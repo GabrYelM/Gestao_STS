@@ -69,20 +69,20 @@ def inject_network_info():
 gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
 
 def executar_bot(funcao_busca, mes, ano, usuario, senha):
-    p, context, page = su.bot_setup_page(usuario, senha)
+    p, context, page = su.bot_setup_page(usuario, senha, default_timeout=60000)
     try:
-        # click_timeout = 60000 (Espera inteligentemente até 60s o elemento aparecer)
-        # timeout_geral = 100 (Dorme apenas 100ms em vez de 1 segundo a cada passo)
         caminho = funcao_busca(mes, ano, page, 60000, 100)
-        return caminho
+        return caminho, None
     except Exception as e:
-        print(f"Erro no bot: {e}")
-        return None
+        nome_f = getattr(funcao_busca, '__name__', 'Bot')
+        msg_erro = f"{nome_f} ({mes}/{ano}): {str(e)}"
+        print(f"Erro no bot: {msg_erro}")
+        return None, msg_erro
     finally:
         context.close()
         p.stop()
 
-status_extracao = {"em_andamento": False, "concluido": False, "progresso": ""}
+status_extracao = {"em_andamento": False, "concluido": False, "progresso": "", "erros": []}
 
 def gerar_lista_meses(m_inicio, a_inicio, m_fim, a_fim):
     meses_ordem = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -104,9 +104,11 @@ def gerar_lista_meses(m_inicio, a_inicio, m_fim, a_fim):
     return lista
 
 def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha):
+    global status_extracao
     status_extracao["em_andamento"] = True
     status_extracao["concluido"] = False
     status_extracao["progresso"] = "Iniciando fila..."
+    status_extracao["erros"] = []
     
     todas_funcoes = {
         'AG04': (sb.buscaAG04, etl.processa_ag04),
@@ -129,6 +131,8 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     if None in funcoes:
         print("Relatório escolhido inválido.")
         status_extracao["em_andamento"] = False
+        status_extracao["concluido"] = True
+        status_extracao["erros"].append("Relatório escolhido inválido.")
         return
 
     gac02_func = None
@@ -146,16 +150,21 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     }
     periodo_gac = f"{ano_inicio}{MAPA_MESES.get(mes_inicio, '01')}"
 
+    erros_fila = []
+
     if gac02_func:
         status_extracao["progresso"] = "Extraindo GAC02 (Snapshot Geral)..."
         try:
             bot_gac, etl_gac = gac02_func
             # Executa GAC02 1 única vez
-            caminho_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
+            caminho_gac, erro_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
             if caminho_gac:
                 etl_gac(caminho_gac, periodo_gac)
+            elif erro_gac:
+                erros_fila.append(erro_gac)
         except Exception as e:
             print(f"Erro no GAC02: {e}")
+            erros_fila.append(f"GAC02: {e}")
 
     if relatorio_escolhido != "GAC02" and len(funcoes_loop) > 0:
         lista_periodos = gerar_lista_meses(mes_inicio, ano_inicio, mes_fim, ano_fim)
@@ -173,25 +182,36 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                     futuros.append((futuro, func_etl))
                     
                 for futuro, func_etl in futuros:
-                    caminho = futuro.result()
+                    caminho, erro_bot = futuro.result()
                     if caminho:
                         caminhos_baixados.append((caminho, func_etl))
+                    elif erro_bot:
+                        erros_fila.append(erro_bot)
                         
             periodo = int(f"{ano}{MAPA_MESES.get(mes, '01')}")
             
-            status_extracao["progresso"] = f"Gravando dados de {mes}/{ano} no BD..."
-            for caminho, func_etl in caminhos_baixados:
-                try:
-                    func_etl(caminho, periodo)
-                except Exception as e:
-                    print(f"Erro no ETL do arquivo {caminho}: {e}")
+            if caminhos_baixados:
+                status_extracao["progresso"] = f"Gravando dados de {mes}/{ano} no BD..."
+                for caminho, func_etl in caminhos_baixados:
+                    try:
+                        func_etl(caminho, periodo)
+                    except Exception as e:
+                        print(f"Erro no ETL do arquivo {caminho}: {e}")
+                        erros_fila.append(f"ETL {caminho}: {e}")
 
         try:
             sincronizar_todas_competencias()
         except Exception:
             pass
 
-    print("100% CONCLUÍDO COM SUCESSO!")
+    status_extracao["erros"] = erros_fila
+    if erros_fila:
+        print(f"CONCLUÍDO COM {len(erros_fila)} ERRO(S): {erros_fila}")
+        status_extracao["progresso"] = f"Concluído com {len(erros_fila)} erro(s)."
+    else:
+        print("100% CONCLUÍDO COM SUCESSO!")
+        status_extracao["progresso"] = "100% Concluído com sucesso!"
+
     status_extracao["em_andamento"] = False
     status_extracao["concluido"] = True
 
@@ -202,13 +222,15 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
     status_extracao["concluido"] = False
     status_extracao["progresso"] = "Conectando ao Painel de Monitoramento 3.2..."
     status_extracao["status"] = "em_andamento"
+    status_extracao["erros"] = []
     
     try:
         from services.utils import bot_setup_page
         from services.bot import buscaPainelMonitoramento
         from services.etl import processa_painel_monitoramento
         
-        p, browser, page = bot_setup_page(usuario, senha)
+        # Painel de Monitoramento mantém timeout longo (600s = 10min)
+        p, browser, page = bot_setup_page(usuario, senha, default_timeout=600000)
         try:
             # 1. Extração de STS (Relatório 06)
             if relatorio_escolhido in ["TODOS", "REL06"]:
