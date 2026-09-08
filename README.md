@@ -31,16 +31,26 @@ O instalador foi preparado para fazer **tudo de forma automática**, inclusive b
 
 ---
 
-### 3️⃣ Iniciar o Sistema
-1. Dê dois cliques no arquivo **`iniciar.bat`**.
-2. O sistema abrirá automaticamente no seu navegador padrão no endereço:
-   👉 **`http://localhost:5000`**
+### 3️⃣ Iniciar e Parar o Sistema
+- **Para Iniciar:** Dê dois cliques no arquivo **`iniciar.bat`**.
+  - O sistema inicia **silenciosamente em segundo plano** (a janela preta do CMD fecha automaticamente).
+  - O navegador abre direto no sistema: 👉 **`http://localhost:5000`**.
+- **Para Encerrar:** Dê dois cliques no arquivo **`parar_sistema.bat`**.
+
+---
+
+## 🌐 Compartilhar Acesso com Outros Computadores (Rede Local / Intranet)
+
+Para que qualquer colega conectado à mesma rede ou servidor acesse o sistema:
+1. Abra o sistema no seu navegador.
+2. Clique no botão **`🌐 Link da Rede`** (no topo direito) ou use o botão **`📋 Copiar Link`** na página inicial.
+3. Envie o link gerado (ex: `http://172.17.174.87:5000`) para a outra pessoa. Ela abrirá direto no navegador sem precisar instalar nada!
 
 ---
 
 ## 🔑 Credenciais Padrão de Acesso
 
-O sistema já vem pré-configurado com os seguintes usuários iniciais:
+O acesso aos relatórios de produção é **livre para consulta e exportação**. O login é necessário apenas para gestores atualizarem dados e rodarem robôs:
 
 | Perfil | Usuário | Senha Padrão | Permissões |
 |---|---|---|---|
@@ -48,16 +58,6 @@ O sistema já vem pré-configurado com os seguintes usuários iniciais:
 | **Visualizador** | `normal` | `normal` | Acesso de consulta e visualização aos relatórios |
 
 > 💡 *As senhas e novos usuários podem ser gerenciados após o primeiro login.*
-
----
-
-## 🌐 Acesso em Rede Local (Intranet)
-
-Se desejar que outros computadores da mesma unidade/rede acessem o sistema sem precisar instalar nada:
-1. Deixe o sistema rodando na máquina servidora (`iniciar.bat`).
-2. Descubra o IP local da máquina servidora (abrindo o terminal e digitando `ipconfig`, ex: `192.168.1.50`).
-3. Nas outras máquinas conectadas à mesma rede, basta abrir o navegador e digitar:
-   `http://192.168.1.50:5000`
 
 ---
 

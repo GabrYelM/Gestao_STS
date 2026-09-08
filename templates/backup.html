@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Backup e Restauração{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4" style="padding-left: 3%; padding-right: 3%;">
+    <!-- Cabeçalho -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h2 class="fw-bold text-primary mb-1">
+                        <i class="bi bi-database-gear me-2"></i> Gerenciamento de Backups
+                    </h2>
+                    <p class="text-muted mb-0">
+                        Exporte cópias de segurança compactadas ou restaure o banco de dados e cadastros do sistema.
+                    </p>
+                </div>
+                <div>
+                    <a href="/" class="btn btn-outline-secondary rounded-pill px-3">
+                        <i class="bi bi-arrow-left me-1"></i> Voltar ao Início
+                    </a>
+                </div>
+            </div>
+            <hr>
+        </div>
+    </div>
+
+    <!-- Status do Banco Atual -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 rounded-4 bg-light p-3">
+                <div class="row text-center text-md-start align-items-center">
+                    <div class="col-md-4 mb-2 mb-md-0 border-end">
+                        <span class="text-muted small d-block">Tamanho do Banco Atual:</span>
+                        <h4 class="fw-bold text-dark mb-0">{{ tamanho_db_mb }} MB</h4>
+                    </div>
+                    <div class="col-md-4 mb-2 mb-md-0 border-end">
+                        <span class="text-muted small d-block">Última Modificação:</span>
+                        <h5 class="fw-semibold text-secondary mb-0">{{ data_modificacao }}</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <span class="text-muted small d-block">Formato de Exportação:</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-bold">
+                            <i class="bi bi-file-earmark-zip me-1"></i> ZIP Compactado (~90% menor)
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cards de Ação: Exportar e Importar -->
+    <div class="row g-4 mb-4">
+        <!-- 1. EXPORTAR BACKUP -->
+        <div class="col-lg-6">
+            <div class="card h-100 shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
+                    <div class="d-flex align-items-center">
+                        <div class="p-3 bg-primary-subtle text-primary rounded-circle me-3">
+                            <i class="bi bi-cloud-arrow-down-fill fs-3"></i>
+                        </div>
+                        <div>
+                            <h4 class="fw-bold mb-1">1. Exportar Cópia de Segurança</h4>
+                            <span class="text-muted small">Baixar pacote de dados completo</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-4 d-flex flex-column">
+                    <p class="text-muted">
+                        Gera um arquivo <strong>.ZIP compactado</strong> contendo:
+                    </p>
+                    <ul class="text-muted small mb-4">
+                        <li><strong>database.db:</strong> Todos os dados históricos (AT-02, AT-03, REL-10, RAAS, etc.).</li>
+                        <li><strong>catalogo_geral.json:</strong> Cadastros completos de CBOs, Procedimentos e Unidades.</li>
+                    </ul>
+
+                    <div class="p-3 bg-light rounded-3 border mb-4">
+                        <div class="d-flex align-items-center text-muted small">
+                            <i class="bi bi-info-circle-fill text-info fs-5 me-2 flex-shrink-0"></i>
+                            <div>
+                                A compressão reduz o arquivo de <strong>~1,34 GB</strong> para aproximadamente <strong>~124 MB</strong>, tornando o download rápido e fácil de armazenar.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto">
+                        <a href="/admin/backup_db" class="btn btn-primary btn-lg rounded-pill w-100 fw-bold shadow-sm">
+                            <i class="bi bi-download me-2"></i> Gerar e Baixar Backup (.ZIP)
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. IMPORTAR / RESTAURAR BACKUP -->
+        <div class="col-lg-6">
+            <div class="card h-100 shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white border-bottom-0 pt-4 px-4 pb-0">
+                    <div class="d-flex align-items-center">
+                        <div class="p-3 bg-success-subtle text-success rounded-circle me-3">
+                            <i class="bi bi-cloud-arrow-up-fill fs-3"></i>
+                        </div>
+                        <div>
+                            <h4 class="fw-bold mb-1">2. Importar / Restaurar Backup</h4>
+                            <span class="text-muted small">Substituir base a partir de um backup</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-4 d-flex flex-column">
+                    <div class="alert alert-warning border-0 rounded-3 small mb-3">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> <strong>Atenção:</strong> Ao restaurar um backup, a base atual de dados e cadastros será substituída pelas informações contidas no arquivo selecionado.
+                    </div>
+
+                    <form action="/admin/restaurar_backup" method="POST" enctype="multipart/form-data" onsubmit="document.getElementById('btnSubmitRestaurarTela').innerHTML='<span class=\"spinner-border spinner-border-sm me-2\"></span> Restaurando banco...'; document.getElementById('btnSubmitRestaurarTela').disabled=true;">
+                        <div class="mb-4">
+                            <label class="form-label fw-semibold">Selecione o arquivo de backup (.ZIP ou .DB):</label>
+                            <input type="file" name="arquivo_backup" class="form-control form-control-lg rounded-3" accept=".zip,.db" required>
+                            <span class="text-muted small">Suporta arquivos <code>.zip</code> (compactados) ou arquivos brutos <code>.db</code>.</span>
+                        </div>
+
+                        <div class="mt-auto">
+                            <button type="submit" id="btnSubmitRestaurarTela" class="btn btn-success btn-lg rounded-pill w-100 fw-bold shadow-sm">
+                                <i class="bi bi-arrow-clockwise me-2"></i> Restaurar Cópia de Segurança
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guia de Boas Práticas -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 bg-light rounded-4 shadow-sm p-4">
+                <h6 class="fw-bold text-dark mb-2">
+                    <i class="bi bi-shield-check text-primary me-2"></i> Boas Práticas para Cópias de Segurança:
+                </h6>
+                <ul class="text-muted small mb-0">
+                    <li>Recomenda-se realizar o download de uma cópia de segurança antes de realizar grandes cargas mensais de relatórios.</li>
+                    <li>Guarde os arquivos <code>.zip</code> em uma pasta segura na rede institucional ou em mídia externa (pendrive/HD).</li>
+                    <li>O backup gerado é totalmente autocontido e pode ser restaurado em qualquer outra máquina com o sistema Gestão STS instalado.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
