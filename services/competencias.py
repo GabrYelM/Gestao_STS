@@ -19,7 +19,7 @@ MAPA_RELATORIO_TABELAS = {
     '06': [],
     '07': [],
     '08': [('GAC-02', 'data_extracao'), ('GAC-02', 'competencia')],
-    '09': [('REL-114', 'ano_mes'), ('REL-114', 'data_extracao')],
+    '09': [('REL-114', 'previsao_parto'), ('REL-114', 'ano_mes'), ('REL-114', 'data_extracao')],
     '10': [('REL-10', 'ano_mes'), ('AT-03', 'ano')],
     '11': [('FE-02', 'ano_mes')],
     '12': [('REL-12', 'ano_mes_extracao'), ('REL-12', 'data_extracao')],
@@ -41,16 +41,32 @@ def formatar_descricao_competencia(competencia):
 def normalizar_competencia(val):
     if val is None:
         return None
-    v_str = str(val).strip().replace('-', '').replace('/', '')
+    val_raw = str(val).strip()
+    if '/' in val_raw:
+        partes = val_raw.split('/')
+        if len(partes) == 3:
+            # DD/MM/YYYY -> YYYYMM
+            d, m, a = partes
+            if len(a) == 4 and a.isdigit() and m.isdigit():
+                a_i, m_i = int(a), int(m)
+                if 2020 <= a_i <= 2035 and 1 <= m_i <= 12:
+                    return f"{a}{m.zfill(2)}"
+        elif len(partes) == 2:
+            m, a = partes
+            if len(a) == 4 and a.isdigit() and m.isdigit():
+                a_i, m_i = int(a), int(m)
+                if 2020 <= a_i <= 2035 and 1 <= m_i <= 12:
+                    return f"{a}{m.zfill(2)}"
+    v_str = val_raw.replace('-', '').replace('/', '')
     if len(v_str) == 6 and v_str.isdigit():
         ano = int(v_str[:4])
         mes = int(v_str[4:6])
-        if 2025 <= ano <= 2035 and 1 <= mes <= 12:
+        if 2020 <= ano <= 2035 and 1 <= mes <= 12:
             return v_str
     elif len(v_str) >= 8 and v_str[:6].isdigit():
         ano = int(v_str[:4])
         mes = int(v_str[4:6])
-        if 2025 <= ano <= 2035 and 1 <= mes <= 12:
+        if 2020 <= ano <= 2035 and 1 <= mes <= 12:
             return v_str[:6]
     return None
 

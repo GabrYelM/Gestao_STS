@@ -1,6 +1,17 @@
+import sys
 import os
 import json
 import io
+
+# Redireciona stdout e stderr para arquivo de log quando rodando com pythonw (evita crash por stdout=None no Windows)
+if sys.stdout is None or sys.stderr is None:
+    log_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'server.log')
+    try:
+        sys.stdout = open(log_file, 'a', encoding='utf-8', buffering=1)
+        sys.stderr = sys.stdout
+    except Exception:
+        pass
+
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, jsonify, request, session, url_for
 from sqlalchemy import text
@@ -1343,4 +1354,10 @@ def cadastros_raas():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    try:
+        from waitress import serve
+        print("Iniciando servidor robusto de producao (Waitress) na porta 5000...")
+        serve(app, host='0.0.0.0', port=5000, threads=8)
+    except Exception as e:
+        print(f"Waitress nao disponivel, iniciando Werkzeug: {e}")
+        app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
