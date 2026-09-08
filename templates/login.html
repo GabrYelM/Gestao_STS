@@ -10,37 +10,41 @@
                 <div class="card-body p-5">
                     
                     <div class="text-center mb-4">
-                        <h2 class="fw-bold text-primary mb-1">Gestão STS</h2>
-                        <p class="text-muted small">Automação e Gestão de Dados de Produção</p>
+                        <div class="d-inline-flex p-3 bg-primary-subtle text-primary rounded-circle mb-2">
+                            <i class="bi bi-shield-lock-fill fs-2"></i>
+                        </div>
+                        <h3 class="fw-bold text-primary mb-1">Acesso Administrativo</h3>
+                        <p class="text-muted small">Faça login para atualizar fontes, gerenciar cadastros e executar robôs.</p>
                     </div>
 
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="bg-danger alert alert-{{ category }} alert-dismissible fade show text-center text-white" role="alert">
-                                    {{ message }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-
                     <form method="POST" action="">
+                        <input type="hidden" name="next" value="{{ next }}">
                         
                         <div class="mb-3">
                             <label for="username" class="form-label fw-semibold">Usuário</label>
-                            <input type="text" class="form-control form-control-lg bg-light border-0" id="username" name="username" placeholder="Digite seu usuário" required autofocus>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i class="bi bi-person"></i></span>
+                                <input type="text" class="form-control form-control-lg bg-light border-0" id="username" name="username" placeholder="Usuário admin" required autofocus>
+                            </div>
                         </div>
                         
                         <div class="mb-4">
                             <label for="password" class="form-label fw-semibold">Senha</label>
-                            <input type="password" class="form-control form-control-lg bg-light border-0" id="password" name="password" placeholder="Digite sua senha" required>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light border-0"><i class="bi bi-key"></i></span>
+                                <input type="password" class="form-control form-control-lg bg-light border-0" id="password" name="password" placeholder="Senha" required>
+                            </div>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
-                            Entrar no Sistema
+                        <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm mb-3">
+                            <i class="bi bi-box-arrow-in-right me-1"></i> Entrar como Administrador
                         </button>
-                        
+
+                        <div class="text-center">
+                            <a href="/producao" class="text-decoration-none text-muted small">
+                                <i class="bi bi-arrow-left me-1"></i> Voltar para os Relatórios de Produção (Acesso Livre)
+                            </a>
+                        </div>
                     </form>
 
                 </div>

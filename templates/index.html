@@ -6,31 +6,118 @@
 <div class="container-fluid mt-4" style="padding-left: 3%; padding-right: 3%;">
     <div class="row mb-4">
         <div class="col-12">
-            <h1 class="display-5 fw-bold text-primary">Painel de Gestão STS</h1>
-            <p class="lead">Sistema automatizado para coleta, manipulação e gestão de dados de produção da região.</p>
-            <hr>
-        </div>
-    </div>
-
-        <div class="col-md-6">
-            <div class="card h-100 shadow-sm border-0 bg-light">
-                <div class="card-body text-center">
-                    <h2 class="mb-3">📊</h2>
-                    <h5 class="card-title">Relatórios de Produção</h5>
-                    <p class="card-text text-muted">Visualize os dados de forma consolidada da produção.</p>
-                    <a href="/producao" class="btn btn-outline-primary w-100">Ver Produção</a>
+            <div class="p-4 p-md-5 mb-4 rounded-4 bg-light shadow-sm border">
+                <div class="col-md-10 px-0">
+                    <h1 class="display-5 fw-bold text-primary">Painel de Gestão STS</h1>
+                    <p class="lead my-3 text-secondary">
+                        Plataforma centralizada para análise, consolidação e monitoramento dos dados de produção da região.
+                    </p>
+                    <a href="/producao" class="btn btn-primary btn-lg rounded-pill px-4 shadow-sm">
+                        <i class="bi bi-table me-2"></i> Acessar Relatórios de Produção
+                    </a>
+                    {% if not session.get("is_admin") %}
+                    <a href="/login" class="btn btn-outline-secondary btn-lg rounded-pill px-4 ms-2">
+                        <i class="bi bi-shield-lock me-2"></i> Modo Administrador
+                    </a>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row mt-5">
+    <div class="row g-4 mb-4">
+        <!-- Card 1: Relatórios de Produção (Acesso Livre) -->
+        <div class="col-md-6 col-lg-{{ '3' if session.get('is_admin') else '6' }}">
+            <div class="card h-100 shadow-sm border-0 bg-light rounded-4">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="fs-1 mb-2 text-primary"><i class="bi bi-bar-chart-line-fill"></i></div>
+                    <h5 class="card-title fw-bold">Relatórios de Produção</h5>
+                    <p class="card-text text-muted flex-grow-1">
+                        Consolidação de AT-02, AT-03, VG-02, REL-10, RAAS e cruzamento com metas e cadastros SUS.
+                    </p>
+                    <a href="/producao" class="btn btn-primary rounded-pill w-100 mt-3">
+                        <i class="bi bi-eye me-1"></i> Visualizar Produção
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {% if session.get("is_admin") %}
+        <!-- Admin Card 1: Robôs BI -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 bg-light rounded-4 border-top border-info border-3">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="fs-1 mb-2 text-info"><i class="bi bi-robot"></i></div>
+                    <h5 class="card-title fw-bold">Extração Automática (BI)</h5>
+                    <p class="card-text text-muted flex-grow-1">
+                        Executar robôs do Playwright para download automático de relatórios SIGA e BI.
+                    </p>
+                    <a href="/bi_producao" class="btn btn-outline-info rounded-pill w-100 mt-3">
+                        <i class="bi bi-play-circle me-1"></i> Extrair Relatórios
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Card 2: Upload ZIP / DBF / RAAS -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 bg-light rounded-4 border-top border-warning border-3">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="fs-1 mb-2 text-warning"><i class="bi bi-file-earmark-zip-fill"></i></div>
+                    <h5 class="card-title fw-bold">Importação de Arquivos</h5>
+                    <p class="card-text text-muted flex-grow-1">
+                        Upload manual de arquivos ZIP do DTIC, arquivos DBF e pacotes de RAAS dos CAPS.
+                    </p>
+                    <a href="/upload_zip" class="btn btn-outline-warning text-dark rounded-pill w-100 mt-3">
+                        <i class="bi bi-upload me-1"></i> Importar Arquivos
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Card 3: Cadastros -->
+        <div class="col-md-6 col-lg-3">
+            <div class="card h-100 shadow-sm border-0 bg-light rounded-4 border-top border-success border-3">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="fs-1 mb-2 text-success"><i class="bi bi-database-gear"></i></div>
+                    <h5 class="card-title fw-bold">Gerenciar Cadastros</h5>
+                    <p class="card-text text-muted flex-grow-1">
+                        Base unificada de CBOs, Unidades, Procedimentos SIGTAP e Profissionais.
+                    </p>
+                    <a href="/cadastros" class="btn btn-outline-success rounded-pill w-100 mt-3">
+                        <i class="bi bi-gear me-1"></i> Gerenciar Base
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <!-- Card para Visitante Acessar Modo Admin -->
+        <div class="col-md-6">
+            <div class="card h-100 shadow-sm border-0 bg-light rounded-4">
+                <div class="card-body text-center p-4 d-flex flex-column">
+                    <div class="fs-1 mb-2 text-secondary"><i class="bi bi-shield-lock"></i></div>
+                    <h5 class="card-title fw-bold">Atualização e Gestão de Dados</h5>
+                    <p class="card-text text-muted flex-grow-1">
+                        É gestor ou administrador? Faça login para atualizar as fontes de dados, executar robôs e cadastros.
+                    </p>
+                    <a href="/login" class="btn btn-outline-primary rounded-pill w-100 mt-3">
+                        <i class="bi bi-box-arrow-in-right me-1"></i> Acessar como Admin
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="row mt-4">
         <div class="col-12">
-            <div class="alert alert-warning d-flex align-items-center shadow-sm" role="alert">
-                <span class="me-3 fs-4">🔒</span>
+            <div class="alert alert-warning d-flex align-items-center shadow-sm rounded-4" role="alert">
+                <span class="me-3 fs-3">🔒</span>
                 <div>
-                    <h6 class="alert-heading mb-1"><strong>Aviso de Privacidade e Segurança (LGPD)</strong></h6>
-                    <p class="mb-0 small">Nenhum dado real ou sensível de pacientes deve ser exportado deste ambiente. O acesso para edição e inserção de dados é estritamente controlado. Todo o processamento ocorre no servidor local.</p>
+                    <h6 class="alert-heading mb-1 fw-bold">Aviso de Privacidade e Segurança (LGPD)</h6>
+                    <p class="mb-0 small text-muted">
+                        Nenhum dado sensível de pacientes deve ser exportado deste ambiente sem a devida autorização institucional. O processamento e cruzamento ocorrem exclusivamente no servidor local da unidade.
+                    </p>
                 </div>
             </div>
         </div>

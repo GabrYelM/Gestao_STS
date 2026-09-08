@@ -2,47 +2,98 @@
 
 Este projeto é uma plataforma completa de Engenharia e Análise de Dados focada na automação da coleta, tratamento (ETL), armazenamento e geração de relatórios dinâmicos sobre a produção da região (STS). 
 
-Desenvolvido para rodar localmente como uma aplicação web robusta, o sistema elimina o trabalho manual e repetitivo de lidar com planilhas gigantes, servindo como a "fonte única de verdade" (Single Source of Truth) para a equipe.
+Desenvolvido para rodar localmente como uma aplicação web robusta, o sistema elimina o trabalho manual e repetitivo de lidar com planilhas gigantes, servindo como a "fonte única de verdade" (*Single Source of Truth*) para a equipe.
+
+---
+
+## ⚡ Guia Rápido: Como Baixar e Rodar em Outra Máquina (Instalação 100% Automática)
+
+O instalador foi preparado para fazer **tudo de forma automática**, inclusive baixar e instalar o Python se a máquina não tiver!
+
+### 1️⃣ Baixar o Projeto
+- **Opção A (Arquivo ZIP):** Baixe o `.zip` do repositório e extraia na pasta desejada (ex: `C:\Projetos\Gestao_STS`).
+- **Opção B (Git):** Abra o terminal e clone o repositório:
+  ```bash
+  git clone https://github.com/SEU-USUARIO/Gestao_STS.git
+  cd Gestao_STS
+  ```
+
+---
+
+### 2️⃣ Instalação Automática em 1 Clique
+1. Dê dois cliques no arquivo **`instalar.bat`** na pasta do projeto.
+2. O script cuidará de tudo sozinho:
+   - 🐍 **Se a máquina não tiver Python:** Ele baixa o instalador oficial do Python e instala silenciosamente configurando o PATH.
+   - 📦 Cria o ambiente virtual isolado (`.venv`).
+   - 📚 Baixa e instala todas as bibliotecas necessárias (`requirements.txt`).
+   - 🌐 Instala o navegador para os robôs (`Playwright / Chromium`).
+   - 🗄️ Inicializa o banco de dados e os usuários padrão.
+
+---
+
+### 3️⃣ Iniciar o Sistema
+1. Dê dois cliques no arquivo **`iniciar.bat`**.
+2. O sistema abrirá automaticamente no seu navegador padrão no endereço:
+   👉 **`http://localhost:5000`**
+
+---
+
+## 🔑 Credenciais Padrão de Acesso
+
+O sistema já vem pré-configurado com os seguintes usuários iniciais:
+
+| Perfil | Usuário | Senha Padrão | Permissões |
+|---|---|---|---|
+| **Administrador** | `admin` | `admin` | Acesso total (Uploads, Automações, Cadastros e Relatórios) |
+| **Visualizador** | `normal` | `normal` | Acesso de consulta e visualização aos relatórios |
+
+> 💡 *As senhas e novos usuários podem ser gerenciados após o primeiro login.*
+
+---
+
+## 🌐 Acesso em Rede Local (Intranet)
+
+Se desejar que outros computadores da mesma unidade/rede acessem o sistema sem precisar instalar nada:
+1. Deixe o sistema rodando na máquina servidora (`iniciar.bat`).
+2. Descubra o IP local da máquina servidora (abrindo o terminal e digitando `ipconfig`, ex: `192.168.1.50`).
+3. Nas outras máquinas conectadas à mesma rede, basta abrir o navegador e digitar:
+   `http://192.168.1.50:5000`
+
+---
 
 ## 🏗️ Arquitetura do Projeto
 
-O sistema foi arquitetado usando os padrões mais modernos de Engenharia de Dados em Python, dividindo as responsabilidades em camadas lógicas claras:
+O sistema divide as responsabilidades em camadas lógicas claras:
 
 1. **Camada de Extração (`services/bot.py`):** 
-   - Utiliza **Playwright** (Web Scraping / Automação) para acessar o portal da prefeitura silenciosamente.
+   - Utiliza **Playwright** (Web Scraping / Automação) para acessar o portal silenciosamente.
    - Navega, preenche formulários de datas e faz o download automático de dezenas de relatórios pesados simultaneamente (usando sistema de filas/threads).
    
 2. **Camada de Tratamento / ETL (`services/etl.py`):**
    - Utiliza **Pandas** para processamento pesado de dados.
-   - Remove o "lixo" gerado por exportações de sistemas antigos (linhas em branco, cabeçalhos sujos do SSRS).
-   - Padroniza os nomes das colunas e deleta colunas irrelevantes para poupar espaço.
-   - Aplica lógica idempotente (*Delete & Replace*) para impedir a duplicação de dados históricos no banco de dados.
+   - Remove cabeçalhos e formatações desnecessárias.
+   - Padroniza colunas e cataloga procedimentos, CBOs e profissionais.
+   - Aplica lógica idempotente (*Delete & Replace*) para impedir a duplicação de dados históricos no banco.
 
 3. **Camada de Armazenamento (`database.db` & `models.py`):**
-   - Banco de dados relacional (SQLite) centralizado, capaz de armazenar com segurança milhões de registros históricos (AT-02, AT-03, VG-02, etc.).
-   - Estrutura modelada e mapeada em código usando **SQLAlchemy ORM**.
+   - Banco de dados relacional (SQLite) centralizado, armazenando registros históricos (AT-02, AT-03, VG-02, REL-10, RAAS, etc.).
+   - Estrutura modelada e mapeada usando **SQLAlchemy ORM**.
 
 4. **Camada de Analytics / Produção (`services/producao.py`):**
-   - Motor de tabelas dinâmicas on-the-fly.
-   - Cruza e resume as tabelas brutas do banco de dados em frações de segundo usando agregações de **Pandas (`pivot_table`, `groupby`)**.
-   - Reproduz fielmente os layouts e índices dos relatórios de produção exigidos pela gestão, prontos para exportação.
+   - Motor de tabelas dinâmicas *on-the-fly*.
+   - Cruza e resume as tabelas brutas do banco de dados usando agregações do **Pandas (`pivot_table`, `groupby`)**.
+   - Reproduz fielmente os layouts e índices dos relatórios de produção exigidos pela gestão, com suporte a exportação em Excel.
 
-5. **Camada de Testes Isolados (`teste.py`):**
-   - Um laboratório interativo no terminal (CLI) que permite aos desenvolvedores testarem os Robôs, o ETL ou os Relatórios Analíticos individualmente, garantindo agilidade na manutenção e debug.
+5. **Catálogo Geral Unificado (`services/catalogo_geral.json`):**
+   - Base nacional completa de CBOs oficiais (2.742 ocupações), SIGTAP/Procedimentos SUS e Unidades de Saúde (CNES).
 
-## 🗺️ Fases do Projeto (Roadmap)
-
-✅ **Fase 1:** Construção dos robôs de extração automática (Web Scraping).  
-✅ **Fase 2:** Desenvolvimento do pipeline de limpeza de dados (ETL) e persistência no banco SQL.  
-⏳ **Fase 3: (Atual)** Criação da camada de Analytics (Geração de relatórios cruzados on-the-fly via Pandas).  
-🔜 **Fase 4:** Integração total do banco de dados com a interface Web (Flask) e processamento em Background (Filas/Threads).  
-🔜 **Fase 5:** Implementação de painéis visuais (Dashboards Web), exportação fácil para `.xlsx` e sistema completo de controle de acesso (Login Administrativo vs Visualização).  
+---
 
 ## 🔒 Privacidade e Segurança de Dados (LGPD)
 
-Por motivos de segurança e em estrita conformidade com a LGPD (Lei Geral de Proteção de Dados), **nenhum dado real, relatório original ou banco de dados está presente neste repositório**. 
+Por motivos de segurança e em estrita conformidade com a LGPD (Lei Geral de Proteção de Dados), **nenhum dado real, relatório original ou banco de dados sensível está presente neste repositório**. 
 
-Toda a carga (arquivos baixados), manipulação e armazenamento ocorre **exclusivamente no ambiente local do servidor da unidade**. O Git ignora completamente o banco de dados (`database.db`) e a pasta de `ARQUIVOS ORIGINAIS`, garantindo sigilo absoluto das informações de pacientes, profissionais e faturamentos da Secretaria de Saúde.
+Toda a carga, manipulação e armazenamento ocorre **exclusivamente no ambiente local do servidor da unidade**. O Git ignora completamente arquivos brutos e bancos de dados (`.db`), garantindo sigilo absoluto das informações.
 
 ---
 *Projeto em constante evolução - Equipe de Automação e Gestão STS.*
