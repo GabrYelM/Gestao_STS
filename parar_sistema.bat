@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 > nul
 title Gestao STS - Encerrar Servidor
+cd /d "%~dp0"
 
 echo Encerrando o servidor Gestao STS...
 
@@ -13,5 +14,5 @@ echo ========================================================
 echo       SISTEMA GESTAO STS ENCERRADO COM SUCESSO!
 echo ========================================================
 echo.
-timeout /t 2 >nul
+ping 127.0.0.1 -n 3 >nul
 exit
