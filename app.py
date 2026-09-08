@@ -103,12 +103,28 @@ def gerar_lista_meses(m_inicio, a_inicio, m_fim, a_fim):
             lista.append((meses_ordem[m], str(ano)))
     return lista
 
+MAPA_NOMES_RELATORIOS = {
+    'AG04': 'AG-04 (Perda Secundária por Executante)',
+    'AT02': 'AT-02 (Produção Ambulatorial por Procedimento)',
+    'AT03': 'AT-03 (Produção Ambulatorial por Faixa Etária)',
+    'FE02': 'FE-02 (Fila de Espera)',
+    'VG02': 'VG-02 (Vagas Ofertadas vs Agendamentos)',
+    'VG04': 'VG-04 (Relação de Agendamentos)',
+    'CG01': 'CG-01 (Acompanhamento de Gestantes)',
+    'CG05': 'CG-05 (Consulta Gestantes e Vacinação)',
+    'CG06': 'CG-06 (Lista Nominal de Exames)',
+    'GAC02': 'GAC-02 (Cadastro e Vínculos)',
+}
+
 def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha):
     global status_extracao
     status_extracao["em_andamento"] = True
     status_extracao["concluido"] = False
     status_extracao["progresso"] = "Iniciando fila..."
+    status_extracao["sucessos"] = []
     status_extracao["erros"] = []
+    status_extracao["total_sucessos"] = 0
+    status_extracao["total_erros"] = 0
     
     todas_funcoes = {
         'AG04': (sb.buscaAG04, etl.processa_ag04),
@@ -124,24 +140,30 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     }
 
     if relatorio_escolhido == "TODOS":
-        funcoes = list(todas_funcoes.values())
+        itens_selecionados = list(todas_funcoes.items())
     else:
-        funcoes = [todas_funcoes.get(relatorio_escolhido)]
+        func = todas_funcoes.get(relatorio_escolhido)
+        itens_selecionados = [(relatorio_escolhido, func)] if func else []
         
-    if None in funcoes:
+    if not itens_selecionados:
         print("Relatório escolhido inválido.")
         status_extracao["em_andamento"] = False
         status_extracao["concluido"] = True
-        status_extracao["erros"].append("Relatório escolhido inválido.")
+        status_extracao["erros"].append({
+            "codigo": "ERRO",
+            "relatorio": "Geral",
+            "competencia": "N/A",
+            "motivo": "Relatório escolhido inválido."
+        })
         return
 
-    gac02_func = None
+    gac02_item = None
     funcoes_loop = []
-    for bot_f, etl_f in funcoes:
-        if bot_f == sb.buscaGAC02:
-            gac02_func = (bot_f, etl_f)
+    for chave, (bot_f, etl_f) in itens_selecionados:
+        if chave == 'GAC02':
+            gac02_item = (chave, bot_f, etl_f)
         else:
-            funcoes_loop.append((bot_f, etl_f))
+            funcoes_loop.append((chave, bot_f, etl_f))
 
     MAPA_MESES = {
         "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
@@ -150,21 +172,41 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     }
     periodo_gac = f"{ano_inicio}{MAPA_MESES.get(mes_inicio, '01')}"
 
+    sucessos_fila = []
     erros_fila = []
 
-    if gac02_func:
+    if gac02_item:
+        chave, bot_gac, etl_gac = gac02_item
+        nome_rel = MAPA_NOMES_RELATORIOS.get(chave, chave)
         status_extracao["progresso"] = "Extraindo GAC02 (Snapshot Geral)..."
         try:
-            bot_gac, etl_gac = gac02_func
-            # Executa GAC02 1 única vez
             caminho_gac, erro_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
             if caminho_gac:
                 etl_gac(caminho_gac, periodo_gac)
+                sucessos_fila.append({
+                    "codigo": chave,
+                    "relatorio": nome_rel,
+                    "competencia": f"{mes_inicio}/{ano_inicio}",
+                    "periodo": int(periodo_gac),
+                    "status": "Atualizado com sucesso"
+                })
             elif erro_gac:
-                erros_fila.append(erro_gac)
+                erros_fila.append({
+                    "codigo": chave,
+                    "relatorio": nome_rel,
+                    "competencia": f"{mes_inicio}/{ano_inicio}",
+                    "periodo": int(periodo_gac),
+                    "motivo": erro_gac
+                })
         except Exception as e:
             print(f"Erro no GAC02: {e}")
-            erros_fila.append(f"GAC02: {e}")
+            erros_fila.append({
+                "codigo": chave,
+                "relatorio": nome_rel,
+                "competencia": f"{mes_inicio}/{ano_inicio}",
+                "periodo": int(periodo_gac),
+                "motivo": f"Erro no processamento (ETL): {str(e)}"
+            })
 
     if relatorio_escolhido != "GAC02" and len(funcoes_loop) > 0:
         lista_periodos = gerar_lista_meses(mes_inicio, ano_inicio, mes_fim, ano_fim)
@@ -173,44 +215,62 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
             status_extracao["progresso"] = f"Extraindo {mes}/{ano}..."
             print(f"Iniciando fila para {mes}/{ano}")
             
-            caminhos_baixados = []
+            periodo = int(f"{ano}{MAPA_MESES.get(mes, '01')}")
             
             with ThreadPoolExecutor(max_workers=4) as bot_executor:
                 futuros = []
-                for func_bot, func_etl in funcoes_loop:
+                for chave, func_bot, func_etl in funcoes_loop:
                     futuro = bot_executor.submit(executar_bot, func_bot, mes, ano, usuario, senha)
-                    futuros.append((futuro, func_etl))
+                    futuros.append((chave, futuro, func_etl))
                     
-                for futuro, func_etl in futuros:
+                for chave, futuro, func_etl in futuros:
+                    nome_rel = MAPA_NOMES_RELATORIOS.get(chave, chave)
                     caminho, erro_bot = futuro.result()
                     if caminho:
-                        caminhos_baixados.append((caminho, func_etl))
+                        try:
+                            status_extracao["progresso"] = f"Gravando {chave} ({mes}/{ano}) no BD..."
+                            func_etl(caminho, periodo)
+                            sucessos_fila.append({
+                                "codigo": chave,
+                                "relatorio": nome_rel,
+                                "competencia": f"{mes}/{ano}",
+                                "periodo": periodo,
+                                "status": "Atualizado com sucesso"
+                            })
+                        except Exception as e:
+                            print(f"Erro no ETL de {chave} ({caminho}): {e}")
+                            erros_fila.append({
+                                "codigo": chave,
+                                "relatorio": nome_rel,
+                                "competencia": f"{mes}/{ano}",
+                                "periodo": periodo,
+                                "motivo": f"Erro no processamento (ETL): {str(e)}"
+                            })
                     elif erro_bot:
-                        erros_fila.append(erro_bot)
-                        
-            periodo = int(f"{ano}{MAPA_MESES.get(mes, '01')}")
-            
-            if caminhos_baixados:
-                status_extracao["progresso"] = f"Gravando dados de {mes}/{ano} no BD..."
-                for caminho, func_etl in caminhos_baixados:
-                    try:
-                        func_etl(caminho, periodo)
-                    except Exception as e:
-                        print(f"Erro no ETL do arquivo {caminho}: {e}")
-                        erros_fila.append(f"ETL {caminho}: {e}")
+                        erros_fila.append({
+                            "codigo": chave,
+                            "relatorio": nome_rel,
+                            "competencia": f"{mes}/{ano}",
+                            "periodo": periodo,
+                            "motivo": erro_bot
+                        })
 
         try:
             sincronizar_todas_competencias()
         except Exception:
             pass
 
+    status_extracao["sucessos"] = sucessos_fila
     status_extracao["erros"] = erros_fila
-    if erros_fila:
-        print(f"CONCLUÍDO COM {len(erros_fila)} ERRO(S): {erros_fila}")
-        status_extracao["progresso"] = f"Concluído com {len(erros_fila)} erro(s)."
+    status_extracao["total_sucessos"] = len(sucessos_fila)
+    status_extracao["total_erros"] = len(erros_fila)
+
+    if erros_fila and sucessos_fila:
+        status_extracao["progresso"] = f"Concluído parcialmente ({len(sucessos_fila)} atualizados, {len(erros_fila)} falhas)."
+    elif erros_fila and not sucessos_fila:
+        status_extracao["progresso"] = f"Concluído com erro nas {len(erros_fila)} competências solicitadas."
     else:
-        print("100% CONCLUÍDO COM SUCESSO!")
-        status_extracao["progresso"] = "100% Concluído com sucesso!"
+        status_extracao["progresso"] = f"100% Concluído com sucesso ({len(sucessos_fila)} atualizados)!"
 
     status_extracao["em_andamento"] = False
     status_extracao["concluido"] = True
@@ -222,7 +282,11 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
     status_extracao["concluido"] = False
     status_extracao["progresso"] = "Conectando ao Painel de Monitoramento 3.2..."
     status_extracao["status"] = "em_andamento"
+    status_extracao["sucessos"] = []
     status_extracao["erros"] = []
+    
+    sucessos_pm = []
+    erros_pm = []
     
     try:
         from services.utils import bot_setup_page
@@ -239,6 +303,19 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
                 if html_sts:
                     status_extracao["progresso"] = "Gravando dados de STS (REL-06) no BD..."
                     processa_painel_monitoramento(html_sts, tabela_db='REL-06', default_localidade='STS PENHA')
+                    sucessos_pm.append({
+                        "codigo": "REL-06",
+                        "relatorio": "REL-06 (Painel STS Penha)",
+                        "competencia": "Série Histórica Completa",
+                        "status": "Atualizado com sucesso"
+                    })
+                else:
+                    erros_pm.append({
+                        "codigo": "REL-06",
+                        "relatorio": "REL-06 (Painel STS Penha)",
+                        "competencia": "Série Histórica Completa",
+                        "motivo": "Não foi possível extrair a tabela do Painel STS"
+                    })
                     
             # 2. Extração de Subprefeitura (Relatório 07)
             if relatorio_escolhido in ["TODOS", "REL07"]:
@@ -247,24 +324,45 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
                 if html_subpref:
                     status_extracao["progresso"] = "Gravando dados de Subprefeitura (REL-07) no BD..."
                     processa_painel_monitoramento(html_subpref, tabela_db='REL-07', default_localidade='Subprefeitura PENHA')
+                    sucessos_pm.append({
+                        "codigo": "REL-07",
+                        "relatorio": "REL-07 (Painel Subprefeitura Penha)",
+                        "competencia": "Série Histórica Completa",
+                        "status": "Atualizado com sucesso"
+                    })
+                else:
+                    erros_pm.append({
+                        "codigo": "REL-07",
+                        "relatorio": "REL-07 (Painel Subprefeitura Penha)",
+                        "competencia": "Série Histórica Completa",
+                        "motivo": "Não foi possível extrair a tabela do Painel Subprefeitura"
+                    })
             
             try:
                 sincronizar_todas_competencias()
             except Exception:
                 pass
                     
-            status_extracao["progresso"] = "Extração do Painel concluída com sucesso!"
-            status_extracao["status"] = "sucesso"
+            status_extracao["status"] = "sucesso" if not erros_pm else "parcial"
         finally:
             browser.close()
             p.stop()
             
     except Exception as e:
         print(f"Erro na extração do Painel de Monitoramento: {e}")
-        status_extracao["progresso"] = f"Erro: {e}"
+        erros_pm.append({
+            "codigo": "PM_GERAL",
+            "relatorio": "Painel de Monitoramento 3.2",
+            "competencia": "Geral",
+            "motivo": str(e)
+        })
         status_extracao["status"] = "erro"
         
     finally:
+        status_extracao["sucessos"] = sucessos_pm
+        status_extracao["erros"] = erros_pm
+        status_extracao["total_sucessos"] = len(sucessos_pm)
+        status_extracao["total_erros"] = len(erros_pm)
         status_extracao["em_andamento"] = False
         status_extracao["concluido"] = True
 

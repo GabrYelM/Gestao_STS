@@ -46,10 +46,157 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de Resultado Detalhado da Extração -->
+<div class="modal fade" id="modalResultadoExtracao" tabindex="-1" aria-labelledby="modalResultadoLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content rounded-4 shadow border-0">
+            <div class="modal-header border-bottom-0 pb-0">
+                <h5 class="modal-title fw-bold" id="modalResultadoLabel">
+                    <i class="bi bi-card-checklist me-2 text-primary"></i> Resultado da Coleta do Painel
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div id="modal-banner-status" class="alert mb-4 rounded-3"></div>
+
+                <!-- Abas de Sucessos e Falhas -->
+                <ul class="nav nav-pills mb-3" id="resultadoTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active rounded-pill px-3 py-1 fw-semibold me-2" id="tab-sucessos" data-bs-toggle="pill" data-bs-target="#content-sucessos" type="button" role="tab">
+                            <i class="bi bi-check-circle-fill text-success me-1"></i> Atualizados com Sucesso (<span id="count-sucessos">0</span>)
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation" id="item-tab-falhas">
+                        <button class="nav-link rounded-pill px-3 py-1 fw-semibold text-danger" id="tab-falhas" data-bs-toggle="pill" data-bs-target="#content-falhas" type="button" role="tab">
+                            <i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Falhas (<span id="count-falhas">0</span>)
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="resultadoTabsContent">
+                    <!-- Tab Sucessos -->
+                    <div class="tab-pane fade show active" id="content-sucessos" role="tabpanel">
+                        <div class="table-responsive border rounded-3" style="max-height: 280px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0 small">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Relatório</th>
+                                        <th class="text-center">Competência</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-sucessos"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tab Falhas -->
+                    <div class="tab-pane fade" id="content-falhas" role="tabpanel">
+                        <div class="table-responsive border rounded-3" style="max-height: 280px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0 small">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Relatório</th>
+                                        <th class="text-center">Competência</th>
+                                        <th>Motivo / Erro</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-falhas"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-top-0 pt-0 pb-4 px-4 d-flex justify-content-between">
+                <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Fechar</button>
+                <a href="/producao" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
+                    <i class="bi bi-eye me-1"></i> Ver Relatórios de Produção
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    function exibirModalResultado(status) {
+        const banner = document.getElementById('modal-banner-status');
+        const tbodySucessos = document.getElementById('tbody-sucessos');
+        const tbodyFalhas = document.getElementById('tbody-falhas');
+        const countSucessos = document.getElementById('count-sucessos');
+        const countFalhas = document.getElementById('count-falhas');
+        const itemTabFalhas = document.getElementById('item-tab-falhas');
+        const tabFalhas = document.getElementById('tab-falhas');
+        const tabSucessos = document.getElementById('tab-sucessos');
+
+        const sucessos = status.sucessos || [];
+        const erros = status.erros || [];
+
+        countSucessos.textContent = sucessos.length;
+        countFalhas.textContent = erros.length;
+
+        if (erros.length === 0 && sucessos.length > 0) {
+            banner.className = "alert alert-success border-0 shadow-sm d-flex align-items-center mb-3";
+            banner.innerHTML = `<i class="bi bi-check-circle-fill fs-4 me-2"></i> <div><strong>Coleta e gravação 100% concluídas!</strong> Os dados do Painel de Monitoramento foram atualizados com sucesso no banco de dados.</div>`;
+            itemTabFalhas.style.display = 'none';
+            new bootstrap.Tab(tabSucessos).show();
+        } else if (erros.length > 0 && sucessos.length > 0) {
+            banner.className = "alert alert-warning border-0 shadow-sm d-flex align-items-center mb-3";
+            banner.innerHTML = `<i class="bi bi-exclamation-triangle-fill fs-4 me-2"></i> <div><strong>Atenção: Coleta parcial!</strong> ${sucessos.length} tabela(s) foram atualizadas, mas ${erros.length} apresentaram falha.</div>`;
+            itemTabFalhas.style.display = 'block';
+        } else if (erros.length > 0 && sucessos.length === 0) {
+            banner.className = "alert alert-danger border-0 shadow-sm d-flex align-items-center mb-3";
+            banner.innerHTML = `<i class="bi bi-x-circle-fill fs-4 me-2"></i> <div><strong>Falha na coleta!</strong> Não foi possível atualizar os dados do Painel de Monitoramento.</div>`;
+            itemTabFalhas.style.display = 'block';
+            new bootstrap.Tab(tabFalhas).show();
+        } else {
+            banner.className = "alert alert-info border-0 shadow-sm";
+            banner.innerHTML = `Processo concluído sem alterações.`;
+            itemTabFalhas.style.display = 'none';
+        }
+
+        tbodySucessos.innerHTML = '';
+        if (sucessos.length === 0) {
+            tbodySucessos.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Nenhuma tabela atualizada com sucesso.</td></tr>';
+        } else {
+            sucessos.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="fw-semibold text-dark"><span class="badge bg-primary-subtle text-primary me-1">${item.codigo || ''}</span> ${item.relatorio || ''}</td>
+                    <td class="text-center font-monospace fw-bold text-secondary">${item.competencia || ''}</td>
+                    <td><span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1"><i class="bi bi-check2 me-1"></i>${item.status || 'Atualizado'}</span></td>
+                `;
+                tbodySucessos.appendChild(tr);
+            });
+        }
+
+        tbodyFalhas.innerHTML = '';
+        if (erros.length === 0) {
+            tbodyFalhas.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Nenhuma falha registrada.</td></tr>';
+        } else {
+            erros.forEach(item => {
+                const tr = document.createElement('tr');
+                const motivoTexto = typeof item === 'string' ? item : (item.motivo || JSON.stringify(item));
+                const relTexto = typeof item === 'object' && item.relatorio ? item.relatorio : (item.codigo || 'Painel');
+                const compTexto = typeof item === 'object' && item.competencia ? item.competencia : 'N/A';
+                const codTexto = typeof item === 'object' && item.codigo ? item.codigo : '!';
+                
+                tr.innerHTML = `
+                    <td class="fw-semibold text-danger"><span class="badge bg-danger-subtle text-danger me-1">${codTexto}</span> ${relTexto}</td>
+                    <td class="text-center font-monospace text-muted">${compTexto}</td>
+                    <td class="text-danger small font-monospace">${motivoTexto}</td>
+                `;
+                tbodyFalhas.appendChild(tr);
+            });
+        }
+
+        const modalElement = document.getElementById('modalResultadoExtracao');
+        const modalInstance = new bootstrap.Modal(modalElement);
+        modalInstance.show();
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
         const btnColetar = document.getElementById("btn-coletar");
         const usuarioInput = document.getElementById("usuario-pm");
@@ -86,27 +233,19 @@
                 return data;
             })
             .then(data => {
-                alert("✅ " + data.mensagem);
-                
-                // Monitora o status da extração
                 const radar = setInterval(() => {
                     fetch('/status_extracao')
                         .then(res => res.json())
                         .then(status => {
-                            if (status.status === 'em_andamento') {
+                            if (status.em_andamento) {
                                 btnColetar.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${status.progresso}`;
-                            } else if (status.status === 'sucesso') {
+                            }
+                            if (status.concluido) {
                                 clearInterval(radar);
                                 btnColetar.disabled = false;
-                                btnColetar.innerHTML = 'Coleta Concluída!';
+                                btnColetar.innerHTML = '<i class="bi bi-play-fill me-1"></i> Coletar Dados do Painel';
                                 btnColetar.className = 'btn btn-success px-4';
-                                alert("🎉 " + status.progresso);
-                            } else if (status.status === 'erro') {
-                                clearInterval(radar);
-                                btnColetar.disabled = false;
-                                btnColetar.innerHTML = 'Tentar Novamente';
-                                btnColetar.className = 'btn btn-danger px-4';
-                                alert("⚠️ Erro na coleta: " + status.progresso);
+                                exibirModalResultado(status);
                             }
                         })
                         .catch(() => {});
