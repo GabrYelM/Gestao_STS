@@ -437,10 +437,14 @@ def gera_relatorio_09(periodo):
             mes = periodo[4:]
             query = f"""SELECT * FROM 'REL-114'
             WHERE previsao_parto LIKE '%/{mes}/{ano}'
-            AND estab_acolhimento NOT IN ('ENG TRINDADE', 'AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO', 'UBS VILA GUILHERMINA - DR AMERICO RASPA NETO')
+            AND (sts = 'SUDESTE - STS PENHA' OR sts IS NULL)
+            AND estab_acolhimento NOT IN ('UBS ENG TRINDADE', 'ENG TRINDADE', 'AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO', 'UBS VILA GUILHERMINA - DR AMERICO RASPA NETO')
         """
         else:
-            query = "SELECT * FROM 'REL-114'"
+            query = """SELECT * FROM 'REL-114'
+            WHERE (sts = 'SUDESTE - STS PENHA' OR sts IS NULL)
+            AND estab_acolhimento NOT IN ('UBS ENG TRINDADE', 'ENG TRINDADE', 'AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO', 'UBS VILA GUILHERMINA - DR AMERICO RASPA NETO')
+        """
 
         df_rel114 = pd.read_sql(query, con=db.engine)
         

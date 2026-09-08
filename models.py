@@ -173,6 +173,7 @@ class REL114(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cnes_estab_acolhimento = db.Column(db.String(255), nullable=True)
     estab_acolhimento = db.Column(db.String(255), nullable=True)
+    sts = db.Column(db.String(255), nullable=True)
     cns_paciente = db.Column(db.String(255), nullable=True)
     cpf_paciente = db.Column(db.String(255), nullable=True)
     nr_sisprenatal = db.Column(db.String(255), nullable=True)
@@ -264,4 +265,4 @@ class REL10(db.Model):
     ano_mes = db.Column(db.Integer, default=0, index=True)
     estabelecimento = db.Column(db.String(255), nullable=True, index=True)
     quantidade_procedimento = db.Column(db.Integer, default=0)
-    data_extracao = db.Column(db.String(50), nullable=True)
+    data_extracao = db.Column(db.String(50), nullable=True)

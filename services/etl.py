@@ -498,6 +498,7 @@ def processa_rel114(caminho, periodo=None):
     traduz_col = {
         'CNES_ESTAB_ACOLHIMENTO': 'cnes_estab_acolhimento',
         'ESTAB_ACOLHIMENTO': 'estab_acolhimento',
+        'SUPERVISAO' : 'sts',
         'CNS_PACIENTE': 'cns_paciente',
         'CPF_PACIENTE': 'cpf_paciente',
         'NR_SISPRENATAL': 'nr_sisprenatal',
@@ -520,11 +521,15 @@ def processa_rel114(caminho, periodo=None):
     df_limpo = df[colunas_presentes].copy()
 
     from datetime import timedelta
-    # Calcula ano e mês do mês passado
-    primeiro_dia = datetime.today().replace(day=1)
-    mes_passado_obj = primeiro_dia - timedelta(days=1)
-    ano_alvo = mes_passado_obj.strftime('%Y')
-    mes_alvo = mes_passado_obj.strftime('%m')
+    # Calcula ano e mês do período informado ou do mês passado
+    if periodo:
+        ano_alvo = str(periodo)[:4]
+        mes_alvo = str(periodo)[4:6]
+    else:
+        primeiro_dia = datetime.today().replace(day=1)
+        mes_passado_obj = primeiro_dia - timedelta(days=1)
+        ano_alvo = mes_passado_obj.strftime('%Y')
+        mes_alvo = mes_passado_obj.strftime('%m')
 
     with app.app_context():
         try:
