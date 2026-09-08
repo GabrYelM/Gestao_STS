@@ -227,6 +227,7 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
 
 
 @app.route("/painel_monitoramento", methods=["GET", "POST"])
+@admin_required
 def painel_monitoramento_route():
     if request.method == "GET":
         return render_template("painel-monitoramento.html")
@@ -245,13 +246,13 @@ def painel_monitoramento_route():
 
 
 @app.route("/")
-# @login_required
 def index():
     return render_template("index.html")
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    next_page = request.args.get("next") or request.form.get("next") or url_for("index")
     if request.method == "POST":
         username = request.form.get("username")
         senha_digitada = request.form.get("password")
@@ -263,20 +264,22 @@ def login():
             session["usuario_nome"] = usuario.username
             session["is_admin"] = usuario.is_admin
 
-            return redirect(url_for("index"))
+            flash(f"Login realizado com sucesso! Olá, {usuario.username}.", "success")
+            return redirect(next_page)
         else:
             flash("Usuário ou senha incorretos. Tente novamente.", "error")
 
-    if session.get("usuario_id"):
+    if session.get("usuario_id") and session.get("is_admin"):
         return redirect(url_for("index"))
 
-    return render_template("login.html")
+    return render_template("login.html", next=next_page)
 
 
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    flash("Você saiu do modo Administrador.", "info")
+    return redirect(url_for("index"))
 
 
 """ @app.route("/alterar_senha", methods=["GET", "POST"])
@@ -290,6 +293,7 @@ def alterar_senha():
 
 
 @app.route("/bi_producao", methods=["GET", "POST"])
+@admin_required
 def gerar_relatorios():
     if request.method == "GET":
         return render_template("bi-producao.html")
@@ -334,9 +338,6 @@ from flask import send_file
 
 @app.route("/download_excel/<indice>/<periodo>")
 def download_excel(indice, periodo):
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-        
     try:
         if indice == '02':
             df = prod.gera_relatorio_02(periodo)
@@ -406,9 +407,6 @@ def download_excel(indice, periodo):
 
 @app.route("/producao", methods=["GET", "POST"])
 def producao():
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-
     tabela_html = None
     json_dados = None
     json_colunas = None
@@ -598,10 +596,8 @@ import os
 
 @app.route("/upload_zip", methods=["GET", "POST"])
 @app.route("/upload_dtic", methods=["GET", "POST"])
+@admin_required
 def upload_dtic():
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-        
     mensagem = None
     if request.method == "POST":
         tipo_relatorio = request.form.get("tipo_relatorio")
@@ -769,10 +765,8 @@ def upload_dtic():
 
 
 @app.route('/cadastros', methods=['GET', 'POST'])
+@admin_required
 def cadastros():
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-
     catalogo_path = os.path.join(os.getcwd(), 'services', 'catalogo_geral.json')
     cat_data = {'cbos': {}, 'procedimentos': {}, 'profissionais': {}, 'unidades': []}
     if os.path.exists(catalogo_path):
