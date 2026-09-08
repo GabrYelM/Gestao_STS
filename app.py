@@ -44,6 +44,27 @@ import pandas as pd
 import services.etl as etl
 import services.producao as prod
 from services.competencias import obter_competencias_por_relatorio, sincronizar_todas_competencias, registrar_competencia
+import socket
+
+def obter_ip_local():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return '127.0.0.1'
+
+@app.context_processor
+def inject_network_info():
+    ip = obter_ip_local()
+    port = 5000
+    network_url = f"http://{ip}:{port}"
+    return dict(ip_local=ip, porta=port, url_rede=network_url)
 
 gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
 
@@ -280,6 +301,133 @@ def logout():
     session.clear()
     flash("Você saiu do modo Administrador.", "info")
     return redirect(url_for("index"))
+
+
+@app.route("/backup", methods=["GET"])
+@admin_required
+def tela_backup():
+    from datetime import datetime
+    db_path = os.path.join(basedir, 'database.db')
+    
+    tamanho_db_mb = 0
+    data_modificacao = "N/A"
+    if os.path.exists(db_path):
+        tamanho_db_mb = round(os.path.getsize(db_path) / (1024 * 1024), 2)
+        mtime = os.path.getmtime(db_path)
+        data_modificacao = datetime.fromtimestamp(mtime).strftime("%d/%m/%Y às %H:%M")
+        
+    return render_template(
+        "backup.html",
+        tamanho_db_mb=tamanho_db_mb,
+        data_modificacao=data_modificacao
+    )
+
+
+@app.route("/admin/backup_db", methods=["GET"])
+@admin_required
+def backup_db():
+    import zipfile, tempfile
+    from datetime import datetime
+
+    db_path = os.path.join(basedir, 'database.db')
+    cat_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
+
+    if not os.path.exists(db_path):
+        return jsonify({"erro": "Banco de dados não encontrado."}), 404
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_dir = tempfile.gettempdir()
+    zip_filename = f"Gestao_STS_backup_{timestamp}.zip"
+    zip_path = os.path.join(temp_dir, zip_filename)
+
+    with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        if os.path.exists(db_path):
+            zf.write(db_path, arcname='database.db')
+        if os.path.exists(cat_path):
+            zf.write(cat_path, arcname='catalogo_geral.json')
+
+    return send_file(
+        zip_path,
+        as_attachment=True,
+        download_name=zip_filename,
+        mimetype="application/zip"
+    )
+
+
+@app.route("/admin/restaurar_backup", methods=["POST"])
+@admin_required
+def restaurar_backup():
+    import zipfile, shutil, tempfile
+
+    arquivo = request.files.get("arquivo_backup")
+    if not arquivo or not arquivo.filename:
+        flash("Nenhum arquivo de backup foi selecionado.", "error")
+        return redirect(url_for("tela_backup"))
+
+    filename = arquivo.filename.lower()
+    if not (filename.endswith(".zip") or filename.endswith(".db")):
+        flash("Formato de arquivo inválido. Selecione um arquivo .ZIP ou .DB.", "error")
+        return redirect(url_for("tela_backup"))
+
+    db_path = os.path.join(basedir, 'database.db')
+    cat_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
+    temp_dir = tempfile.mkdtemp()
+
+    try:
+        temp_extracted_db = None
+        temp_extracted_cat = None
+
+        if filename.endswith(".zip"):
+            with zipfile.ZipFile(arquivo, 'r') as zf:
+                for member in zf.namelist():
+                    base_name = os.path.basename(member)
+                    if base_name == 'database.db':
+                        temp_extracted_db = os.path.join(temp_dir, 'database.db')
+                        with open(temp_extracted_db, 'wb') as f_out:
+                            f_out.write(zf.read(member))
+                    elif base_name == 'catalogo_geral.json':
+                        temp_extracted_cat = os.path.join(temp_dir, 'catalogo_geral.json')
+                        with open(temp_extracted_cat, 'wb') as f_out:
+                            f_out.write(zf.read(member))
+        else:
+            temp_extracted_db = os.path.join(temp_dir, 'database.db')
+            arquivo.save(temp_extracted_db)
+
+        if not temp_extracted_db or not os.path.exists(temp_extracted_db):
+            flash("O arquivo enviado não contém um banco de dados válido.", "error")
+            return redirect(url_for("tela_backup"))
+
+        # Libera conexões ativas do SQLAlchemy
+        db.session.remove()
+        db.engine.dispose()
+
+        # Copia os arquivos restaurados
+        shutil.copy2(temp_extracted_db, db_path)
+        if temp_extracted_cat and os.path.exists(temp_extracted_cat):
+            shutil.copy2(temp_extracted_cat, cat_path)
+
+        # Sincroniza competências e recarrega banco
+        sincronizar_todas_competencias()
+        flash("Backup restaurado com sucesso! O banco de dados e os cadastros foram atualizados.", "success")
+    except Exception as e:
+        flash(f"Erro ao restaurar o backup: {str(e)}", "error")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    return redirect(url_for("tela_backup"))
+
+
+@app.route("/admin/desligar", methods=["POST"])
+@admin_required
+def desligar_servidor():
+    def shutdown_process():
+        import time, os
+        time.sleep(1)
+        os._exit(0)
+
+    import threading
+    threading.Thread(target=shutdown_process).start()
+    return jsonify({"status": "ok", "mensagem": "O servidor do sistema foi encerrado com sucesso."})
 
 
 """ @app.route("/alterar_senha", methods=["GET", "POST"])
