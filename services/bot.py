@@ -456,7 +456,7 @@ def buscaGAC02(mes, ano, page, click_timeout, timeout_geral):
     return caminho
 
 def buscaPainelMonitoramento(usuario, senha, tipo_local="STS", page=None, click_timeout=60000, timeout_geral=1500):
-    print(f"Iniciando coleta do Painel de Monitoramento 3.2 (CEInfo) - Modo: {tipo_local}...")
+    print(f"Iniciando coleta do Painel de Monitoramento (CEInfo) - Modo: {tipo_local}...")
     
     # Configura tempo limite estendido (10 minutos) para relatórios pesados
     page.set_default_timeout(600000)

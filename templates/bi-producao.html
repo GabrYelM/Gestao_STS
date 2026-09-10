@@ -1,97 +1,221 @@
 {% extends "base.html" %}
-
-{% block title %}Gerar Relatórios{% endblock %}
+{% block title %}Extração de Dados (BI e Monitoramento){% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card shadow-sm border-0">
-                <div class="card-body p-4">
-                    <h1 class="h3 text-primary mb-3">Gerar Relatórios</h1>
-                    <p class="text-muted">Inicie a extração automatizada dos dados de produção para o período selecionado.</p>
-
-                    <div id="container-datas">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="mes-inicio" class="form-label fw-semibold">Mês de Início</label>
-                                <select id="mes-inicio" class="form-select">
-                                    <option value="Janeiro">Janeiro</option>
-                                    <option value="Fevereiro">Fevereiro</option>
-                                    <option value="Março">Março</option>
-                                    <option value="Abril">Abril</option>
-                                    <option value="Maio">Maio</option>
-                                    <option value="Junho">Junho</option>
-                                    <option value="Julho">Julho</option>
-                                    <option value="Agosto">Agosto</option>
-                                    <option value="Setembro">Setembro</option>
-                                    <option value="Outubro">Outubro</option>
-                                    <option value="Novembro">Novembro</option>
-                                    <option value="Dezembro">Dezembro</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="ano-inicio" class="form-label fw-semibold">Ano de Início</label>
-                                <input type="number" id="ano-inicio" class="form-control" value="2026">
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="mes-fim" class="form-label fw-semibold">Mês de Fim</label>
-                                <select id="mes-fim" class="form-select">
-                                    <option value="Janeiro">Janeiro</option>
-                                    <option value="Fevereiro">Fevereiro</option>
-                                    <option value="Março">Março</option>
-                                    <option value="Abril">Abril</option>
-                                    <option value="Maio">Maio</option>
-                                    <option value="Junho">Junho</option>
-                                    <option value="Julho">Julho</option>
-                                    <option value="Agosto">Agosto</option>
-                                    <option value="Setembro">Setembro</option>
-                                    <option value="Outubro">Outubro</option>
-                                    <option value="Novembro">Novembro</option>
-                                    <option value="Dezembro">Dezembro</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="ano-fim" class="form-label fw-semibold">Ano de Fim</label>
-                                <input type="number" id="ano-fim" class="form-control" value="2026">
-                            </div>
-                        </div>
-                    </div>
-
-                                        <div class="row mb-4">
-                        <div class="col-md-6 mb-3 mb-md-0">
-                            <label for="usuario-bi" class="form-label fw-semibold">Usuário BI</label>
-                            <input type="text" id="usuario-bi" class="form-control" placeholder="Seu usuário" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label for="senha-bi" class="form-label fw-semibold">Senha BI</label>
-                            <input type="password" id="senha-bi" class="form-control" placeholder="Sua senha" required>
-                        </div>
-                    </div>
-
+<div class="container mt-4 mb-5">
+    <div class="row justify-content-center g-4">
+        <!-- Coluna de Extração -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-cloud-arrow-down me-2"></i>Extração de Dados (BI e Monitoramento)</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Seletor do Relatório -->
                     <div class="mb-4">
-                        <label for="relatorio-escolhido" class="form-label fw-semibold">Relatório a extrair (Download + ETL)</label>
-                        <select id="relatorio-escolhido" class="form-select">
-                            <option value="TODOS">TODOS (Processar Lote Completo)</option>
-                            <option value="AG04">AG04 - Agenda e Atendimento</option>
-                            <option value="AT02">AT02 - Produção Ambulatorial por Procedimento</option>
-                            <option value="AT03">AT03 - Produção Ambulatorial por Faixa Etária</option>
-                            <option value="FE02">FE02 - Fila de Espera</option>
-                            <option value="VG02">VG02 - Vagas Ofertadas vs Agendamentos</option>
-                            <option value="VG04">VG04 - Relação de Agendamentos</option>
-                            <option value="CG01">CG01 - Acompanhamento de Gestantes</option>
-                            <option value="CG05">CG05 - Consulta Gestantes e Vacinação</option>
-                            <option value="CG06">CG06 - Lista Nominal (Exames)</option>
-                            <option value="GAC02">GAC02 - Cadastro e Vínculos</option>
+                        <label class="form-label fw-bold">Selecione o Relatório</label>
+                        <select id="relatorio-escolhido" class="form-select" required>
+                            <optgroup label="Processamento Geral">
+                                <option value="CARGA_COMPLETA_BI_PM">Carga completa BI e PM</option>
+                                <option value="CARGA_COMPLETA_BI" selected>Carga completa BI</option>
+                                <option value="CARGA_COMPLETA_PM">Carga completa PM</option>
+                            </optgroup>
+                            <optgroup label="Relatórios Individuais do BI (SIGA Saúde)">
+                                <option value="AT02">AT-02 Quantidade de Pacientes e Procedimentos por Estabelecimento por mês</option>
+                                <option value="AG04">AG-04 Perda Secundária por Executante</option>
+                                <option value="AT03">AT-03 Atendimento por Procedimento segundo Sexo e Faixa Etária</option>
+                                <option value="FE02">FE-02 Fila de Espera - Fluxo de Entrada Saida e Ativos de Procedimentos e Especialidades</option>
+                                <option value="VG02">VG-02 Perda Primaria por Procedimento e Especialidade</option>
+                                <option value="VG04">VG-04 Vagas Ofertadas por Tipo de Atendimento da Agenda por Unidade</option>
+                                <option value="GAC02">GAC02 - Gestantes ativas</option>
+                                <option value="CG01">CG01 - Gestantes com sete ou mais consultas</option>
+                                <option value="CG05">CG05 - Lista nominal de gestantes com total de consultas de PN.rdl</option>
+                                <option value="CG06">CG06 - Lista nominal de gestantes com exames realizados</option>
+                            </optgroup>
+                            <optgroup label="Painel de Monitoramento (CEInfo)">
+                                <option value="REL06">Painel de monitoramento PENHA</option>
+                                <option value="REL07">Painel de monitoramento por estabelecimento</option>
+                            </optgroup>
                         </select>
+                        <small class="text-muted">A opção "Carga completa" executa automaticamente a rotina em lote de todos os relatórios da seleção.</small>
                     </div>
 
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-start mt-4">
-                        <button type="button" id="btn-gerar" class="btn btn-success">Gerar</button>
-                        <a href="/" class="btn btn-outline-secondary">Voltar</a>
+                    <!-- Mensagem Informativa Contextual para Relatórios Sem Seleção de Datas -->
+                    <div id="alerta-sem-datas" class="alert py-2 small mb-4 d-none border-0 shadow-sm">
+                        <i class="bi bi-info-circle-fill me-1"></i> <span id="texto-alerta-sem-datas"></span>
+                    </div>
+
+                    <!-- Container de Datas (Mês/Ano Início e Fim) -->
+                    <div id="container-datas" class="mb-4">
+                        <label class="form-label fw-bold">Período de Competência</label>
+                        <div class="p-3 border rounded bg-light">
+                            <div class="row g-2 mb-2">
+                                <div class="col-6">
+                                    <label for="mes-inicio" class="form-label small fw-semibold">Mês de Início</label>
+                                    <select id="mes-inicio" class="form-select form-select-sm">
+                                        <option value="Janeiro">Janeiro</option>
+                                        <option value="Fevereiro">Fevereiro</option>
+                                        <option value="Março">Março</option>
+                                        <option value="Abril">Abril</option>
+                                        <option value="Maio">Maio</option>
+                                        <option value="Junho">Junho</option>
+                                        <option value="Julho">Julho</option>
+                                        <option value="Agosto">Agosto</option>
+                                        <option value="Setembro">Setembro</option>
+                                        <option value="Outubro">Outubro</option>
+                                        <option value="Novembro">Novembro</option>
+                                        <option value="Dezembro">Dezembro</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label for="ano-inicio" class="form-label small fw-semibold">Ano de Início</label>
+                                    <input type="number" id="ano-inicio" class="form-control form-control-sm" value="2026">
+                                </div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label for="mes-fim" class="form-label small fw-semibold">Mês de Fim</label>
+                                    <select id="mes-fim" class="form-select form-select-sm">
+                                        <option value="Janeiro">Janeiro</option>
+                                        <option value="Fevereiro">Fevereiro</option>
+                                        <option value="Março">Março</option>
+                                        <option value="Abril">Abril</option>
+                                        <option value="Maio">Maio</option>
+                                        <option value="Junho">Junho</option>
+                                        <option value="Julho">Julho</option>
+                                        <option value="Agosto">Agosto</option>
+                                        <option value="Setembro">Setembro</option>
+                                        <option value="Outubro">Outubro</option>
+                                        <option value="Novembro">Novembro</option>
+                                        <option value="Dezembro">Dezembro</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label for="ano-fim" class="form-label small fw-semibold">Ano de Fim</label>
+                                    <input type="number" id="ano-fim" class="form-control form-control-sm" value="2026">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Credenciais de Acesso BI (SIGA Saúde) -->
+                    <div id="container-credenciais-bi" class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-person-badge text-primary me-1"></i>Credenciais de Acesso ao BI (SIGA Saúde)
+                        </label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="text" id="usuario-bi" class="form-control" placeholder="Usuário BI (ex: d123456)">
+                            </div>
+                            <div class="col-6">
+                                <input type="password" id="senha-bi" class="form-control" placeholder="Senha BI">
+                            </div>
+                        </div>
+                        <small class="text-muted">Utilizadas para login no portal corporativo do BI (SIGA Saúde / Prodam).</small>
+                    </div>
+
+                    <!-- Credenciais de Acesso ao Painel de Monitoramento (CEInfo) -->
+                    <div id="container-credenciais-pm" class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-speedometer2 text-success me-1"></i>Credenciais do Painel de Monitoramento (CEInfo)
+                        </label>
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <input type="text" id="usuario-pm" class="form-control" placeholder="Usuário do Painel">
+                            </div>
+                            <div class="col-6">
+                                <input type="password" id="senha-pm" class="form-control" placeholder="Senha do Painel">
+                            </div>
+                        </div>
+                        <small class="text-muted">Utilizadas para autenticação no Painel de Monitoramento da CEInfo.</small>
+                    </div>
+
+                    <!-- Aviso de Segurança -->
+                    <div class="mb-4">
+                        <small class="text-muted">
+                            <i class="bi bi-shield-check text-success me-1"></i>Suas credenciais são transmitidas de forma segura diretamente para a sessão do robô e não são salvas em disco.
+                        </small>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="button" class="btn btn-success" id="btn-gerar">
+                            <span id="spinner-gerar" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            <span id="texto-botao"><i class="bi bi-play-circle me-1"></i> Iniciar Extração</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna de Instruções e Informações -->
+        <div class="col-lg-6">
+            <!-- Card Extração BI -->
+            <div class="card shadow-sm mb-3 border-primary">
+                <div class="card-header bg-primary text-white fw-bold">
+                    <i class="bi bi-robot me-2"></i>Extração dos Arquivos do BI (SIGA Saúde)
+                </div>
+                <div class="card-body p-3">
+                    <p class="mb-2"><strong>Como funciona:</strong></p>
+                    <p class="text-muted small mb-0">
+                        O robô autônomo acessa o portal corporativo do <strong>SIGA Saúde / BI</strong> da SMS-SP, aplica os filtros territoriais da <strong>STS Penha</strong> e exporta os relatórios oficiais, realizando o cruzamento e armazenamento direto no banco de dados SQLite sem necessidade de manipulação manual de planilhas.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card Painel de Monitoramento -->
+            <div class="card shadow-sm mb-3 border-success">
+                <div class="card-header bg-success text-white fw-bold">
+                    <i class="bi bi-speedometer2 me-2"></i>Painel de Monitoramento (CEInfo)
+                </div>
+                <div class="card-body p-3">
+                    <p class="mb-2"><strong>Como funciona:</strong></p>
+                    <p class="text-muted small mb-0">
+                        A extração do Painel de Monitoramento da CEInfo coleta automaticamente a <strong>série histórica contínua dos últimos 12 meses</strong> para a Penha (Relatório 06) e por Estabelecimento (Relatório 07), calculando metas e faróis epidemiológicos sem necessidade de seleção manual de competências.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card Regras e Parâmetros -->
+            <div class="card shadow-sm border-secondary">
+                <div class="card-header bg-primary text-white fw-bold">
+                    <i class="bi bi-info-circle me-2"></i>Filtros e Regras de Extração
+                </div>
+                <div class="card-body p-3">
+                    <h6 class="text-primary mb-2"><i class="bi bi-gear-fill me-2"></i>REGRAS DE EXTRAÇÃO AUTOMATIZADA</h6>
+                    <p class="mb-2 small"><strong>Ambiente:</strong> Execução autônoma via robôs Playwright em segundo plano</p>
+                    
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle small mb-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 45%;">Fonte / Relatório</th>
+                                    <th>Comportamento / Parâmetros</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold">GAC02 (Gestantes Ativas)</td>
+                                    <td>Snapshot instantâneo das gestantes ativas no território</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Painel de Monitoramento</td>
+                                    <td>Série histórica contínua de 12 meses (faróis de metas)</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Relatórios Mensais BI</td>
+                                    <td>Filtrados por competência selecionada (Início e Fim)</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Hierarquia Territorial</td>
+                                    <td><span class="badge bg-success">CRS Sudeste ➔ STS Penha</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="alert alert-warning py-2 px-3 small mb-0">
+                        <i class="bi bi-exclamation-triangle me-1"></i>
+                        <strong>Atenção:</strong> As credenciais corporativas solicitadas são utilizadas estritamente durante a sessão do robô.
                     </div>
                 </div>
             </div>
@@ -174,21 +298,87 @@
 {% block scripts %}
 <script>
     const btnGerar = document.getElementById('btn-gerar');
+    const spinnerGerar = document.getElementById('spinner-gerar');
+    const textoBotao = document.getElementById('texto-botao');
     const mesInicio = document.getElementById('mes-inicio');
     const anoInicio = document.getElementById('ano-inicio');
     const mesFim = document.getElementById('mes-fim');
     const anoFim = document.getElementById('ano-fim');
     const relatorioEscolhido = document.getElementById('relatorio-escolhido');
     const containerDatas = document.getElementById('container-datas');
+    const alertaSemDatas = document.getElementById('alerta-sem-datas');
+    const textoAlertaSemDatas = document.getElementById('texto-alerta-sem-datas');
 
-    if (relatorioEscolhido) {
-        relatorioEscolhido.addEventListener('change', function() {
-            if (this.value === 'GAC02') {
+    const containerCredenciaisBi = document.getElementById('container-credenciais-bi');
+    const containerCredenciaisPm = document.getElementById('container-credenciais-pm');
+
+    const isOnlyPM = (val) => ['CARGA_COMPLETA_PM', 'PM_TODOS', 'REL06', 'REL07'].includes(val);
+    const isGac02 = (val) => val === 'GAC02';
+    const isCargaCompletaGeral = (val) => val === 'CARGA_COMPLETA_BI_PM';
+
+    function setBotaoTexto(html) {
+        if (textoBotao) textoBotao.innerHTML = html;
+    }
+
+    function setBotaoLoading(isLoading, msg) {
+        if (!btnGerar) return;
+        if (isLoading) {
+            btnGerar.classList.add('disabled');
+            if (spinnerGerar) spinnerGerar.classList.remove('d-none');
+            if (textoBotao) textoBotao.innerHTML = msg || 'Processando...';
+        } else {
+            btnGerar.classList.remove('disabled');
+            if (spinnerGerar) spinnerGerar.classList.add('d-none');
+            atualizarVisibilidadeCampos();
+        }
+    }
+
+    function atualizarVisibilidadeCampos() {
+        if (!relatorioEscolhido) return;
+        const val = relatorioEscolhido.value;
+
+        if (isCargaCompletaGeral(val)) {
+            // Carga Completa Geral: pede ambas as credenciais e período de datas para o BI
+            containerDatas.style.display = 'block';
+            if (containerCredenciaisBi) containerCredenciaisBi.style.display = 'block';
+            if (containerCredenciaisPm) containerCredenciaisPm.style.display = 'block';
+
+            alertaSemDatas.className = 'alert alert-primary py-2 small mb-4 border-0 shadow-sm';
+            textoAlertaSemDatas.innerHTML = '<strong>Carga Completa (BI e PM):</strong> O robô extrairá todos os relatórios do BI para o período selecionado e, em seguida, executará a carga dos painéis de monitoramento (PENHA e Por Estabelecimento). Requer ambas as credenciais.';
+            alertaSemDatas.classList.remove('d-none');
+            setBotaoTexto('<i class="bi bi-play-circle me-1"></i> Iniciar Carga Completa (BI + PM)');
+        } else if (isOnlyPM(val)) {
+            // Apenas Painel de Monitoramento: esconde datas e pede apenas credenciais do PM
+            containerDatas.style.display = 'none';
+            if (containerCredenciaisBi) containerCredenciaisBi.style.display = 'none';
+            if (containerCredenciaisPm) containerCredenciaisPm.style.display = 'block';
+
+            alertaSemDatas.className = 'alert alert-success py-2 small mb-4 border-0 shadow-sm';
+            textoAlertaSemDatas.innerHTML = '<strong>Painel de Monitoramento (CEInfo):</strong> A extração busca automaticamente toda a série histórica dos últimos 12 meses e os sinais mensais da Região Penha, dispensando a seleção de competência.';
+            alertaSemDatas.classList.remove('d-none');
+            setBotaoTexto('<i class="bi bi-speedometer2 me-1"></i> Coletar Dados do Painel');
+        } else {
+            // Relatórios do BI (Carga Completa BI ou relatórios pontuais): pede apenas credenciais do BI
+            if (containerCredenciaisBi) containerCredenciaisBi.style.display = 'block';
+            if (containerCredenciaisPm) containerCredenciaisPm.style.display = 'none';
+
+            if (isGac02(val)) {
                 containerDatas.style.display = 'none';
+                alertaSemDatas.className = 'alert alert-info py-2 small mb-4 border-0 shadow-sm';
+                textoAlertaSemDatas.innerHTML = '<strong>GAC02 - Gestantes Ativas:</strong> Este relatório extrai a fotografia (snapshot) consolidada das gestantes atualmente ativas no território.';
+                alertaSemDatas.classList.remove('d-none');
+                setBotaoTexto('<i class="bi bi-play-circle me-1"></i> Extrair GAC02');
             } else {
                 containerDatas.style.display = 'block';
+                alertaSemDatas.classList.add('d-none');
+                setBotaoTexto('<i class="bi bi-play-circle me-1"></i> Iniciar Extração');
             }
-        });
+        }
+    }
+
+    if (relatorioEscolhido) {
+        relatorioEscolhido.addEventListener('change', atualizarVisibilidadeCampos);
+        atualizarVisibilidadeCampos();
     }
 
     function exibirModalResultado(status) {
@@ -207,18 +397,28 @@
         countSucessos.textContent = sucessos.length;
         countFalhas.textContent = erros.length;
 
+        const valAtual = relatorioEscolhido ? relatorioEscolhido.value : '';
+        const modoPM = isOnlyPM(valAtual);
+        const modoGeral = isCargaCompletaGeral(valAtual);
+
         if (erros.length === 0 && sucessos.length > 0) {
             banner.className = "alert alert-success border-0 shadow-sm d-flex align-items-center mb-3";
-            banner.innerHTML = `<i class="bi bi-check-circle-fill fs-4 me-2"></i> <div><strong>Extração e gravação 100% concluídas!</strong> Todas as ${sucessos.length} competências solicitadas foram atualizadas com sucesso no banco de dados.</div>`;
+            let msgTexto = `<strong>Extração e gravação 100% concluídas!</strong> Todas as rotinas solicitadas (${sucessos.length} itens) foram atualizadas com sucesso no banco de dados.`;
+            if (modoPM) {
+                msgTexto = `<strong>Coleta do Painel 100% concluída!</strong> As tabelas foram atualizadas com sucesso no banco de dados.`;
+            } else if (modoGeral) {
+                msgTexto = `<strong>Carga Completa (BI e PM) 100% concluída!</strong> Dados do BI e Painéis de Monitoramento atualizados com sucesso (${sucessos.length} itens)!`;
+            }
+            banner.innerHTML = `<i class="bi bi-check-circle-fill fs-4 me-2"></i> <div>${msgTexto}</div>`;
             itemTabFalhas.style.display = 'none';
             new bootstrap.Tab(tabSucessos).show();
         } else if (erros.length > 0 && sucessos.length > 0) {
             banner.className = "alert alert-warning border-0 shadow-sm d-flex align-items-center mb-3";
-            banner.innerHTML = `<i class="bi bi-exclamation-triangle-fill fs-4 me-2"></i> <div><strong>Atenção: Extração parcial!</strong> ${sucessos.length} competência(s) foram atualizadas, mas ${erros.length} apresentaram falha. Confira os detalhes abaixo.</div>`;
+            banner.innerHTML = `<i class="bi bi-exclamation-triangle-fill fs-4 me-2"></i> <div><strong>Atenção: Processamento parcial!</strong> ${sucessos.length} item(ns) foram atualizados, mas ${erros.length} apresentaram falha. Confira os detalhes abaixo.</div>`;
             itemTabFalhas.style.display = 'block';
         } else if (erros.length > 0 && sucessos.length === 0) {
             banner.className = "alert alert-danger border-0 shadow-sm d-flex align-items-center mb-3";
-            banner.innerHTML = `<i class="bi bi-x-circle-fill fs-4 me-2"></i> <div><strong>Falha na extração!</strong> Nenhuma competência pôde ser atualizada. Verifique os erros listados abaixo.</div>`;
+            banner.innerHTML = `<i class="bi bi-x-circle-fill fs-4 me-2"></i> <div><strong>Falha na extração!</strong> Nenhum item pôde ser atualizado. Verifique os erros listados abaixo.</div>`;
             itemTabFalhas.style.display = 'block';
             new bootstrap.Tab(tabFalhas).show();
         } else {
@@ -271,27 +471,44 @@
         btnGerar.addEventListener('click', function (e) {
             e.preventDefault();
 
-            btnGerar.innerHTML = '⏳ Processando...';
-            btnGerar.classList.add('disabled');
+            const val = relatorioEscolhido ? relatorioEscolhido.value : 'CARGA_COMPLETA_BI';
+            const precisaBi = (val === 'CARGA_COMPLETA_BI_PM') || !isOnlyPM(val);
+            const precisaPm = ['CARGA_COMPLETA_BI_PM', 'CARGA_COMPLETA_PM', 'PM_TODOS', 'REL06', 'REL07'].includes(val);
 
-            const usuarioBi = document.getElementById('usuario-bi').value;
-            const senhaBi = document.getElementById('senha-bi').value;
+            const usuarioBiInput = document.getElementById('usuario-bi');
+            const senhaBiInput = document.getElementById('senha-bi');
+            const usuarioPmInput = document.getElementById('usuario-pm');
+            const senhaPmInput = document.getElementById('senha-pm');
+
+            const usuarioBi = usuarioBiInput ? usuarioBiInput.value.trim() : '';
+            const senhaBi = senhaBiInput ? senhaBiInput.value.trim() : '';
+            const usuarioPm = usuarioPmInput ? usuarioPmInput.value.trim() : '';
+            const senhaPm = senhaPmInput ? senhaPmInput.value.trim() : '';
             
-            if (!usuarioBi || !senhaBi) {
-                alert("Por favor, preencha o Usuário e a Senha do BI!");
-                btnGerar.innerHTML = 'Gerar';
-                btnGerar.classList.remove('disabled');
+            if (precisaBi && (!usuarioBi || !senhaBi)) {
+                alert("Por favor, preencha o Usuário e a Senha de acesso ao BI (SIGA Saúde)!");
+                if (usuarioBiInput) usuarioBiInput.focus();
                 return;
             }
+
+            if (precisaPm && (!usuarioPm || !senhaPm)) {
+                alert("Por favor, preencha o Usuário e a Senha do Painel de Monitoramento (CEInfo)!");
+                if (usuarioPmInput) usuarioPmInput.focus();
+                return;
+            }
+
+            setBotaoLoading(true, 'Conectando e Extraindo...');
 
             const formData = new URLSearchParams();
             formData.append('mes_inicio', mesInicio ? mesInicio.value : 'Janeiro');
             formData.append('ano_inicio', anoInicio ? anoInicio.value : '2026');
             formData.append('mes_fim', mesFim ? mesFim.value : 'Janeiro');
             formData.append('ano_fim', anoFim ? anoFim.value : '2026');
-            formData.append('relatorio_escolhido', relatorioEscolhido ? relatorioEscolhido.value : 'TODOS');
+            formData.append('relatorio_escolhido', val);
             formData.append('usuario_bi', usuarioBi);
             formData.append('senha_bi', senhaBi);
+            formData.append('usuario_pm', usuarioPm);
+            formData.append('senha_pm', senhaPm);
 
             fetch('/bi_producao', {
                 method: 'POST',
@@ -301,25 +518,24 @@
                 body: formData.toString()
             })
                 .then(async response => {
-                    if (response.status === 401) {
+                    if (response.status === 400 || response.status === 401) {
                         const errData = await response.json();
-                        throw new Error(errData.erro);
+                        throw new Error(errData.erro || 'Erro na autenticação.');
                     }
                     return response.json();
                 })
                 .then(data => {
-                    btnGerar.innerHTML = '⏳ Conectando e Extraindo...';
+                    setBotaoLoading(true, 'Extraindo relatórios...');
                     const radar = setInterval(() => {
                         fetch('/status_extracao')
                             .then(res => res.json())
                             .then(status => {
-                                if (status.progresso) {
-                                    btnGerar.innerHTML = '⏳ ' + status.progresso;
+                                if (status.progresso && textoBotao) {
+                                    textoBotao.innerHTML = status.progresso;
                                 }
                                 if (status.concluido) {
                                     clearInterval(radar);
-                                    btnGerar.innerHTML = 'Gerar';
-                                    btnGerar.classList.remove('disabled');
+                                    setBotaoLoading(false);
                                     exibirModalResultado(status);
                                 }
                             });
@@ -328,8 +544,7 @@
                 .catch(error => {
                     alert(error.message || 'Ocorreu um erro ao tentar iniciar os relatórios.');
                     console.error(error);
-                    btnGerar.innerHTML = 'Gerar';
-                    btnGerar.classList.remove('disabled');
+                    setBotaoLoading(false);
                 });
         });
     }

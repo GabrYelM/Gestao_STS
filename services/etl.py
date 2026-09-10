@@ -686,7 +686,7 @@ def processa_rel135(caminho, periodo=None):
 
 def processa_painel_monitoramento(html_content, tabela_db='REL-06', default_localidade='STS PENHA'):
     """
-    Processa o HTML extraído do Painel de Monitoramento 3.2 (CEInfo).
+    Processa o HTML extraído do Painel de Monitoramento (CEInfo).
     Suporta tabelas de unidade única (STS) e múltiplas unidades (Subprefeitura) identificadas pelas células cinzas (#d3d3d3).
     Funde os valores mensais com os sinais (+1, -1, 0, +2, -2, etc.) e a coluna de desempenho.
     Salva a matriz estruturada na tabela indicada ('REL-06' ou 'REL-07').
