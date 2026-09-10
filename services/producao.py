@@ -117,7 +117,7 @@ def gera_relatorio_04(periodo):
 
 def gera_relatorio_06(periodo=None):
     """
-    Gera o Relatório 06 (Painel de Monitoramento 3.2 - CEInfo).
+    Gera o Relatório 06 (Painel de Monitoramento - CEInfo).
     Funde a série histórica dos últimos 12 meses com os sinais mensais coloridos (+1 verde, -1 vermelho)
     e inclui a coluna de Desempenho.
     """
@@ -1061,12 +1061,12 @@ MAPA_RELATORIOS_INFO = {
         'arquivos': ['AA968846.JUL', 'AA330456.JUL', 'AA202962.JUL', 'AA638764.JUL']
     },
     '06': {
-        'fonte': 'CEInfo (Painel de Monitoramento 3.2 - STS Penha)',
+        'fonte': 'CEInfo (Painel de Monitoramento - STS Penha)',
         'tabela': 'REL-06',
         'arquivos': ['painel_monitoramento.html']
     },
     '07': {
-        'fonte': 'CEInfo (Painel de Monitoramento 3.2 - Subprefeitura Penha)',
+        'fonte': 'CEInfo (Painel de Monitoramento - Subprefeitura Penha)',
         'tabela': 'REL-07',
         'arquivos': ['painel_monitoramento_subprefeitura.html']
     },

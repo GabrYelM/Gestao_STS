@@ -115,19 +115,26 @@ def gerar_lista_meses(m_inicio, a_inicio, m_fim, a_fim):
     return lista
 
 MAPA_NOMES_RELATORIOS = {
-    'AG04': 'AG-04 (Perda Secundária por Executante)',
-    'AT02': 'AT-02 (Produção Ambulatorial por Procedimento)',
-    'AT03': 'AT-03 (Produção Ambulatorial por Faixa Etária)',
-    'FE02': 'FE-02 (Fila de Espera)',
-    'VG02': 'VG-02 (Vagas Ofertadas vs Agendamentos)',
-    'VG04': 'VG-04 (Relação de Agendamentos)',
-    'CG01': 'CG-01 (Acompanhamento de Gestantes)',
-    'CG05': 'CG-05 (Consulta Gestantes e Vacinação)',
-    'CG06': 'CG-06 (Lista Nominal de Exames)',
-    'GAC02': 'GAC-02 (Cadastro e Vínculos)',
+    'AT02': 'AT-02 Quantidade de Pacientes e Procedimentos por Estabelecimento por mês',
+    'AG04': 'AG-04 Perda Secundária por Executante',
+    'AT03': 'AT-03 Atendimento por Procedimento segundo Sexo e Faixa Etária',
+    'FE02': 'FE-02 Fila de Espera - Fluxo de Entrada Saida e Ativos de Procedimentos e Especialidades',
+    'VG02': 'VG-02 Perda Primaria por Procedimento e Especialidade',
+    'VG04': 'VG-04 Vagas Ofertadas por Tipo de Atendimento da Agenda por Unidade',
+    'GAC02': 'GAC02 - Gestantes ativas',
+    'CG01': 'CG01 - Gestantes com sete ou mais consultas',
+    'CG05': 'CG05 - Lista nominal de gestantes com total de consultas de PN.rdl',
+    'CG06': 'CG06 - Lista nominal de gestantes com exames realizados',
+    'REL06': 'Painel de monitoramento PENHA',
+    'REL07': 'Painel de monitoramento por estabelecimento',
+    'CARGA_COMPLETA_PM': 'Carga completa PM',
+    'PM_TODOS': 'Carga completa PM',
+    'CARGA_COMPLETA_BI': 'Carga completa BI',
+    'TODOS': 'Carga completa BI',
+    'CARGA_COMPLETA_BI_PM': 'Carga completa BI e PM',
 }
 
-def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha):
+def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha, usuario_pm=None, senha_pm=None):
     global status_extracao
     status_extracao["em_andamento"] = True
     status_extracao["concluido"] = False
@@ -150,7 +157,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
         'GAC02': (sb.buscaGAC02, etl.processa_gac02),
     }
 
-    if relatorio_escolhido == "TODOS":
+    if relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_BI", "CARGA_COMPLETA_BI_PM"]:
         itens_selecionados = list(todas_funcoes.items())
     else:
         func = todas_funcoes.get(relatorio_escolhido)
@@ -266,10 +273,18 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                             "motivo": erro_bot
                         })
 
-        try:
-            sincronizar_todas_competencias()
-        except Exception:
-            pass
+    if relatorio_escolhido == "CARGA_COMPLETA_BI_PM":
+        status_extracao["progresso"] = "Extração do BI concluída. Iniciando Painel de Monitoramento..."
+        u_pm = usuario_pm if usuario_pm else usuario
+        s_pm = senha_pm if senha_pm else senha
+        sucessos_pm, erros_pm = executar_extracao_pm_sync(u_pm, s_pm, "TODOS")
+        sucessos_fila.extend(sucessos_pm)
+        erros_fila.extend(erros_pm)
+
+    try:
+        sincronizar_todas_competencias()
+    except Exception:
+        pass
 
     status_extracao["sucessos"] = sucessos_fila
     status_extracao["erros"] = erros_fila
@@ -279,7 +294,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     if erros_fila and sucessos_fila:
         status_extracao["progresso"] = f"Concluído parcialmente ({len(sucessos_fila)} atualizados, {len(erros_fila)} falhas)."
     elif erros_fila and not sucessos_fila:
-        status_extracao["progresso"] = f"Concluído com erro nas {len(erros_fila)} competências solicitadas."
+        status_extracao["progresso"] = f"Concluído com erro nas rotinas solicitadas."
     else:
         status_extracao["progresso"] = f"100% Concluído com sucesso ({len(sucessos_fila)} atualizados)!"
 
@@ -287,18 +302,9 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     status_extracao["concluido"] = True
 
 
-def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
-    global status_extracao
-    status_extracao["em_andamento"] = True
-    status_extracao["concluido"] = False
-    status_extracao["progresso"] = "Conectando ao Painel de Monitoramento 3.2..."
-    status_extracao["status"] = "em_andamento"
-    status_extracao["sucessos"] = []
-    status_extracao["erros"] = []
-    
+def executar_extracao_pm_sync(usuario, senha, relatorio_escolhido="TODOS"):
     sucessos_pm = []
     erros_pm = []
-    
     try:
         from services.utils import bot_setup_page
         from services.bot import buscaPainelMonitoramento
@@ -307,54 +313,47 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
         # Painel de Monitoramento mantém timeout longo (600s = 10min)
         p, browser, page = bot_setup_page(usuario, senha, default_timeout=600000)
         try:
-            # 1. Extração de STS (Relatório 06)
-            if relatorio_escolhido in ["TODOS", "REL06"]:
-                status_extracao["progresso"] = "Extraindo Painel por STS (PENHA)..."
+            # 1. Painel de monitoramento PENHA (Relatório 06)
+            if relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_PM", "PM_TODOS", "REL06"]:
+                status_extracao["progresso"] = "Extraindo Painel de monitoramento PENHA..."
                 html_sts = buscaPainelMonitoramento(usuario, senha, tipo_local="STS", page=page)
                 if html_sts:
-                    status_extracao["progresso"] = "Gravando dados de STS (REL-06) no BD..."
+                    status_extracao["progresso"] = "Gravando Painel PENHA (REL-06) no BD..."
                     processa_painel_monitoramento(html_sts, tabela_db='REL-06', default_localidade='STS PENHA')
                     sucessos_pm.append({
                         "codigo": "REL-06",
-                        "relatorio": "REL-06 (Painel STS Penha)",
+                        "relatorio": "Painel de monitoramento PENHA",
                         "competencia": "Série Histórica Completa",
                         "status": "Atualizado com sucesso"
                     })
                 else:
                     erros_pm.append({
                         "codigo": "REL-06",
-                        "relatorio": "REL-06 (Painel STS Penha)",
+                        "relatorio": "Painel de monitoramento PENHA",
                         "competencia": "Série Histórica Completa",
-                        "motivo": "Não foi possível extrair a tabela do Painel STS"
+                        "motivo": "Não foi possível extrair a tabela do Painel PENHA"
                     })
                     
-            # 2. Extração de Subprefeitura (Relatório 07)
-            if relatorio_escolhido in ["TODOS", "REL07"]:
-                status_extracao["progresso"] = "Extraindo Painel por Subprefeitura (PENHA)..."
+            # 2. Painel de monitoramento por estabelecimento (Relatório 07)
+            if relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_PM", "PM_TODOS", "REL07"]:
+                status_extracao["progresso"] = "Extraindo Painel de monitoramento por estabelecimento..."
                 html_subpref = buscaPainelMonitoramento(usuario, senha, tipo_local="Subprefeitura", page=page)
                 if html_subpref:
-                    status_extracao["progresso"] = "Gravando dados de Subprefeitura (REL-07) no BD..."
+                    status_extracao["progresso"] = "Gravando dados por estabelecimento (REL-07) no BD..."
                     processa_painel_monitoramento(html_subpref, tabela_db='REL-07', default_localidade='Subprefeitura PENHA')
                     sucessos_pm.append({
                         "codigo": "REL-07",
-                        "relatorio": "REL-07 (Painel Subprefeitura Penha)",
+                        "relatorio": "Painel de monitoramento por estabelecimento",
                         "competencia": "Série Histórica Completa",
                         "status": "Atualizado com sucesso"
                     })
                 else:
                     erros_pm.append({
                         "codigo": "REL-07",
-                        "relatorio": "REL-07 (Painel Subprefeitura Penha)",
+                        "relatorio": "Painel de monitoramento por estabelecimento",
                         "competencia": "Série Histórica Completa",
-                        "motivo": "Não foi possível extrair a tabela do Painel Subprefeitura"
+                        "motivo": "Não foi possível extrair a tabela por estabelecimento"
                     })
-            
-            try:
-                sincronizar_todas_competencias()
-            except Exception:
-                pass
-                    
-            status_extracao["status"] = "sucesso" if not erros_pm else "parcial"
         finally:
             browser.close()
             p.stop()
@@ -363,19 +362,42 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
         print(f"Erro na extração do Painel de Monitoramento: {e}")
         erros_pm.append({
             "codigo": "PM_GERAL",
-            "relatorio": "Painel de Monitoramento 3.2",
+            "relatorio": "Painel de Monitoramento",
             "competencia": "Geral",
             "motivo": str(e)
         })
-        status_extracao["status"] = "erro"
-        
-    finally:
-        status_extracao["sucessos"] = sucessos_pm
-        status_extracao["erros"] = erros_pm
-        status_extracao["total_sucessos"] = len(sucessos_pm)
-        status_extracao["total_erros"] = len(erros_pm)
-        status_extracao["em_andamento"] = False
-        status_extracao["concluido"] = True
+    return sucessos_pm, erros_pm
+
+
+def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
+    global status_extracao
+    status_extracao["em_andamento"] = True
+    status_extracao["concluido"] = False
+    status_extracao["progresso"] = "Conectando ao Painel de Monitoramento..."
+    status_extracao["status"] = "em_andamento"
+    status_extracao["sucessos"] = []
+    status_extracao["erros"] = []
+    
+    sucessos_pm, erros_pm = executar_extracao_pm_sync(usuario, senha, relatorio_escolhido)
+    
+    try:
+        sincronizar_todas_competencias()
+    except Exception:
+        pass
+            
+    status_extracao["sucessos"] = sucessos_pm
+    status_extracao["erros"] = erros_pm
+    status_extracao["total_sucessos"] = len(sucessos_pm)
+    status_extracao["total_erros"] = len(erros_pm)
+    if erros_pm and sucessos_pm:
+        status_extracao["progresso"] = f"Painel de Monitoramento concluído parcialmente ({len(sucessos_pm)} atualizados, {len(erros_pm)} falhas)."
+    elif erros_pm and not sucessos_pm:
+        status_extracao["progresso"] = f"Painel de Monitoramento concluído com falha ({len(erros_pm)} erros)."
+    else:
+        status_extracao["progresso"] = f"100% Concluído com sucesso ({len(sucessos_pm)} atualizados)!"
+    status_extracao["status"] = "sucesso" if not erros_pm else "parcial"
+    status_extracao["em_andamento"] = False
+    status_extracao["concluido"] = True
 
 
 @app.route("/painel_monitoramento", methods=["GET", "POST"])
@@ -582,30 +604,63 @@ def gerar_relatorios():
     mes_fim = request.form.get("mes_fim", "Janeiro")
     ano_fim = request.form.get("ano_fim", "2026")
     relatorio_escolhido = request.form.get("relatorio_escolhido", "TODOS")
-    usuario_bi = request.form.get("usuario_bi", "")
-    senha_bi = request.form.get("senha_bi", "")
+    usuario_bi = request.form.get("usuario_bi", "").strip()
+    senha_bi = request.form.get("senha_bi", "").strip()
+    usuario_pm = request.form.get("usuario_pm", "").strip()
+    senha_pm = request.form.get("senha_pm", "").strip()
 
-    # Testar credenciais usando Playwright (mesmo motor do robô para evitar erros de protocolo)
+    # 1. Apenas Painel de Monitoramento (CEInfo)
+    if relatorio_escolhido in ["CARGA_COMPLETA_PM", "PM_TODOS", "REL06", "REL07"]:
+        if not usuario_pm or not senha_pm:
+            return jsonify({"erro": "Usuário e senha do Painel de Monitoramento são obrigatórios!"}), 400
+        tipo_pm = "TODOS" if relatorio_escolhido in ["CARGA_COMPLETA_PM", "PM_TODOS"] else relatorio_escolhido
+        gerenciador_tarefas.submit(processo_background_pm, usuario_pm, senha_pm, tipo_pm)
+        nome_desc = MAPA_NOMES_RELATORIOS.get(relatorio_escolhido, relatorio_escolhido)
+        return jsonify({"mensagem": f"Autenticado! Extração iniciada: {nome_desc}!"})
+
+    # 2. Carga Completa BI e PM (ambas as credenciais necessárias)
+    if relatorio_escolhido == "CARGA_COMPLETA_BI_PM":
+        if not usuario_bi or not senha_bi:
+            return jsonify({"erro": "Usuário e senha do BI são obrigatórios para a carga geral!"}), 400
+        if not usuario_pm or not senha_pm:
+            return jsonify({"erro": "Usuário e senha do Painel de Monitoramento são obrigatórios para a carga geral!"}), 400
+
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p_test:
+                browser_test = p_test.chromium.launch(headless=True)
+                context_test = browser_test.new_context(http_credentials={'username': usuario_bi, 'password': senha_bi})
+                page_test = context_test.new_page()
+                url_teste = 'https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx'
+                resp = page_test.goto(url_teste, timeout=15000)
+                if resp and resp.status == 401:
+                    return jsonify({"erro": "Usuário ou senha do BI incorretos!"}), 401
+        except Exception as e:
+            print(f"Erro no teste prévio de credenciais BI: {e}")
+
+        gerenciador_tarefas.submit(processo_background, mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario_bi, senha_bi, usuario_pm, senha_pm)
+        return jsonify({"mensagem": "Autenticado! Carga completa (BI e PM) iniciada!"})
+
+    # 3. Relatórios do BI (individuais ou Carga completa BI)
+    if not usuario_bi or not senha_bi:
+        return jsonify({"erro": "Usuário e senha do BI são obrigatórios!"}), 400
+
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p_test:
             browser_test = p_test.chromium.launch(headless=True)
             context_test = browser_test.new_context(http_credentials={'username': usuario_bi, 'password': senha_bi})
             page_test = context_test.new_page()
-            
             url_teste = 'https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx'
             resp = page_test.goto(url_teste, timeout=15000)
-            
             if resp and resp.status == 401:
                 return jsonify({"erro": "Usuário ou senha do BI incorretos!"}), 401
-                
     except Exception as e:
-        print(f"Erro no teste prévio de credenciais: {e}")
-        pass # Se der timeout na rede, prossegue e deixa o bot principal tentar lidar com a lentidão
+        print(f"Erro no teste prévio de credenciais BI: {e}")
 
     gerenciador_tarefas.submit(processo_background, mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario_bi, senha_bi)
-
-    return jsonify({"mensagem": f"Autenticado! Extração iniciada de {mes_inicio}/{ano_inicio} até {mes_fim}/{ano_fim} ({relatorio_escolhido})!"})
+    nome_desc = MAPA_NOMES_RELATORIOS.get(relatorio_escolhido, relatorio_escolhido)
+    return jsonify({"mensagem": f"Autenticado! Extração iniciada de {mes_inicio}/{ano_inicio} até {mes_fim}/{ano_fim} ({nome_desc})!"})
 
 @app.route("/status_extracao")
 def status_extracao_route():
