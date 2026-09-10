@@ -479,7 +479,6 @@
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
 
 <script>
@@ -504,21 +503,6 @@
                         title: titulo,
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
                         className: 'btn btn-success',
-                        exportOptions: {
-                            columns: colunasExport,
-                            modifier: { search: 'applied' },
-                            format: {
-                                header: function(data, columnIdx, node) {
-                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
-                                }
-                            }
-                        }
-                    },
-                    {
-                        extend: 'print',
-                        title: titulo,
-                        text: '<i class="bi bi-printer"></i> Imprimir',
-                        className: 'btn btn-outline-dark',
                         exportOptions: {
                             columns: colunasExport,
                             modifier: { search: 'applied' },
