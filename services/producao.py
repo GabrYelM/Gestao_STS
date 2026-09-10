@@ -1041,9 +1041,9 @@ def gera_relatorio_05(periodo):
 
 MAPA_RELATORIOS_INFO = {
     '02': {
-        'fonte': 'TabWin / BPAMAG',
+        'fonte': 'BPA (Boletim de Produção Ambulatorial - SIA/SUS) / TabWin',
         'tabela': 'REL-02',
-        'arquivos': ['STS26_08.dbf', 'PRODUCAO POR UNIDADES.DEF']
+        'arquivos': ['PAPENHA-.AGO', 'STS26_08.dbf', 'PRODUCAO POR UNIDADES.DEF']
     },
     '03': {
         'fonte': 'SIGA Saúde (BI - AT-02)',

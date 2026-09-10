@@ -22,24 +22,24 @@
                             <label class="form-label fw-bold">Selecione o Relatório</label>
                             <select class="form-select" name="tipo_relatorio" required>
                                 <option value="todos">Todos os Relatórios (Auto-identificação)</option>
-                                <option value="rel02">Relatório 02 - Produção por Unidades (DBF TabWin)</option>
+                                <option value="rel02">Relatório 02 - Produção por Unidades (BPA / TabWin)</option>
                                 <option value="rel05">Relatório 05 - Produção CAPS (Arquivos RAAS)</option>
                                 <option value="rel09">REL 114 (Gestante Prev Parto)</option>
                                 <option value="rel15">REL 135 (Cadastros Individuais - Penha)</option>
                                 <option value="rel16">SIGA - AMG (Pacientes Cadastrados por Status)</option>
                                 <option value="rel17">REL 134 (Atividade Coletiva Por Profissional)</option>
                             </select>
-                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, .DBF, .JUL, .AGO, etc.).</small>
+                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, .DBF, PAPENHA, .JUL, .AGO, etc.).</small>
                         </div>
                         
                         <div class="mb-4">
-                            <label class="form-label fw-bold">Arquivos (ZIP, .DBF, RAAS)</label>
+                            <label class="form-label fw-bold">Arquivos (ZIP, .DBF, BPA, RAAS)</label>
                             
                             <!-- Área de Arrastar e Soltar -->
                             <div id="dropzone" class="p-4 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
                                 <i class="bi bi-cloud-arrow-up display-4 text-primary"></i>
                                 <p class="mt-2 mb-1 fs-5">Arraste seus arquivos para cá</p>
-                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos .ZIP, .DBF ou arquivos RAAS (.JUL, .AGO, etc.) das unidades.</small>
+                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos .ZIP, .DBF, arquivos brutos do BPA (PAPENHA) ou RAAS (.JUL, .AGO, etc.).</small>
                                 <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf,.jul,.ago,.set,.out,.nov,.dez,.jan,.fev,.mar,.abr,.mai,.jun,.txt,.raas" multiple>
                             </div>
                             
@@ -75,14 +75,15 @@
                 </div>
             </div>
 
-            <!-- Card Relatório 02 (BPA TabWin) -->
+            <!-- Card Relatório 02 (BPA / TabWin) -->
             <div class="card shadow-sm mb-3 border-success">
                 <div class="card-header bg-success text-white fw-bold">
-                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Relatório 02 - Produção por Unidades (TabWin / BPA)
+                    <i class="bi bi-file-earmark-spreadsheet me-2"></i>Relatório 02 - Produção por Unidades (BPA / TabWin)
                 </div>
                 <div class="card-body p-3">
+                    <p class="mb-2"><strong>Como importar:</strong></p>
                     <p class="text-muted small mb-0">
-                        Arraste o arquivo <code>.DBF</code> gerado pelo TabWin (ex: <code>STS26_08.dbf</code>). O sistema grava no banco SQLite e remove o arquivo temporário.
+                        Você pode enviar diretamente o arquivo <strong>BPA bruto</strong> (ex: <code>PAPENHA-.AGO</code>, <code>PA*.JUL</code>) sem precisar abrir o TabWin, ou o arquivo <code>.DBF</code> gerado pelo TabWin (ex: <code>STS26_08.dbf</code>). O sistema processa os dados, grava no SQLite e remove o arquivo temporário.
                     </p>
                 </div>
             </div>
@@ -219,9 +220,9 @@
                 
                 let nomeLower = acumulador.files[i].name.toLowerCase();
                 let icone = '<i class="bi bi-file-earmark-zip text-warning me-2 fs-5"></i>';
-                if (nomeLower.endsWith('.dbf')) {
+                if (nomeLower.endsWith('.dbf') || nomeLower.startsWith('pa')) {
                     icone = '<i class="bi bi-file-earmark-spreadsheet text-success me-2 fs-5"></i>';
-                } else if (['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas'].some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa')) {
+                } else if (['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas'].some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa') || nomeLower.includes('raas')) {
                     icone = '<i class="bi bi-hospital text-primary me-2 fs-5"></i>';
                 }
                 
