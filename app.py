@@ -889,7 +889,8 @@ def upload_dtic():
             nome_arq = arquivo.filename
             nome_lower = nome_arq.lower()
             
-            # 1. Arquivo .DBF do TabWin (Relatório 02 - Produção BPA)
+            # 1. Arquivos de Produção BPA (Relatório 02)
+            # Pode ser o arquivo bruto BPA (ex: PAPENHA-.AGO, PA*.JUL) ou o .DBF gerado no TabWin (ex: STS26_08.dbf)
             if nome_lower.endswith('.dbf'):
                 pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
                 caminho_final = os.path.join(pasta_destino, nome_arq)
@@ -902,7 +903,24 @@ def upload_dtic():
                 except Exception as e:
                     print(f"Erro ao processar DBF {nome_arq}: {e}")
                 finally:
-                    # Remove o arquivo .DBF bruto do disco após a gravação no banco SQLite
+                    if os.path.exists(caminho_final):
+                        try:
+                            os.remove(caminho_final)
+                        except Exception as err_rem:
+                            print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
+
+            elif (tipo_relatorio == "rel02") or (nome_lower.startswith('pa') and not nome_lower.endswith('.zip') and not nome_lower.endswith('.csv') and not nome_lower.endswith('.xlsx')):
+                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                caminho_final = os.path.join(pasta_destino, nome_arq)
+                arquivo.save(caminho_final)
+                
+                from services.etl import processa_bpa_pa
+                try:
+                    if processa_bpa_pa(caminho_final):
+                        sucessos += 1
+                except Exception as e:
+                    print(f"Erro ao processar BPA PA {nome_arq}: {e}")
+                finally:
                     if os.path.exists(caminho_final):
                         try:
                             os.remove(caminho_final)
@@ -910,7 +928,7 @@ def upload_dtic():
                             print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
 
             # 2. Arquivos RAAS das Unidades CAPS (Relatório 05)
-            elif any(nome_lower.endswith(ext) for ext in ['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas']) or (tipo_relatorio == "rel05") or (nome_lower.startswith('aa') and len(nome_lower) >= 8 and not nome_lower.endswith('.zip')):
+            elif (tipo_relatorio == "rel05") or (nome_lower.startswith('aa') and len(nome_lower) >= 8 and not nome_lower.endswith('.zip')) or ("raas" in nome_lower and not nome_lower.endswith('.zip')):
                 pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
                 caminho_final = os.path.join(pasta_destino, nome_arq)
                 arquivo.save(caminho_final)
@@ -928,9 +946,50 @@ def upload_dtic():
                         except Exception as err_rem:
                             print(f"Erro ao remover arquivo temporário RAAS {caminho_final}: {err_rem}")
 
-            # 3. Arquivos .ZIP do DTIC / SIGAPEP ou pacotes RAAS
+            # 3. Arquivos .ZIP do DTIC / SIGAPEP ou pacotes RAAS / BPA
             elif nome_lower.endswith('.zip'):
                 nome_zip = nome_lower
+                
+                # Identifica se é ZIP do BPA
+                if "bpa" in nome_zip or tipo_relatorio == "rel02":
+                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
+                        for nome_arq_zip in zip_ref.namelist():
+                            nl_zip = nome_arq_zip.lower()
+                            if nl_zip.endswith('.dbf'):
+                                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                                caminho_temp = os.path.join(pasta_destino, os.path.basename(nome_arq_zip))
+                                with open(caminho_temp, "wb") as f_out:
+                                    f_out.write(zip_ref.read(nome_arq_zip))
+                                from services.etl import processa_bpa_dbf
+                                try:
+                                    if processa_bpa_dbf(caminho_temp):
+                                        sucessos += 1
+                                except Exception as e:
+                                    print(f"Erro ao processar DBF do ZIP {nome_arq_zip}: {e}")
+                                finally:
+                                    if os.path.exists(caminho_temp):
+                                        try:
+                                            os.remove(caminho_temp)
+                                        except Exception:
+                                            pass
+                            elif os.path.basename(nl_zip).startswith('pa'):
+                                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+                                caminho_temp = os.path.join(pasta_destino, os.path.basename(nome_arq_zip))
+                                with open(caminho_temp, "wb") as f_out:
+                                    f_out.write(zip_ref.read(nome_arq_zip))
+                                from services.etl import processa_bpa_pa
+                                try:
+                                    if processa_bpa_pa(caminho_temp):
+                                        sucessos += 1
+                                except Exception as e:
+                                    print(f"Erro ao processar BPA PA do ZIP {nome_arq_zip}: {e}")
+                                finally:
+                                    if os.path.exists(caminho_temp):
+                                        try:
+                                            os.remove(caminho_temp)
+                                        except Exception:
+                                            pass
+                    continue
                 
                 # Identifica se é ZIP do RAAS
                 if "raas" in nome_zip or tipo_relatorio == "rel05":

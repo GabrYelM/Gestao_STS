@@ -810,6 +810,127 @@ def processa_painel_monitoramento(html_content, tabela_db='REL-06', default_loca
     return True
 
 
+def processa_bpa_pa(caminho, periodo=None):
+    """
+    Processa arquivos brutos do BPA (Boletim de Produção Ambulatorial do SIA/SUS - ex: PAPENHA-.AGO, PA*.JUL)
+    para o Relatório 02 (Produção por Unidades), eliminando a necessidade de conversão prévia no TabWin.
+    Lê os registros:
+      - Tipo 02: BPA Consolidado (BPA-C)
+      - Tipo 03: BPA Individualizado (BPA-I)
+    Relaciona com o catálogo de unidades (34 unidades) e procedimentos e salva na tabela 'REL-02'.
+    """
+    import os
+    import json
+    from datetime import datetime
+
+    # Carrega catálogo unificado
+    catalogo_path = os.path.join(os.path.dirname(__file__), 'catalogo_geral.json')
+    unidades_map = {}
+    procedimentos_map = {}
+    if os.path.exists(catalogo_path):
+        with open(catalogo_path, 'r', encoding='utf-8') as f:
+            cat_data = json.load(f)
+            for u in cat_data.get('unidades', []):
+                cnes_clean = str(u['cnes']).strip().zfill(7)
+                unidades_map[cnes_clean] = u['coluna']
+                unidades_map[str(int(cnes_clean))] = u['coluna']
+            procedimentos_map = cat_data.get('procedimentos', {})
+
+    records = []
+    comp_cabecalho = None
+
+    with open(caminho, 'r', encoding='latin1', errors='ignore') as f:
+        for line in f:
+            tipo = line[:2]
+            if tipo == '01':
+                # Cabeçalho: 01#BPA#YYYYMM...
+                if len(line) >= 13 and '#BPA#' in line[:7]:
+                    comp_cabecalho = line[7:13].strip()
+            elif tipo == '02': # BPA-C (Consolidado)
+                cnes = line[2:9].strip().zfill(7)
+                cmp = line[9:15].strip()
+                pa = line[26:36].strip()
+                qt_str = line[39:45].strip()
+                qt = int(qt_str) if qt_str.isdigit() else 0
+                if qt > 0 and pa:
+                    records.append({'cnes': cnes, 'ano_mes': cmp, 'codigo_procedimento': pa, 'quantidade_produzida': qt})
+            elif tipo == '03': # BPA-I (Individualizado)
+                cnes = line[2:9].strip().zfill(7)
+                cmp = line[9:15].strip()
+                pa = line[49:59].strip()
+                qt_str = line[88:94].strip()
+                qt = int(qt_str) if qt_str.isdigit() else 0
+                if qt > 0 and pa:
+                    records.append({'cnes': cnes, 'ano_mes': cmp, 'codigo_procedimento': pa, 'quantidade_produzida': qt})
+
+    if not records:
+        print(f"Nenhum registro de produção (linhas 02/03) encontrado no arquivo BPA {caminho}.")
+        return False
+
+    df = pd.DataFrame(records)
+
+    # Identifica competência alvo
+    comp_alvo = None
+    if periodo:
+        comp_alvo = str(periodo).strip()
+    elif comp_cabecalho and len(comp_cabecalho) == 6 and comp_cabecalho.isdigit():
+        comp_alvo = comp_cabecalho
+    else:
+        # Pega a competência majoritária do lote
+        comp_alvo = df['ano_mes'].value_counts().index[0]
+
+    # Filtra estritamente a competência alvo (descarta resíduos retroativos)
+    if comp_alvo:
+        df = df[df['ano_mes'] == comp_alvo]
+        df['ano_mes'] = comp_alvo
+
+    if df.empty:
+        print(f"Nenhum registro encontrado no BPA para a competência {comp_alvo}.")
+        return False
+
+    # Resolve nome da unidade
+    df['unidade'] = df['cnes'].map(unidades_map).fillna(df['cnes'].apply(lambda x: f"Unidade CNES {x}"))
+
+    # Resolve nome do procedimento
+    def resolver_nome_proc(cod):
+        cod_str = str(cod).strip()
+        if cod_str in procedimentos_map:
+            return procedimentos_map[cod_str]
+        cod_10d = cod_str.zfill(10)
+        if cod_10d in procedimentos_map:
+            return procedimentos_map[cod_10d]
+        if len(cod_str) == 10:
+            cod_8d = cod_str[1:9]
+            if cod_8d in procedimentos_map:
+                return procedimentos_map[cod_8d]
+        cod_strip = cod_str.lstrip('0')
+        if cod_strip in procedimentos_map:
+            return procedimentos_map[cod_strip]
+        return f"Procedimento {cod_str}"
+
+    df['procedimento'] = df['codigo_procedimento'].apply(resolver_nome_proc)
+
+    # Agrupa por competência, cnes, unidade, codigo_procedimento e procedimento
+    df_agrupado = df.groupby(['ano_mes', 'cnes', 'unidade', 'codigo_procedimento', 'procedimento'], as_index=False)['quantidade_produzida'].sum()
+    df_agrupado['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+    with app.app_context():
+        # Deleta registros anteriores da mesma competência para evitar duplicidade
+        competencias = df_agrupado['ano_mes'].unique()
+        for comp in competencias:
+            try:
+                db.session.execute(text(f"DELETE FROM 'REL-02' WHERE ano_mes = '{comp}'"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        df_agrupado.to_sql(name='REL-02', con=db.engine, if_exists='append', index=False)
+        registrar_competencias_lote('02', list(competencias))
+        print(f"REL-02 (via arquivo BPA PA) gravado com sucesso! {len(df_agrupado)} registros para competências {list(competencias)}.")
+
+    return True
+
+
 def processa_bpa_dbf(caminho, periodo=None):
     """
     Processa arquivos .DBF do TabWin / BPAMAG (Relatório 02 - Produção por Unidades).
