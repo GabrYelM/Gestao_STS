@@ -12,6 +12,7 @@ def _get_app_context():
     return app.app_context()
 
 MAPA_RELATORIO_TABELAS = {
+    '01': [],
     '02': [('REL-02', 'ano_mes')],
     '03': [('AT-02', 'ano_mes')],
     '04': [('VG-04', 'ano_mes')],
@@ -147,7 +148,7 @@ def obter_competencias_por_relatorio():
     consultando unicamente a tabela indexada relatorio_competencias.
     """
     resultado = {
-        '02': [], '03': [], '04': [], '05': [], '06': [], '07': [],
+        '01': [], '02': [], '03': [], '04': [], '05': [], '06': [], '07': [],
         '08': [], '09': [], '10': [], '11': [], '12': [], '13': [],
         '14': [], '15': [], '16': [], '17': []
     }

@@ -4,6 +4,9 @@
 {% block content %}
 <style>
 #tabela-dinamica,
+#tabela-pop-total,
+#tabela-pop-masc,
+#tabela-pop-fem,
 #tabela-raas-pacientes,
 #tabela-raas-prof,
 #tabela-raas-acoes,
@@ -106,6 +109,7 @@ div.dt-button-collection button.dt-button:hover {
             <label class="form-label">Qual Relatório de Produção deseja visualizar?</label>
             <select class="form-select" name="indice_relatorio" onchange="aoMudarRelatorio(this)">
                 <option value="" {% if not relatorio_selecionado %}selected{% endif %} disabled>Selecione um relatório...</option>
+                <option value="01" {% if relatorio_selecionado == '01' %}selected{% endif %}>Relatório 01 - DADOS DE POPULAÇÃO POR ESTABELECIMENTO E FAIXA ETÁRIA (POPULACIONAL)</option>
                 <option value="02" {% if relatorio_selecionado == '02' %}selected{% endif %}>Relatório 02 - PRODUÇÃO POR UNIDADES (BPA)</option>
                 <option value="03" {% if relatorio_selecionado == '03' %}selected{% endif %}>Relatório 03 - PLANILHA DE PRODUÇÃO POR ESPECIALIDADE (SIGA)</option>
                 <option value="04" {% if relatorio_selecionado == '04' %}selected{% endif %}>Relatório 04 - VAGAS OFERTADAS POR TIPO DE ATENDIMENTO DA AGENDA POR UNIDADE</option>
@@ -128,9 +132,9 @@ div.dt-button-collection button.dt-button:hover {
         <!-- Escolha do Período -->
         <div class="col-md-4">
             <label class="form-label">Competência</label>
-            {% if relatorio_selecionado in ['06', '07'] %}
-                <select class="form-select bg-light text-muted" name="periodo" disabled title="Os relatórios de monitoramento exibem a série histórica consolidada dos últimos 12 meses.">
-                    <option value="" selected>Série Histórica (Últimos 12 meses)</option>
+            {% if relatorio_selecionado in ['01', '06', '07'] %}
+                <select class="form-select bg-light text-muted" name="periodo" disabled title="{% if relatorio_selecionado == '01' %}Dados Demográficos Consolidados (Censo 2010){% else %}Os relatórios de monitoramento exibem a série histórica consolidada dos últimos 12 meses.{% endif %}">
+                    <option value="" selected>{% if relatorio_selecionado == '01' %}Dados Demográficos (Censo 2010){% else %}Série Histórica (Últimos 12 meses){% endif %}</option>
                 </select>
             {% else %}
                 <select class="form-select" name="periodo" onchange="if(document.querySelector('select[name=indice_relatorio]').value) { document.getElementById('loading-overlay').classList.remove('d-none'); this.form.submit(); }">
@@ -157,7 +161,73 @@ div.dt-button-collection button.dt-button:hover {
         </div>
     {% endif %}
     
-    {% if relatorio_selecionado == '05' and json_dados_pac %}
+    {% if relatorio_selecionado == '01' and json_dados_total %}
+        <!-- Seletor Dinâmico de Visualização para Relatório 01 (Populacional) -->
+        <div class="card shadow-sm p-3 mb-4 bg-light border">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div>
+                    <h5 class="mb-1 text-primary"><i class="bi bi-people-fill me-2"></i>01. DADOS DE POPULAÇÃO POR ESTABELECIMENTO E FAIXA ETÁRIA</h5>
+                    <div class="text-muted small mt-1">
+                        <span class="me-3"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> {{ fonte_dados }}</span>
+                        <span><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> {{ data_geracao }}</span>
+                    </div>
+                </div>
+                <div class="btn-group" role="group" aria-label="Visualização População">
+                    <input type="radio" class="btn-check" name="pop_view" id="view_pop_total" autocomplete="off" checked onclick="alternarVisaoPOP('total')">
+                    <label class="btn btn-outline-primary px-3 py-2 fw-bold" for="view_pop_total">
+                        <i class="bi bi-people-fill me-1"></i> 1. População Geral (Total)
+                    </label>
+
+                    <input type="radio" class="btn-check" name="pop_view" id="view_pop_masc" autocomplete="off" onclick="alternarVisaoPOP('masc')">
+                    <label class="btn btn-outline-success px-3 py-2 fw-bold" for="view_pop_masc">
+                        <i class="bi bi-gender-male me-1"></i> 2. Sexo Masculino
+                    </label>
+
+                    <input type="radio" class="btn-check" name="pop_view" id="view_pop_fem" autocomplete="off" onclick="alternarVisaoPOP('fem')">
+                    <label class="btn btn-outline-danger px-3 py-2 fw-bold" for="view_pop_fem">
+                        <i class="bi bi-gender-female me-1"></i> 3. Sexo Feminino
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4 mb-4">
+            <!-- Tabela 1: População Geral (Total) -->
+            <div class="col-12" id="container-pop-total">
+                <div class="card shadow-sm p-3 border-primary border-top border-3">
+                    <h4 class="text-primary mb-3"><i class="bi bi-people-fill me-2"></i>População por Faixa Etária - População Geral (Censo 2010)</h4>
+                    <table id="tabela-pop-total" class="table table-sm table-bordered w-100 small">
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Tabela 2: População Masculina -->
+            <div class="col-12 d-none" id="container-pop-masc">
+                <div class="card shadow-sm p-3 border-success border-top border-3">
+                    <h4 class="text-success mb-3"><i class="bi bi-gender-male me-2"></i>População por Faixa Etária - Sexo Masculino</h4>
+                    <table id="tabela-pop-masc" class="table table-sm table-bordered w-100 small">
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tabela 3: População Feminina -->
+            <div class="col-12 d-none" id="container-pop-fem">
+                <div class="card shadow-sm p-3 border-danger border-top border-3">
+                    <h4 class="text-danger mb-3"><i class="bi bi-gender-female me-2"></i>População por Faixa Etária - Sexo Feminino</h4>
+                    <table id="tabela-pop-fem" class="table table-sm table-bordered w-100 small">
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <script id="dados-pop-total-json" type="application/json">{{ json_dados_total | safe }}</script>
+        <script id="colunas-pop-total-json" type="application/json">{{ json_colunas_total | safe }}</script>
+        <script id="dados-pop-masc-json" type="application/json">{{ json_dados_masc | safe }}</script>
+        <script id="colunas-pop-masc-json" type="application/json">{{ json_colunas_masc | safe }}</script>
+        <script id="dados-pop-fem-json" type="application/json">{{ json_dados_fem | safe }}</script>
+        <script id="colunas-pop-fem-json" type="application/json">{{ json_colunas_fem | safe }}</script>
+
+    {% elif relatorio_selecionado == '05' and json_dados_pac %}
         <!-- Seletor Dinâmico de Visualização para Relatório 05 (RAAS) -->
         <div class="card shadow-sm p-3 mb-4 bg-light border">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -524,7 +594,12 @@ div.dt-button-collection button.dt-button:hover {
         var val = selectRel.value;
         var selectPeriodo = document.querySelector('select[name=periodo]');
         
-        if (val === '06' || val === '07') {
+        if (val === '01') {
+            if (selectPeriodo) {
+                selectPeriodo.innerHTML = '<option value="" selected>Dados Demográficos (Censo 2010)</option>';
+                selectPeriodo.disabled = true;
+            }
+        } else if (val === '06' || val === '07') {
             if (selectPeriodo) {
                 selectPeriodo.innerHTML = '<option value="" selected>Série Histórica (Últimos 12 meses)</option>';
                 selectPeriodo.disabled = true;
@@ -657,6 +732,93 @@ div.dt-button-collection button.dt-button:hover {
 
         // Inicialização especial para Relatório 16 (Duas Tabelas: Ativos e Inativos)
         var dadosAtivosEl = document.getElementById('dados-ativos-json');
+        // ==========================================
+        // INICIALIZAÇÃO RELATÓRIO 01 (POPULACIONAL)
+        // ==========================================
+        var dadosPopTotalEl = document.getElementById('dados-pop-total-json');
+        var colunasPopTotalEl = document.getElementById('colunas-pop-total-json');
+        var dadosPopMascEl = document.getElementById('dados-pop-masc-json');
+        var colunasPopMascEl = document.getElementById('colunas-pop-masc-json');
+        var dadosPopFemEl = document.getElementById('dados-pop-fem-json');
+        var colunasPopFemEl = document.getElementById('colunas-pop-fem-json');
+
+        function initTabelaPOP(tabelaId, dadosJson, colunasJson, nomeExportacao) {
+            var tData = JSON.parse(dadosJson || '[]');
+            var tCols = JSON.parse(colunasJson || '[]');
+            if (tData.length === 0 || tCols.length === 0) return;
+            
+            $(tabelaId).DataTable({
+                data: tData,
+                columns: tCols,
+                deferRender: true,
+                scrollX: false,
+                autoWidth: false,
+                language: {
+                    url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+                },
+                pageLength: 50,
+                lengthMenu: [10, 25, 50, 100],
+                dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
+                     '<"table-responsive"t>' +
+                     '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                buttons: [
+                    {
+                        extend: 'colvis',
+                        text: '<i class="bi bi-layout-three-columns"></i> Selecionar Colunas',
+                        className: 'btn btn-outline-secondary me-2',
+                        postfixButtons: ['colvisRestore']
+                    },
+                    {
+                        extend: 'excelHtml5',
+                        title: nomeExportacao,
+                        text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
+                        className: 'btn btn-success',
+                        exportOptions: {
+                            modifier: { search: 'applied' },
+                            format: {
+                                header: function(data, columnIdx, node) {
+                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
+                                }
+                            }
+                        }
+                    }
+                ],
+                initComplete: function() {
+                    window.initExcelFilters(this.api());
+                }
+            });
+        }
+
+        if (dadosPopTotalEl && colunasPopTotalEl) {
+            initTabelaPOP('#tabela-pop-total', dadosPopTotalEl.textContent, colunasPopTotalEl.textContent, 'Populacao_Geral_Censo_2010');
+        }
+        if (dadosPopMascEl && colunasPopMascEl) {
+            initTabelaPOP('#tabela-pop-masc', dadosPopMascEl.textContent, colunasPopMascEl.textContent, 'Populacao_Masculino_Censo_2010');
+        }
+        if (dadosPopFemEl && colunasPopFemEl) {
+            initTabelaPOP('#tabela-pop-fem', dadosPopFemEl.textContent, colunasPopFemEl.textContent, 'Populacao_Feminino_Censo_2010');
+        }
+
+        window.alternarVisaoPOP = function(tipo) {
+            $('#container-pop-total, #container-pop-masc, #container-pop-fem').addClass('d-none');
+            if (tipo === 'total') {
+                $('#container-pop-total').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-pop-total')) {
+                    $('#tabela-pop-total').DataTable().columns.adjust().draw();
+                }
+            } else if (tipo === 'masc') {
+                $('#container-pop-masc').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-pop-masc')) {
+                    $('#tabela-pop-masc').DataTable().columns.adjust().draw();
+                }
+            } else if (tipo === 'fem') {
+                $('#container-pop-fem').removeClass('d-none');
+                if ($.fn.DataTable.isDataTable('#tabela-pop-fem')) {
+                    $('#tabela-pop-fem').DataTable().columns.adjust().draw();
+                }
+            }
+        };
+
         // ==========================================
         // INICIALIZAÇÃO RELATÓRIO 05 (RAAS CAPS)
         // ==========================================

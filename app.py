@@ -670,10 +670,23 @@ def status_extracao_route():
 import io
 from flask import send_file
 
+@app.route("/download_excel/<indice>", defaults={'periodo': 'geral'})
 @app.route("/download_excel/<indice>/<periodo>")
 def download_excel(indice, periodo):
     try:
-        if indice == '02':
+        if indice == '01':
+            df_total, df_masc, df_fem = prod.gera_relatorio_01()
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                if df_total is not None and not df_total.empty:
+                    df_total.to_excel(writer, index=False, sheet_name='População Geral')
+                if df_masc is not None and not df_masc.empty:
+                    df_masc.to_excel(writer, index=False, sheet_name='Sexo Masculino')
+                if df_fem is not None and not df_fem.empty:
+                    df_fem.to_excel(writer, index=False, sheet_name='Sexo Feminino')
+            output.seek(0)
+            return send_file(output, download_name="Relatorio_01_Populacional_Censo2010.xlsx", as_attachment=True)
+        elif indice == '02':
             df = prod.gera_relatorio_02(periodo)
         elif indice == '03':
             df = prod.gera_relatorio_03(periodo)
@@ -781,7 +794,47 @@ def producao():
 
         # 2. Um "if" simples para decidir qual função rodar
         try:
-            if indice == '02':
+            if indice == '01':
+                df_total, df_masc, df_fem = prod.gera_relatorio_01()
+                json_dados_total = None
+                json_colunas_total = None
+                json_dados_masc = None
+                json_colunas_masc = None
+                json_dados_fem = None
+                json_colunas_fem = None
+                
+                if df_total is not None and not df_total.empty:
+                    colunas_tot = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_total.columns]
+                    json_colunas_total = json.dumps(colunas_tot)
+                    json_dados_total = json.dumps(df_total.fillna("").to_dict(orient="records"))
+                    
+                if df_masc is not None and not df_masc.empty:
+                    colunas_masc = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_masc.columns]
+                    json_colunas_masc = json.dumps(colunas_masc)
+                    json_dados_masc = json.dumps(df_masc.fillna("").to_dict(orient="records"))
+
+                if df_fem is not None and not df_fem.empty:
+                    colunas_fem = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_fem.columns]
+                    json_colunas_fem = json.dumps(colunas_fem)
+                    json_dados_fem = json.dumps(df_fem.fillna("").to_dict(orient="records"))
+                
+                return render_template(
+                    "producao.html",
+                    tabela_html=tabela_html,
+                    json_dados_total=json_dados_total,
+                    json_colunas_total=json_colunas_total,
+                    json_dados_masc=json_dados_masc,
+                    json_colunas_masc=json_colunas_masc,
+                    json_dados_fem=json_dados_fem,
+                    json_colunas_fem=json_colunas_fem,
+                    relatorio_selecionado=indice,
+                    periodo_selecionado=periodo,
+                    periodos_disponiveis=periodos_disponiveis,
+                    json_competencias_por_relatorio=json.dumps(mapa_competencias),
+                    fonte_dados=fonte_dados,
+                    data_geracao=data_geracao
+                )
+            elif indice == '02':
                 df = prod.gera_relatorio_02(periodo)
             elif indice == '03':
                 df = prod.gera_relatorio_03(periodo)

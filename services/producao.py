@@ -6,6 +6,72 @@ import numpy as np
 from database import db
 from app import app
 
+def gera_relatorio_01(periodo=None):
+    """
+    Gera o Relatório 01 (Dados de População por Estabelecimento e Faixa Etária - Populacional).
+    Retorna três DataFrames estruturados:
+      1. df_total: População Geral (Total)
+      2. df_masc: População Sexo Masculino
+      3. df_fem: População Sexo Feminino
+    """
+    with app.app_context():
+        try:
+            df = pd.read_sql("SELECT * FROM 'REL-01'", con=db.engine)
+        except Exception:
+            return None, None, None
+
+        if df is None or df.empty:
+            return None, None, None
+
+        def formatar_tabela(tipo_nome, col_total_nome):
+            sub = df[df['tipo'] == tipo_nome].copy()
+            if sub.empty:
+                return pd.DataFrame()
+            
+            rename_dict = {
+                'cnes': 'CNES',
+                'estabelecimento': 'ESTABELECIMENTO',
+                'da': 'D.A.',
+                'populacao_total': col_total_nome,
+                'faixa_00_04': '00-04',
+                'faixa_05_09': '05-09',
+                'faixa_10_14': '10-14',
+                'faixa_15_19': '15-19',
+                'faixa_20_24': '20-24',
+                'faixa_25_29': '25-29',
+                'faixa_30_34': '30-34',
+                'faixa_35_39': '35-39',
+                'faixa_40_44': '40-44',
+                'faixa_45_49': '45-49',
+                'faixa_50_54': '50-54',
+                'faixa_55_59': '55-59',
+                'faixa_60_64': '60-64',
+                'faixa_65_69': '65-69',
+                'faixa_70_74': '70-74',
+                'faixa_75_mais': '75 +'
+            }
+            sub = sub.rename(columns=rename_dict)
+            cols_order = [
+                'CNES', 'ESTABELECIMENTO', 'D.A.', col_total_nome,
+                '00-04', '05-09', '10-14', '15-19', '20-24', '25-29',
+                '30-34', '35-39', '40-44', '45-49', '50-54', '55-59',
+                '60-64', '65-69', '70-74', '75 +'
+            ]
+            sub = sub[[c for c in cols_order if c in sub.columns]]
+            
+            num_cols = [c for c in sub.columns if c not in ['CNES', 'ESTABELECIMENTO', 'D.A.']]
+            for c in num_cols:
+                sub[c] = pd.to_numeric(sub[c], errors='coerce').fillna(0).round().astype(int)
+                
+            return sub.reset_index(drop=True)
+
+        df_total = formatar_tabela('TOTAL', 'Total Pop Censo 2010')
+        df_masc = formatar_tabela('MASCULINO', 'TOTAL Pop Masc')
+        df_fem = formatar_tabela('FEMININO', 'TOTAL Pop Fem')
+
+        return df_total, df_masc, df_fem
+
+
 def gera_relatorio_02(periodo):
     """
     Gera o Relatório 02 (Produção por Unidades - BPA / TabWin).
@@ -1040,6 +1106,11 @@ def gera_relatorio_05(periodo):
 
 
 MAPA_RELATORIOS_INFO = {
+    '01': {
+        'fonte': 'CEInfo / Censo Demográfico IBGE 2010 (Dados de População por Estabelecimento e Faixa Etária)',
+        'tabela': 'REL-01',
+        'arquivos': ['Final desejado.xlsx']
+    },
     '02': {
         'fonte': 'BPA (Boletim de Produção Ambulatorial - SIA/SUS) / TabWin',
         'tabela': 'REL-02',
