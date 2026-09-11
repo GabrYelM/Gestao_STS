@@ -292,3 +292,11 @@ class REL01(db.Model):
     faixa_70_74 = db.Column(db.Float, default=0.0)
     faixa_75_mais = db.Column(db.Float, default=0.0)
 
+class VinculoEmab(db.Model):
+    __tablename__ = 'vinculos_emab'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    nome_equipe = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    unidade_destino = db.Column(db.String(255), nullable=False)
+    tipo = db.Column(db.String(50), default='EMAB')
+
+

@@ -578,44 +578,48 @@ def gera_relatorio_11(periodo):
         #print(df_final)
         return df_final
 
+UNIDADES_OFICIAIS_REL12 = [
+    "AMA/UBS ENGENHEIRO GOULART- DR JOSE PIRES",
+    "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO",
+    "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO",
+    "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA",
+    "AMA/UBS INTEGRADA VILA SILVIA",
+    "CAPS ADULTO III VILA MATILDE",
+    "CAPS ALCOOL E DROGAS II CANGAIBA",
+    "CAPS ALCOOL E DROGAS III PENHA",
+    "CAPS INFANTO JUVENIL III PENHA",
+    "CECCO PADRE MANOEL DA NOBREGA",
+    "CER III PENHA",
+    "CER PARQUE ARTHUR ALVIM",
+    "UBS ANTONIO ESTEVÃO DE CARVALHO",
+    "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR",
+    "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO",
+    "UBS ENGENHEIRO TRINDADE",
+    "UBS JARDIM MARINGA - VILA TALARICO",
+    "UBS JARDIM SAO FRANCISCO I",
+    "UBS JARDIM SAO NICOLAU",
+    "UBS PADRE JOSÉ DE ANCHIETA",
+    "UBS PARQUE ARTHUR ALVIM",
+    "UBS VILA ARICANDUVA",
+    "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO",
+    "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA",
+    "UBS VILA GRANADA - DR. ALFREDO FERREIRA PAULINO FILHO",
+    "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO",
+    "UBS VILA MATILDE - DR. RUBENS DO VAL",
+]
+
 def gera_relatorio_12(periodo):
     """
-    Relatório 12: PLANILHA DE SOLICITAÇÃO MENSAL DE INSUMOS ESPECIAIS (AURICULOTERAPIA)
+    Relatório 12: MMH - PICS Penha (Solicitação Mensal de Insumos Especiais - Auriculoterapia)
     Baseado no AT-02 filtrado pelo procedimento 'Sessão de Auriculoterapia'.
+    Grade com as 27 unidades de atenção primária e especializada da Penha.
     Calcula:
       - Produção auriculoterapia (Nº procedimentos)
       - Total de pontos = Produção * 20
       - Placa adesiva com semente vacaria para auriculoterapia - 70 pontos = Total de pontos / 70
+      - Linha de TOTAL geral no rodapé
     """
-    unidades_grade = [
-        "AMA/UBS ENGENHEIRO GOULART - DR JOSE PIRES",
-        "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO",
-        "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO",
-        "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA",
-        "AMA/UBS INTEGRADA VILA SILVIA",
-        "CAPS ADULTO III VILA MATILDE",
-        "CAPS ALCOOL E DROGAS II CANGAIBA",
-        "CAPS ALCOOL E DROGAS III PENHA",
-        "CAPS INFANTO JUVENIL III PENHA",
-        "CECCO PADRE MANOEL DA NOBREGA",
-        "CER III PENHA",
-        "CER PARQUE ARTHUR ALVIM",
-        "UBS ANTONIO ESTEVÃO DE CARVALHO",
-        "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR",
-        "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO",
-        "UBS ENGENHEIRO TRINDADE",
-        "UBS JARDIM MARINGA - VILA TALARICO",
-        "UBS JARDIM SAO FRANCISCO I",
-        "UBS JARDIM SAO NICOLAU",
-        "UBS PADRE JOSE DE ANCHIETA",
-        "UBS PARQUE ARTHUR ALVIM",
-        "UBS VILA ARICANDUVA",
-        "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO",
-        "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA",
-        "UBS VILA GRANADA - DR. ALFREDO FERREIRA PAULINO FILHO",
-        "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO",
-        "UBS VILA MATILDE - DR. RUBENS DO VAL",
-    ]
+    unidades_grade = UNIDADES_OFICIAIS_REL12
 
     import unicodedata
     import re
@@ -625,124 +629,111 @@ def gera_relatorio_12(periodo):
             return ""
         txt = unicodedata.normalize('NFKD', str(txt)).encode('ASCII', 'ignore').decode('utf-8')
         txt = txt.upper()
-        txt = re.sub(r'[^A-Z0-9\s]', ' ', txt)
+        txt = re.sub(r'[^A-Z0-9\s/]', ' ', txt)
         txt = re.sub(r'\s+', ' ', txt).strip()
         return txt
 
-    def mapear_unidade_rel12(nome_estab):
-        n = normaliza_str(nome_estab)
-        if "EMAB ANCHIETA VILLALOBO" in n or "VILLALOBO" in n:
-            return "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO"
-        if "EMAB CHACARA PATRIARCA" in n:
-            return "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR"
-        if "EMAB VILA MATILDE MARINGA" in n:
-            return "UBS JARDIM MARINGA - VILA TALARICO"
-        if "EMAB SAO FRANCISCO VILA SILVIA" in n:
-            return "AMA/UBS INTEGRADA VILA SILVIA"
-        if "EMAB ARTHUR ALVIM GUILHERMINA" in n:
-            return "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO"
-        if "EMAB ENG GOULART CANGAIBA" in n:
-            return "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO"
-        if "EMAB ESPERANCA EMILIO" in n:
-            return "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA"
-        if "EMAB GRANADA TRINDADE" in n:
-            return "UBS ENGENHEIRO TRINDADE"
-            
-        if "EMAB AE CARVALHO" in n:
-            return "UBS ANTONIO ESTEVÃO DE CARVALHO"
-        if "EMAB ANCHIETA" in n:
-            return "UBS PADRE JOSE DE ANCHIETA"
-        if "EMAB ARICANDUVA" in n:
-            return "UBS VILA ARICANDUVA"
-        if "EMAB ARTHUR ALVIM" in n:
-            return "UBS PARQUE ARTHUR ALVIM"
-        if "EMAB CHACARA CRUZEIRO" in n:
-            return "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO"
-        if "EMAB ENG GOULART" in n:
-            return "AMA/UBS ENGENHEIRO GOULART - DR JOSE PIRES"
-        if "EMAB ESPERANCA" in n:
-            return "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO"
-        if "EMAB SAO FRANCISCO" in n:
-            return "UBS JARDIM SAO FRANCISCO I"
-        if "EMAB VILA MATILDE" in n:
-            return "UBS VILA MATILDE - DR. RUBENS DO VAL"
-            
-        if "CECCO" in n and "PADRE MANOEL" in n:
-            return "CECCO PADRE MANOEL DA NOBREGA"
-        if "PADRE MANOEL DA NOBREGA" in n:
-            return "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA"
-        if "CANGAIBA" in n and "CAPS" in n:
-            return "CAPS ALCOOL E DROGAS II CANGAIBA"
-        if "CANGAIBA" in n:
-            return "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO"
-        if "CHACARA CRUZEIRO" in n:
-            return "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO"
-        if "VILA SILVIA" in n and "PAI" in n:
-            return "PAI VILA SILVIA"
-        if "VILA SILVIA" in n:
-            return "AMA/UBS INTEGRADA VILA SILVIA"
-        if "CAPS" in n and "ADULTO" in n:
-            return "CAPS ADULTO III VILA MATILDE"
-        if "CAPS" in n and "PENHA" in n and ("INFANT" in n or "JUVENIL" in n):
-            return "CAPS INFANTO JUVENIL III PENHA"
-        if "CAPS" in n and "PENHA" in n:
-            return "CAPS ALCOOL E DROGAS III PENHA"
-        if "CER" in n and "ARTHUR ALVIM" in n:
-            return "CER PARQUE ARTHUR ALVIM"
-        if "CER" in n and "PENHA" in n:
-            return "CER III PENHA"
-        if "JARDIM NORDESTE" in n:
-            return "AMA JARDIM NORDESTE"
-        if "MAURICE PATE" in n:
-            return "AMA MAURICE PATE"
-        if "HOSPITAL DIA" in n:
-            return "HOSPITAL DIA PENHA"
-        if "PAI" in n and "ESPERANCA" in n:
-            return "PAI VILA ESPERANÇA"
-        if "PAI" in n and "GRANADA" in n:
-            return "PAI VILA GRANADA"
-        if "PAI" in n and "SILVIA" in n:
-            return "PAI VILA SILVIA"
-        if "AE CARVALHO" in n or "ESTEVAO DE CARVALHO" in n:
-            return "UBS ANTONIO ESTEVÃO DE CARVALHO"
-        if "PATRIARCA" in n:
-            return "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR"
-        if "VILLALOBO" in n:
-            return "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO"
-        if "TRINDADE" in n:
-            return "UBS ENGENHEIRO TRINDADE"
-        if "MARINGA" in n or "TALARICO" in n:
-            return "UBS JARDIM MARINGA - VILA TALARICO"
-        if "SAO FRANCISCO" in n:
-            return "UBS JARDIM SAO FRANCISCO I"
-        if "SAO NICOLAU" in n:
-            return "UBS JARDIM SAO NICOLAU"
-        if "ANCHIETA" in n:
-            return "UBS PADRE JOSE DE ANCHIETA"
-        if "ARTHUR ALVIM" in n:
-            return "UBS PARQUE ARTHUR ALVIM"
-        if "ARICANDUVA" in n:
-            return "UBS VILA ARICANDUVA"
-        if "CASSIO" in n:
-            return "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO"
-        if "EMILIO" in n:
-            return "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA"
-        if "GRANADA" in n:
-            return "UBS VILA GRANADA - DR. ALFREDO FERREIRA PAULINO FILHO"
-        if "GUILHERMINA" in n:
-            return "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO"
-        if "MATILDE" in n:
-            return "UBS VILA MATILDE - DR. RUBENS DO VAL"
-        if "GOULART" in n:
-            return "AMA/UBS ENGENHEIRO GOULART - DR JOSE PIRES"
-            
-        return nome_estab
-
     with app.app_context():
+        # 1. Carrega mapa de vínculos customizados do banco de dados
+        mapa_custom = {}
+        try:
+            df_vinc = pd.read_sql("SELECT nome_equipe, unidade_destino FROM vinculos_emab", con=db.engine)
+            for _, row in df_vinc.iterrows():
+                eq = normaliza_str(row['nome_equipe'])
+                dest = str(row['unidade_destino']).strip()
+                if eq and dest:
+                    mapa_custom[eq] = dest
+        except Exception:
+            pass
+
+        def mapear_termo_para_unidade(termo):
+            n = normaliza_str(termo)
+            
+            # 1. Verifica se há vínculo cadastrado/personalizado explicitamente
+            if n in mapa_custom:
+                return mapa_custom[n]
+
+            # 2. Se for equipe composta por duas unidades (com '/'), considera sempre a unidade secundária (segundo nome)
+            if "/" in n:
+                partes = n.split("/")
+                return mapear_termo_para_unidade(partes[1].strip())
+
+            # 3. Mapeamento padrão para as 33 unidades oficiais
+            if "VILLALOBO" in n or "PIRES FERREIRA" in n:
+                return "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO"
+            if "PATRIARCA" in n or "MORBIN" in n:
+                return "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR"
+            if "MARINGA" in n or "TALARICO" in n:
+                return "UBS JARDIM MARINGA - VILA TALARICO"
+            if "SAO NICOLAU" in n:
+                return "UBS JARDIM SAO NICOLAU"
+            if "GUILHERMINA" in n or "RASPA" in n:
+                return "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO"
+            if "TRINDADE" in n:
+                return "UBS ENGENHEIRO TRINDADE"
+            if "EMILIO" in n:
+                return "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA"
+            if "CASSIO" in n:
+                return "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO"
+            if "ESPERANCA" in n and "PAI" not in n and "EMILIO" not in n:
+                return "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO"
+            if "AE CARVALHO" in n or ("ESTEVAO" in n and "CARVALHO" in n):
+                return "UBS ANTONIO ESTEVÃO DE CARVALHO"
+            if "ANCHIETA" in n:
+                return "UBS PADRE JOSÉ DE ANCHIETA"
+            if "ARICANDUVA" in n:
+                return "UBS VILA ARICANDUVA"
+            if "ARTHUR ALVIM" in n and "CER" not in n:
+                return "UBS PARQUE ARTHUR ALVIM"
+            if "CHACARA CRUZEIRO" in n or ("CRUZEIRO" in n and "SUL" in n) or (n.strip() in ["CHACARA", "EMAB CHACARA", "EMULTI CHACARA"]):
+                return "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO"
+            if "GOULART" in n:
+                return "AMA/UBS ENGENHEIRO GOULART- DR JOSE PIRES"
+            if "SAO FRANCISCO" in n:
+                return "UBS JARDIM SAO FRANCISCO I"
+            if "GRANADA" in n and "PAI" not in n:
+                return "UBS VILA GRANADA - DR. ALFREDO FERREIRA PAULINO FILHO"
+            if "NOBREGA" in n and "CECCO" not in n:
+                return "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA"
+            if "CECCO" in n:
+                return "CECCO PADRE MANOEL DA NOBREGA"
+            if "CANGAIBA" in n and "CAPS" in n:
+                return "CAPS ALCOOL E DROGAS II CANGAIBA"
+            if "CANGAIBA" in n:
+                return "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO"
+            if "VILA SILVIA" in n and "PAI" not in n:
+                return "AMA/UBS INTEGRADA VILA SILVIA"
+            if "CAPS" in n and "ADULTO" in n:
+                return "CAPS ADULTO III VILA MATILDE"
+            if "CAPS" in n and "PENHA" in n and ("INFANT" in n or "JUVENIL" in n):
+                return "CAPS INFANTO JUVENIL III PENHA"
+            if "CAPS" in n and "PENHA" in n:
+                return "CAPS ALCOOL E DROGAS III PENHA"
+            if "CER" in n and "ARTHUR ALVIM" in n:
+                return "CER PARQUE ARTHUR ALVIM"
+            if "CER" in n and "PENHA" in n:
+                return "CER III PENHA"
+            if "JARDIM NORDESTE" in n:
+                return "AMA JARDIM NORDESTE"
+            if "MAURICE PATE" in n:
+                return "AMA MAURICE PATE"
+            if "HOSPITAL DIA" in n:
+                return "HOSPITAL DIA PENHA"
+            if "PAI" in n and "ESPERANCA" in n:
+                return "PAI VILA ESPERANÇA"
+            if "PAI" in n and "GRANADA" in n:
+                return "PAI VILA GRANADA"
+            if "PAI" in n and "SILVIA" in n:
+                return "PAI VILA SILVIA"
+            if "MATILDE" in n and "CAPS" not in n:
+                return "UBS VILA MATILDE - DR. RUBENS DO VAL"
+
+            return termo
+
         query = f"""
         SELECT 
             estabelecimento,
-            SUM(quantidade_procedimento) as qtd
+            SUM(CAST(quantidade_procedimento AS INTEGER)) as qtd
         FROM 'AT-02'
         WHERE ano_mes = {periodo}
           AND UPPER(procedimento) LIKE '%AURICULOTERAPIA%'
@@ -752,7 +743,7 @@ def gera_relatorio_12(periodo):
         
         prod_por_unidade = {}
         if not df_raw.empty:
-            df_raw['unidade_padrao'] = df_raw['estabelecimento'].apply(mapear_unidade_rel12)
+            df_raw['unidade_padrao'] = df_raw['estabelecimento'].apply(mapear_termo_para_unidade)
             prod_por_unidade = df_raw.groupby('unidade_padrao')['qtd'].sum().to_dict()
 
         linhas = []
@@ -765,11 +756,278 @@ def gera_relatorio_12(periodo):
                 "SUPERVISÃO PENHA - Unidades de Saúde": u,
                 "Nº procedimentos": qtd_proc,
                 "Total de pontos": total_pontos,
-                "Placa adesiva com semente vacaria (70 pontos)": placas
+                "Placa adesiva com semente vacaria para auriculoterapia - 70 pontos": placas
             })
+
+        # Linha de TOTAL geral
+        tot_proc = int(sum(l["Nº procedimentos"] for l in linhas))
+        tot_pontos = int(sum(l["Total de pontos"] for l in linhas))
+        tot_placas = round(tot_pontos / 70.0, 7) if tot_pontos > 0 else 0
+
+        linhas.append({
+            "SUPERVISÃO PENHA - Unidades de Saúde": "TOTAL",
+            "Nº procedimentos": tot_proc,
+            "Total de pontos": tot_pontos,
+            "Placa adesiva com semente vacaria para auriculoterapia - 70 pontos": tot_placas
+        })
 
         df_final = pd.DataFrame(linhas)
         return df_final
+
+def exportar_excel_relatorio_12_oficial(periodo):
+    """
+    Gera a planilha Excel oficial formatada do Relatório 12 (MMH - PICS Penha)
+    com cabeçalho oficial multinível, cores, colunas B a I zeradas e rodapé TOTAL / TOTAL GRADE.
+    """
+    with app.app_context():
+        import io
+        df_raw = gera_relatorio_12(periodo)
+        
+        # Filtra apenas as unidades (remove a linha TOTAL do df, pois o rodapé é desenhado com fórmulas/estilos)
+        df_unidades = df_raw[df_raw['SUPERVISÃO PENHA - Unidades de Saúde'] != 'TOTAL'].copy()
+        
+        output = io.BytesIO()
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        workbook = writer.book
+        worksheet = workbook.add_worksheet('Insumos Especiais')
+        
+        # Estilos e Formatações
+        # Caixa Vermelha: Negrito e Tamanho 16
+        fmt_title = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'bg_color': '#D9D9D9',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16
+        })
+        
+        fmt_subtitle = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'bg_color': '#D9D9D9',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16
+        })
+        
+        fmt_col_unidade = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'bg_color': '#FFFFFF',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16
+        })
+        
+        # Caixa Verde: Tamanho 11
+        fmt_hdr_green = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'bg_color': '#D8E4BC',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 11
+        })
+        
+        fmt_hdr_blue = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'bg_color': '#DCE6F1',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 11
+        })
+        
+        fmt_hdr_gray = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+            'bg_color': '#BFBFBF',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 11
+        })
+        
+        # Linhas de Dados: Tamanho 11
+        fmt_cell_text = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 11
+        })
+        
+        fmt_cell_num = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 11
+        })
+        
+        fmt_cell_decimal = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 11,
+            'num_format': '0.0000000'
+        })
+        
+        # Linhas de Totais: Negrito e Tamanho 16
+        fmt_total_hdr = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16
+        })
+        
+        fmt_total_num = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16
+        })
+        
+        fmt_total_decimal = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16,
+            'num_format': '0.0000000'
+        })
+        
+        fmt_total_grade = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'bg_color': '#C5BE97',
+            'border': 1,
+            'font_name': 'Times New Roman',
+            'font_size': 16
+        })
+
+        fmt_total_grade_empty = workbook.add_format({
+            'bg_color': '#C5BE97',
+            'border': 1
+        })
+
+        # 1. Linhas de Título (Linha 1 e 2 do Excel)
+        worksheet.merge_range('A1:L1', 'PLANILHA DE SOLICITAÇÃO MENSAL DE INSUMOS ESPECIAIS', fmt_title)
+        worksheet.merge_range('A2:L2', 'CRS - Sudeste', fmt_subtitle)
+        
+        # 2. Cabeçalho de Colunas (Linhas 3 e 4 do Excel)
+        worksheet.merge_range('A3:A4', 'SUPERVISÃO PENHA\nUnidades de Saúde', fmt_col_unidade)
+        
+        worksheet.write('B3', 'Bastão Moxa Artemisia para procedimento de Acupuntura com moxabustão', fmt_hdr_green)
+        worksheet.write('B4', 'Unidade', fmt_hdr_green)
+        
+        worksheet.write('C3', 'óleo essencial Lavanda Francesa', fmt_hdr_blue)
+        worksheet.write('C4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('D3', 'óleo essencial Alecrim', fmt_hdr_blue)
+        worksheet.write('D4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('E3', 'óleo essencial Hortelã Pimenta', fmt_hdr_blue)
+        worksheet.write('E4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('F3', 'óleo essencial Lemongrass / Capim Limão', fmt_hdr_blue)
+        worksheet.write('F4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('G3', 'óleo essencial Melaleuca', fmt_hdr_blue)
+        worksheet.write('G4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('H3', 'óleo essencial Bergamota', fmt_hdr_blue)
+        worksheet.write('H4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('I3', 'Inalador nasal de aromaterapia com difusor para óleo essencial em material plástico ABS', fmt_hdr_blue)
+        worksheet.write('I4', 'Unidade', fmt_hdr_blue)
+        
+        worksheet.write('J3', 'Produção auriculoterapia', fmt_hdr_gray)
+        worksheet.write('J4', 'Nº procedimentos', fmt_hdr_gray)
+        
+        worksheet.merge_range('K3:K4', 'Total de pontos', fmt_hdr_gray)
+        
+        worksheet.write('L3', 'Placa adesiva com semente vacaria para auriculoterapia - 70 pontos', fmt_hdr_gray)
+        worksheet.write('L4', 'Unidade com 70 pontos', fmt_hdr_gray)
+
+        # Zoom de 80% na planilha
+        worksheet.set_zoom(80)
+
+        # Ajuste de Altura dos Cabeçalhos
+        worksheet.set_row(0, 28)
+        worksheet.set_row(1, 24)
+        worksheet.set_row(2, 85)
+        worksheet.set_row(3, 26)
+        
+        # Largura das Colunas
+        worksheet.set_column('A:A', 78)
+        worksheet.set_column('B:B', 20)
+        worksheet.set_column('C:H', 17)
+        worksheet.set_column('I:I', 24)
+        worksheet.set_column('J:K', 16)
+        worksheet.set_column('L:L', 24)
+
+        # 3. Escrita das Linhas de Dados
+        row_idx = 4
+        tot_proc = 0
+        tot_pontos = 0
+        tot_placas = 0.0
+
+        for _, row in df_unidades.iterrows():
+            u = row['SUPERVISÃO PENHA - Unidades de Saúde']
+            qtd_proc = int(row['Nº procedimentos'])
+            pontos = int(row['Total de pontos'])
+            placas = float(row['Placa adesiva com semente vacaria para auriculoterapia - 70 pontos'])
+            
+            tot_proc += qtd_proc
+            tot_pontos += pontos
+            tot_placas += placas
+
+            worksheet.write(row_idx, 0, u, fmt_cell_text)
+            for c in range(1, 9):
+                worksheet.write(row_idx, c, 0, fmt_cell_num)
+            
+            worksheet.write(row_idx, 9, qtd_proc, fmt_cell_num)
+            worksheet.write(row_idx, 10, pontos, fmt_cell_num)
+            worksheet.write(row_idx, 11, placas, fmt_cell_decimal)
+            
+            worksheet.set_row(row_idx, 20)
+            row_idx += 1
+
+        # 4. Linhas de Rodapé: TOTAL e TOTAL GRADE
+        # Linha TOTAL
+        worksheet.write(row_idx, 0, 'TOTAL', fmt_total_hdr)
+        for c in range(1, 9):
+            worksheet.write(row_idx, c, 0, fmt_total_num)
+        worksheet.write(row_idx, 9, tot_proc, fmt_total_num)
+        worksheet.write(row_idx, 10, tot_pontos, fmt_total_num)
+        worksheet.write(row_idx, 11, tot_placas, fmt_total_decimal)
+        worksheet.set_row(row_idx, 26)
+        row_idx += 1
+
+        # Linha TOTAL GRADE
+        worksheet.merge_range(row_idx, 0, row_idx, 8, 'TOTAL GRADE', fmt_total_grade)
+        for c in range(9, 12):
+            worksheet.write(row_idx, c, '', fmt_total_grade_empty)
+        worksheet.set_row(row_idx, 26)
+
+        writer.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_13(periodo):
     with app.app_context():
