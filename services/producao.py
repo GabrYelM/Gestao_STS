@@ -651,7 +651,10 @@ def gera_relatorio_12(periodo):
             
             # 1. Verifica se há vínculo cadastrado/personalizado explicitamente
             if n in mapa_custom:
-                return mapa_custom[n]
+                dest_custom = mapa_custom[n]
+                if dest_custom.upper() in ['DESCONSIDERAR', 'IGNORAR', 'NAO REPOR', 'NÃO REPOR', '[DESCONSIDERAR / NÃO REPOR]']:
+                    return None
+                return dest_custom
 
             # 2. Se for equipe composta por duas unidades (com '/'), considera sempre a unidade secundária (segundo nome)
             if "/" in n:
