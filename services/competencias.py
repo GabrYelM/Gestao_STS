@@ -23,7 +23,7 @@ MAPA_RELATORIO_TABELAS = {
     '09': [('REL-114', 'previsao_parto'), ('REL-114', 'ano_mes'), ('REL-114', 'data_extracao')],
     '10': [('REL-10', 'ano_mes'), ('AT-03', 'ano')],
     '11': [('FE-02', 'ano_mes')],
-    '12': [('REL-12', 'ano_mes_extracao'), ('REL-12', 'data_extracao')],
+    '12': [('AT-02', 'ano_mes')],
     '13': [('AG-04', 'ano_mes')],
     '14': [('VG-02', 'ano_mes')],
     '15': [('REL-135', 'ano_mes_competencia')],

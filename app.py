@@ -49,6 +49,53 @@ with app.app_context():
         db.session.add(normal)
         db.session.commit()
 
+    # Inicialização dos Vínculos Padrão EMAB / eMulti para PICS Penha
+    if models.VinculoEmab.query.count() == 0:
+        vinculos_iniciais = [
+            ("Emab Ae Carvalho", "UBS ANTONIO ESTEVÃO DE CARVALHO", "EMAB"),
+            ("Emab Ae Carvalho/Nobrega", "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA", "EMAB"),
+            ("Emab Anchieta", "UBS PADRE JOSÉ DE ANCHIETA", "EMAB"),
+            ("Emab Anchieta/Villalobo", "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO", "EMAB"),
+            ("Emab Aricanduva", "UBS VILA ARICANDUVA", "EMAB"),
+            ("Emab Aricanduva/Sao Nicolau", "UBS JARDIM SAO NICOLAU", "EMAB"),
+            ("Emab Arthur Alvim", "UBS PARQUE ARTHUR ALVIM", "EMAB"),
+            ("Emab Arthur Alvim/Guilhermina", "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO", "EMAB"),
+            ("Emab Chacara Cruzeiro Do Sul", "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO", "EMAB"),
+            ("Emab Chacara/Patriarca", "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR", "EMAB"),
+            ("Emab Esperanca", "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO", "EMAB"),
+            ("Inativo - Emab Esperanca/Trindade", "UBS ENGENHEIRO TRINDADE", "EMAB"),
+            ("Emab Sao Francisco", "UBS JARDIM SAO FRANCISCO I", "EMAB"),
+            ("Emab Sao Francisco/Vila Silvia", "AMA/UBS INTEGRADA VILA SILVIA", "EMAB"),
+            ("Emab Vila Matilde", "UBS VILA MATILDE - DR. RUBENS DO VAL", "EMAB"),
+            ("Emab Vila Matilde/Maringa", "UBS JARDIM MARINGA - VILA TALARICO", "EMAB"),
+            ("Emulti Ae Carvalho", "UBS ANTONIO ESTEVÃO DE CARVALHO", "eMulti"),
+            ("Emulti Ae Carvalho/Nobrega", "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA", "eMulti"),
+            ("Emulti Anchieta", "UBS PADRE JOSÉ DE ANCHIETA", "eMulti"),
+            ("Emulti Anchieta/Villalobo", "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO", "eMulti"),
+            ("Emulti Aricanduva", "UBS VILA ARICANDUVA", "eMulti"),
+            ("Emulti Aricanduva/Sao Nicolau", "UBS JARDIM SAO NICOLAU", "eMulti"),
+            ("Emulti Arthur Alvim", "UBS PARQUE ARTHUR ALVIM", "eMulti"),
+            ("Emulti Arthur Alvim/Guilhermina", "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO", "eMulti"),
+            ("Emulti Chacara Cruzeiro Do Sul", "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO", "eMulti"),
+            ("Emulti Chacara/Patriarca", "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR", "eMulti"),
+            ("Emulti Eng Goulart", "AMA/UBS ENGENHEIRO GOULART- DR JOSE PIRES", "eMulti"),
+            ("Emulti Eng Goulart/Cangaiba", "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO", "eMulti"),
+            ("Emulti Esperanca", "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO", "eMulti"),
+            ("Emulti Esperanca/Emilio", "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA", "eMulti"),
+            ("Emulti Granada/Trindade", "UBS ENGENHEIRO TRINDADE", "eMulti"),
+            ("Emulti Sao Francisco", "UBS JARDIM SAO FRANCISCO I", "eMulti"),
+            ("Emulti Sao Francisco/Vila Silvia", "AMA/UBS INTEGRADA VILA SILVIA", "eMulti"),
+            ("Emulti Vila Matilde", "UBS VILA MATILDE - DR. RUBENS DO VAL", "eMulti"),
+            ("Emulti Vila Matilde/Maringa", "UBS JARDIM MARINGA - VILA TALARICO", "eMulti")
+        ]
+        for nome, dest, tp in vinculos_iniciais:
+            v = models.VinculoEmab(nome_equipe=nome, unidade_destino=dest, tipo=tp)
+            db.session.add(v)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
 import services.utils as su
 import services.bot as sb
 import pandas as pd
@@ -713,7 +760,8 @@ def download_excel(indice, periodo):
         elif indice == '11':
             df = prod.gera_relatorio_11(periodo)
         elif indice == '12':
-            df = prod.gera_relatorio_12(periodo)
+            output = prod.exportar_excel_relatorio_12_oficial(periodo)
+            return send_file(output, download_name=f"Relatorio_12_MMH_PICS_Penha_{periodo}.xlsx", as_attachment=True)
         elif indice == '13':
             df = prod.gera_relatorio_13(periodo)
         elif indice == '14':
@@ -1280,6 +1328,20 @@ def cadastros():
                     except Exception:
                         pass
 
+                # 5. Salva Vínculos EMAB / eMulti em Lote
+                elif key.startswith('vinc_') and val and val.strip():
+                    nome_equipe = key.replace('vinc_', '').strip()
+                    unidade_destino = val.strip()
+                    tipo = request.form.get(f'tipo_vinc_{nome_equipe}', 'EMAB')
+                    vinc = models.VinculoEmab.query.filter_by(nome_equipe=nome_equipe).first()
+                    if vinc:
+                        vinc.unidade_destino = unidade_destino
+                        vinc.tipo = tipo
+                    else:
+                        vinc = models.VinculoEmab(nome_equipe=nome_equipe, unidade_destino=unidade_destino, tipo=tipo)
+                        db.session.add(vinc)
+                    alterou = True
+
             try:
                 db.session.commit()
             except Exception:
@@ -1385,6 +1447,41 @@ def cadastros():
                 cbo_removido = cbos.pop(cod)
                 alterou = True
                 mensagem = f"CBO {cod} - {cbo_removido} excluído do cadastro!"
+
+        elif acao == 'salvar_vinculo_emab' or acao == 'salvar_vinculo_modal':
+            nome_equipe = request.form.get('nome_equipe') or request.form.get('codigo_chave')
+            unidade_destino = request.form.get('unidade_destino') or request.form.get('valor')
+            tipo = request.form.get('tipo', 'EMAB')
+            if nome_equipe and unidade_destino:
+                nome_equipe = nome_equipe.strip()
+                unidade_destino = unidade_destino.strip()
+                if 'EMULTI' in nome_equipe.upper():
+                    tipo = 'eMulti'
+                elif 'EMAB' in nome_equipe.upper():
+                    tipo = 'EMAB'
+                vinc = models.VinculoEmab.query.filter_by(nome_equipe=nome_equipe).first()
+                if vinc:
+                    vinc.unidade_destino = unidade_destino
+                    vinc.tipo = tipo
+                else:
+                    vinc = models.VinculoEmab(nome_equipe=nome_equipe, unidade_destino=unidade_destino, tipo=tipo)
+                    db.session.add(vinc)
+                db.session.commit()
+                mensagem = f"Vínculo da equipe '{nome_equipe}' configurado para reposição em '{unidade_destino}' com sucesso!"
+
+        elif acao == 'excluir_vinculo_emab':
+            id_vinc = request.form.get('id')
+            nome_equipe = request.form.get('nome_equipe') or request.form.get('codigo_chave')
+            vinc = None
+            if id_vinc:
+                vinc = models.VinculoEmab.query.get(id_vinc)
+            elif nome_equipe:
+                vinc = models.VinculoEmab.query.filter_by(nome_equipe=nome_equipe.strip()).first()
+            if vinc:
+                nome_del = vinc.nome_equipe
+                db.session.delete(vinc)
+                db.session.commit()
+                mensagem = f"Vínculo da equipe '{nome_del}' removido com sucesso!"
 
         if alterou:
             cat_data['profissionais'] = profissionais
@@ -1492,6 +1589,37 @@ def cadastros():
     except Exception:
         pass
 
+    # 5. Vínculos EMAB / eMulti (PICS Penha)
+    vinculos_emab = []
+    estabelecimentos_at02_pics = []
+    pendentes_vinculos = []
+    try:
+        vinculos_emab = models.VinculoEmab.query.order_by(models.VinculoEmab.nome_equipe).all()
+        nomes_vinculos_existentes = {v.nome_equipe.strip().upper() for v in vinculos_emab}
+        unidades_oficiais_upper = {u.strip().upper() for u in prod.UNIDADES_OFICIAIS_REL12}
+
+        df_at02_est = pd.read_sql("""
+            SELECT DISTINCT estabelecimento 
+            FROM 'AT-02' 
+            WHERE UPPER(procedimento) LIKE '%AURICULOTERAPIA%'
+            ORDER BY estabelecimento
+        """, con=db.engine)
+        if not df_at02_est.empty:
+            estabelecimentos_at02_pics = sorted(df_at02_est['estabelecimento'].dropna().unique().tolist())
+            for est in estabelecimentos_at02_pics:
+                est_str = str(est).strip()
+                est_upper = est_str.upper()
+                if est_upper not in nomes_vinculos_existentes:
+                    if 'EMAB' in est_upper or 'EMULTI' in est_upper or '/' in est_upper or est_upper not in unidades_oficiais_upper:
+                        tipo_sugerido = 'eMulti' if 'EMULTI' in est_upper else 'EMAB'
+                        pendentes_vinculos.append({
+                            'nome_equipe': est_str,
+                            'tipo': tipo_sugerido,
+                            'origem': 'AT-02 (SIGA Produção PICS)'
+                        })
+    except Exception as e:
+        print(f"Erro ao carregar vínculos EMAB: {e}")
+
     return render_template(
         'cadastros.html',
         equipes=equipes,
@@ -1506,6 +1634,11 @@ def cadastros():
         cbos=cbos,
         total_cbo=len(cbos),
         pendentes_cbo=pendentes_cbo,
+        vinculos_emab=vinculos_emab,
+        total_vinculos=len(vinculos_emab),
+        pendentes_vinculos=pendentes_vinculos,
+        unidades_oficiais_rel12=prod.UNIDADES_OFICIAIS_REL12,
+        estabelecimentos_at02_pics=estabelecimentos_at02_pics,
         mensagem=mensagem
     )
 

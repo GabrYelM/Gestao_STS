@@ -167,6 +167,7 @@ def processa_at02(caminho, periodo=None):
             df_limpo.to_sql(name='AT-02', con=db.engine, if_exists='append', index=False)
             registrar_competencias_lote('03', meses_no_arquivo)
             registrar_competencias_lote('10', meses_no_arquivo)
+            registrar_competencias_lote('12', meses_no_arquivo)
 
     print('AT-02 carregado')
 
