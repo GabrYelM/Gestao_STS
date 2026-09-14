@@ -53,25 +53,39 @@ def read_clean_csv(caminho, primeira_coluna):
             
     norm_primeira = _normalizar_str(primeira_coluna) if primeira_coluna else ''
     inicio = 0
-    for i, linha in enumerate(linhas):
-        norm_linha = _normalizar_str(linha)
-        # Ignora linhas de cabeçalho e metadados SSRS
-        if 'reporttitle' in norm_linha or 'rdl' in norm_linha or 'filto' in norm_linha or 'filtro' in norm_linha or 'hierarquia' in norm_linha or 'data da extra' in norm_linha:
-            continue
-        if norm_primeira and norm_primeira in norm_linha:
-            inicio = i
-            break
-        if linha.count(';') >= 4 and any(k in norm_linha for k in ['numeroanomes', 'codigocnes', 'cbo', 'procedimento', 'especialidade', 'nmmunicipio', 'nmcoordenadoria', 'faixaetaria']):
-            inicio = i
-            break
+    encontrou_especifica = False
+
+    # 1. Se primeira_coluna foi fornecida, procura prioritariamente a linha exata que contém a coluna desejada
+    if norm_primeira:
+        for i, linha in enumerate(linhas):
+            norm_linha = _normalizar_str(linha)
+            if 'reporttitle' in norm_linha or 'rdl' in norm_linha or 'filto' in norm_linha or 'filtro' in norm_linha or 'hierarquia' in norm_linha or 'data da extra' in norm_linha:
+                continue
+            if norm_primeira in norm_linha:
+                inicio = i
+                encontrou_especifica = True
+                break
+
+    # 2. Se não foi fornecida ou não encontrou especificamente, usa a heurística genérica
+    if not encontrou_especifica:
+        for i, linha in enumerate(linhas):
+            norm_linha = _normalizar_str(linha)
+            if 'reporttitle' in norm_linha or 'rdl' in norm_linha or 'filto' in norm_linha or 'filtro' in norm_linha or 'hierarquia' in norm_linha or 'data da extra' in norm_linha:
+                continue
+            if linha.count(';') >= 4 and any(k in norm_linha for k in ['numeroanomes', 'codigocnes', 'cbo', 'procedimento', 'especialidade', 'nmmunicipio', 'nmcoordenadoria', 'faixaetaria']):
+                inicio = i
+                break
             
     conteudo_limpo = ''.join(linhas[inicio:])
     try:
-        df = pd.read_csv(io.StringIO(conteudo_limpo), sep=';', low_memory=False)
+        df = pd.read_csv(io.StringIO(conteudo_limpo), sep=';', low_memory=False, on_bad_lines='skip')
         if len(df.columns) <= 1 and ',' in linhas[inicio]:
-            df = pd.read_csv(io.StringIO(conteudo_limpo), sep=',', low_memory=False)
+            df = pd.read_csv(io.StringIO(conteudo_limpo), sep=',', low_memory=False, on_bad_lines='skip')
     except Exception:
-        df = pd.read_csv(io.StringIO(conteudo_limpo), sep=None, engine='python')
+        try:
+            df = pd.read_csv(io.StringIO(conteudo_limpo), sep=';', engine='python', on_bad_lines='skip')
+        except Exception:
+            df = pd.read_csv(io.StringIO(conteudo_limpo), sep=None, engine='python', on_bad_lines='skip')
         
     return df
 
@@ -566,19 +580,33 @@ def processa_rel134(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    hoje = datetime.today().strftime('%Y-%m-%d')
-    mes_atual = datetime.today().strftime('%Y-%m')
-    df_limpo['data_extracao'] = hoje
+    from datetime import timedelta
+    import calendar
+
+    if periodo:
+        ano_alvo = str(periodo)[:4]
+        mes_alvo = str(periodo)[4:6]
+    else:
+        primeiro_dia = datetime.today().replace(day=1)
+        mes_passado_obj = primeiro_dia - timedelta(days=1)
+        ano_alvo = mes_passado_obj.strftime('%Y')
+        mes_alvo = mes_passado_obj.strftime('%m')
+
+    ultimo_dia = calendar.monthrange(int(ano_alvo), int(mes_alvo))[1]
+    data_ref = f"{ano_alvo}-{mes_alvo}-{str(ultimo_dia).zfill(2)}"
+    df_limpo['data_extracao'] = data_ref
+
+    comp_alvo = f"{ano_alvo}{mes_alvo}"
 
     with app.app_context():
         try:
-            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE data_extracao LIKE '{mes_atual}-%' AND data_extracao <= '{hoje}'"))
+            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
         df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
-        registrar_competencia('17', hoje.replace('-', '')[:6])
-    print('REL-134 carregado com sucesso!')
+        registrar_competencia('17', comp_alvo)
+    print(f'REL-134 carregado com sucesso para a competência {comp_alvo}!')
 
 def processa_rel16(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
@@ -611,19 +639,33 @@ def processa_rel16(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    hoje = datetime.today().strftime('%Y-%m-%d')
-    mes_atual = datetime.today().strftime('%Y-%m')
-    df_limpo['data_extracao'] = hoje
+    from datetime import timedelta
+    import calendar
+
+    if periodo:
+        ano_alvo = str(periodo)[:4]
+        mes_alvo = str(periodo)[4:6]
+    else:
+        primeiro_dia = datetime.today().replace(day=1)
+        mes_passado_obj = primeiro_dia - timedelta(days=1)
+        ano_alvo = mes_passado_obj.strftime('%Y')
+        mes_alvo = mes_passado_obj.strftime('%m')
+
+    ultimo_dia = calendar.monthrange(int(ano_alvo), int(mes_alvo))[1]
+    data_ref = f"{ano_alvo}-{mes_alvo}-{str(ultimo_dia).zfill(2)}"
+    df_limpo['data_extracao'] = data_ref
+
+    comp_alvo = f"{ano_alvo}{mes_alvo}"
 
     with app.app_context():
         try:
-            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE data_extracao LIKE '{mes_atual}-%'"))
+            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
         df_limpo.to_sql(name='REL-16', con=db.engine, if_exists='append', index=False)
-        registrar_competencia('16', hoje.replace('-', '')[:6])
-    print('REL-16 (SIGA - AMG) carregado com sucesso!')
+        registrar_competencia('16', comp_alvo)
+    print(f'REL-16 (SIGA - AMG) carregado com sucesso para a competência {comp_alvo}!')
 
 def processa_rel135(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)

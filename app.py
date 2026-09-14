@@ -1255,7 +1255,53 @@ def upload_dtic():
                 
         mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e importado(s) para o banco de dados!"
         
-    return render_template("upload_dtic.html", mensagem=mensagem)
+    from services.competencias import (
+        obter_competencia_automatica,
+        listar_competencias_disponiveis,
+        obter_status_importacao_dtic,
+        formatar_descricao_competencia
+    )
+    
+    periodo_selecionado = request.args.get("periodo", "auto")
+    comp_auto_val, comp_auto_desc = obter_competencia_automatica()
+    
+    if periodo_selecionado == 'auto' or not periodo_selecionado:
+        periodo_ativo = comp_auto_val
+    else:
+        periodo_ativo = periodo_selecionado
+        
+    periodo_ativo_desc = formatar_descricao_competencia(periodo_ativo)
+    status_dtic = obter_status_importacao_dtic(periodo_ativo)
+    lista_competencias = listar_competencias_disponiveis()
+    
+    return render_template(
+        "upload_dtic.html",
+        mensagem=mensagem,
+        periodo_selecionado=periodo_selecionado,
+        periodo_ativo=periodo_ativo,
+        periodo_ativo_desc=periodo_ativo_desc,
+        comp_auto_val=comp_auto_val,
+        comp_auto_desc=comp_auto_desc,
+        status_dtic=status_dtic,
+        lista_competencias=lista_competencias
+    )
+
+
+@app.route("/remover_competencia_arquivo", methods=["POST"])
+@admin_required
+def remover_competencia_arquivo():
+    tipo_relatorio = request.form.get("tipo_relatorio")
+    periodo = request.form.get("periodo")
+    periodo_selecionado = request.form.get("periodo_selecionado", "auto")
+
+    from services.competencias import remover_dados_competencia_dtic
+    sucesso, msg = remover_dados_competencia_dtic(tipo_relatorio, periodo)
+    if sucesso:
+        flash(msg, "success")
+    else:
+        flash(msg, "danger")
+
+    return redirect(url_for('upload_dtic', periodo=periodo_selecionado))
 
 
 @app.route('/cadastros', methods=['GET', 'POST'])
