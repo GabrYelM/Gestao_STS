@@ -161,24 +161,53 @@ def gera_relatorio_03(periodo):
             aggfunc='sum'
         ).fillna(0).astype(int)
         
-        # Converte colunas de meses para string limpa
-        df_final.columns = [str(col) for col in df_final.columns]
+        # Converte colunas de meses para MM/AAAA e adiciona Total Geral
+        cols_meses = list(df_final.columns)
+        df_final['Total Geral'] = df_final.sum(axis=1)
+        
+        mapa_colunas = {}
+        for col in cols_meses:
+            s_col = str(col).strip()
+            if len(s_col) == 6 and s_col.isdigit():
+                mapa_colunas[col] = f"{s_col[4:6]}/{s_col[:4]}"
+            else:
+                mapa_colunas[col] = s_col
+        df_final.rename(columns=mapa_colunas, inplace=True)
+        
+        df_final.index.names = ['Estabelecimento', 'CBO / Especialidade', 'Profissional', 'Código de Procedimento', 'Procedimento']
+        df_final.columns.name = None
         
         return df_final
 
 def gera_relatorio_04(periodo):
     with app.app_context():
-    
         query = f"SELECT * FROM 'VG-04' WHERE ano_mes = {periodo}"
         df_vg04 = pd.read_sql(query, con=db.engine)
+
+        if df_vg04.empty:
+            return pd.DataFrame()
 
         df_final = pd.pivot_table(
             df_vg04,
             index = ['tipo_agenda', 'estabelecimento', 'nome_especialidade', 'nome_procedimento', 'tipo_atendimento_agenda'],
             values = ['qtde_vaga_ofertada', 'qtde_agendamento', 'qtde_atendimento'],
             aggfunc = 'sum'
-        )
-        #print(df_final)
+        ).fillna(0).astype(int)
+
+        # Ordem solicitada: vaga ofertada, agendados e atendidos
+        df_final = df_final[['qtde_vaga_ofertada', 'qtde_agendamento', 'qtde_atendimento']]
+
+        # Renomeia colunas de valores
+        df_final.rename(columns={
+            'qtde_vaga_ofertada': 'Vagas Ofertadas',
+            'qtde_agendamento': 'Agendados',
+            'qtde_atendimento': 'Atendidos'
+        }, inplace=True)
+
+        # Renomeia cabeçalhos dos índices de identificação
+        df_final.index.names = ['Tipo de Agenda', 'Estabelecimento', 'Especialidade', 'Procedimento', 'Tipo de Atendimento']
+        df_final.columns.name = None
+
         return df_final
 
 def gera_relatorio_06(periodo=None):
