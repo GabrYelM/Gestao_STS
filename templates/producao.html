@@ -15,10 +15,53 @@
     min-width: 100% !important;
     width: auto !important;
 }
-#tabela-dinamica th, #tabela-dinamica td {
+#tabela-dinamica th, #tabela-dinamica td,
+#tabela-pop-total th, #tabela-pop-total td,
+#tabela-pop-masc th, #tabela-pop-masc td,
+#tabela-pop-fem th, #tabela-pop-fem td,
+#tabela-raas-pacientes th, #tabela-raas-pacientes td,
+#tabela-raas-prof th, #tabela-raas-prof td,
+#tabela-raas-acoes th, #tabela-raas-acoes td,
+#tabela-ativos th, #tabela-ativos td,
+#tabela-inativos th, #tabela-inativos td {
     vertical-align: middle;
-    white-space: nowrap;
-    padding: 0.45rem 0.65rem;
+    padding: 4px 6px;
+}
+#tabela-dinamica thead th,
+#tabela-pop-total thead th,
+#tabela-pop-masc thead th,
+#tabela-pop-fem thead th,
+#tabela-raas-pacientes thead th,
+#tabela-raas-prof thead th,
+#tabela-raas-acoes thead th,
+#tabela-ativos thead th,
+#tabela-inativos thead th {
+    font-size: 0.76rem !important;
+    font-weight: 600 !important;
+}
+#tabela-dinamica tbody td,
+#tabela-pop-total tbody td,
+#tabela-pop-masc tbody td,
+#tabela-pop-fem tbody td,
+#tabela-raas-pacientes tbody td,
+#tabela-raas-prof tbody td,
+#tabela-raas-acoes tbody td,
+#tabela-ativos tbody td,
+#tabela-inativos tbody td {
+    font-size: 0.74rem !important;
+    line-height: 1.25 !important;
+}
+#tabela-dinamica tfoot th,
+#tabela-pop-total tfoot th,
+#tabela-pop-masc tfoot th,
+#tabela-pop-fem tfoot th,
+#tabela-raas-pacientes tfoot th,
+#tabela-raas-prof tfoot th,
+#tabela-raas-acoes tfoot th,
+#tabela-ativos tfoot th,
+#tabela-inativos tfoot th {
+    font-size: 0.78rem !important;
+    font-weight: bold !important;
 }
 #tabela-dinamica th.sorting,
 #tabela-dinamica th.sorting_asc,
@@ -502,7 +545,7 @@ div.dt-button-collection button.dt-button:hover {
         font-size: 0.78rem !important;
         padding: 6px 8px !important;
         vertical-align: middle !important;
-        text-align: left !important;
+        text-align: center !important;
         border-right: 2px solid #adb5bd !important;
     }
     #tabela-dinamica tbody td:nth-child(2) {
@@ -525,11 +568,18 @@ div.dt-button-collection button.dt-button:hover {
     #tabela-dinamica thead th.col-proc .header-excel-container {
         display: flex !important;
         align-items: center !important;
-        justify-content: space-between !important;
+        justify-content: center !important;
+        position: relative !important;
         width: 100% !important;
-        gap: 4px !important;
+    }
+    #tabela-dinamica thead th.col-proc .header-text {
+        text-align: center !important;
+        width: 100% !important;
+        font-weight: 600 !important;
     }
     #tabela-dinamica thead th.col-proc .btn-excel-filter {
+        position: absolute !important;
+        right: 0 !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -686,6 +736,403 @@ div.dt-button-collection button.dt-button:hover {
         border-left: 2px solid #0d6efd !important;
         font-weight: bold !important;
         color: #0d6efd !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '03' %}
+<style>
+    /* Otimização visual para Relatório 03 (SIGA - AT-02): 5 Colunas de Identificação Congeladas e Períodos Verticais */
+    #tabela-dinamica {
+        width: max-content !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        table-layout: fixed !important;
+    }
+
+    /* Remove setas padrão de ordenação que ocupam espaço */
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* Coluna 1: Estabelecimento (congelada) */
+    #tabela-dinamica th:nth-child(1), #tabela-dinamica td:nth-child(1) {
+        width: 140px !important;
+        min-width: 140px !important;
+        max-width: 140px !important;
+        position: sticky !important;
+        left: 0px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: CBO / Especialidade (congelada) */
+    #tabela-dinamica th:nth-child(2), #tabela-dinamica td:nth-child(2) {
+        width: 125px !important;
+        min-width: 125px !important;
+        max-width: 125px !important;
+        position: sticky !important;
+        left: 140px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 3: Profissional (congelada) */
+    #tabela-dinamica th:nth-child(3), #tabela-dinamica td:nth-child(3) {
+        width: 125px !important;
+        min-width: 125px !important;
+        max-width: 125px !important;
+        position: sticky !important;
+        left: 265px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 4: Código de Procedimento (congelada, centralizada) */
+    #tabela-dinamica th:nth-child(4), #tabela-dinamica td:nth-child(4) {
+        width: 95px !important;
+        min-width: 95px !important;
+        max-width: 95px !important;
+        position: sticky !important;
+        left: 390px !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 5: Procedimento (congelada, com borda divisória na direita) */
+    #tabela-dinamica th:nth-child(5), #tabela-dinamica td:nth-child(5) {
+        width: 180px !important;
+        min-width: 180px !important;
+        max-width: 180px !important;
+        position: sticky !important;
+        left: 485px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+
+    /* Z-index e background para elementos sticky das 5 colunas */
+    #tabela-dinamica thead th:nth-child(-n+5) {
+        z-index: 5 !important;
+        background-color: #f8f9fa !important;
+        vertical-align: middle !important;
+        padding: 4px 6px !important;
+        height: 105px !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica tbody td:nth-child(-n+5) {
+        z-index: 2 !important;
+        background-color: #ffffff !important;
+        padding: 3px 6px !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(-n+5) {
+        z-index: 5 !important;
+        background-color: #cfe2ff !important;
+        padding: 4px 6px !important;
+    }
+
+    /* Header container e botões de filtro para colunas fixas 1 a 5 */
+    #tabela-dinamica thead th:nth-child(-n+5) .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        height: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+5) .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+        color: #212529 !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+5) .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+5) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Coluna 4 Header (Código de Procedimento) */
+    #tabela-dinamica thead th:nth-child(4) .header-text {
+        text-align: center !important;
+        font-size: 0.74rem !important;
+        line-height: 1.15 !important;
+    }
+
+    /* Coluna 5 Header (Procedimento centralizado com botão de filtro à direita) */
+    #tabela-dinamica thead th:nth-child(5) .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        position: relative !important;
+        width: 100% !important;
+    }
+    #tabela-dinamica thead th:nth-child(5) .header-text {
+        text-align: center !important;
+        width: 100% !important;
+        font-weight: 600 !important;
+    }
+    #tabela-dinamica thead th:nth-child(5) .btn-excel-filter {
+        position: absolute !important;
+        right: 0 !important;
+    }
+
+    /* Colunas Mensais e Períodos (6 em diante) */
+    #tabela-dinamica thead th:nth-child(n+6) {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 6px 2px 4px 2px !important;
+        height: 105px !important;
+        min-width: 42px !important;
+        max-width: 46px !important;
+        width: 42px !important;
+        box-sizing: border-box !important;
+        background-color: #f8f9fa !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+        font-size: 0.80rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 1px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+    #tabela-dinamica tbody td:nth-child(n+6) {
+        text-align: center !important;
+        font-size: 0.74rem !important;
+        min-width: 42px !important;
+        max-width: 46px !important;
+        width: 42px !important;
+        padding: 3px 2px !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(n+6) {
+        text-align: center !important;
+        font-size: 0.76rem !important;
+        min-width: 42px !important;
+        max-width: 46px !important;
+        width: 42px !important;
+        padding: 4px 2px !important;
+        background-color: #cfe2ff !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Coluna Total Geral (última coluna) */
+    #tabela-dinamica thead th:last-child {
+        min-width: 50px !important;
+        max-width: 54px !important;
+        width: 50px !important;
+        background-color: #f1f5f9 !important;
+        border-left: 2px solid #dee2e6 !important;
+    }
+    #tabela-dinamica thead th:last-child .header-text {
+        color: #0d6efd !important;
+        font-weight: bold !important;
+    }
+    #tabela-dinamica tbody td:last-child {
+        min-width: 50px !important;
+        max-width: 54px !important;
+        width: 50px !important;
+        background-color: #f8f9fa !important;
+        border-left: 2px solid #dee2e6 !important;
+        color: #0d6efd !important;
+        font-weight: bold !important;
+    }
+    #tabela-dinamica tfoot th:last-child {
+        min-width: 50px !important;
+        max-width: 54px !important;
+        width: 50px !important;
+        background-color: #cfe2ff !important;
+        border-left: 2px solid #0d6efd !important;
+        color: #0d6efd !important;
+        font-weight: bold !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '04' %}
+<style>
+    /* Otimização visual para Relatório 04 (SIGA - VG-04): Vagas Ofertadas, Agendados e Atendidos */
+    #tabela-dinamica {
+        width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }
+
+    /* Remove setas padrão de ordenação que poluem o cabeçalho */
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 6px !important;
+    }
+
+    /* Cabeçalhos padronizados */
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        vertical-align: middle !important;
+        padding: 6px 8px !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        color: #212529 !important;
+        border-bottom: 2px solid #dee2e6 !important;
+    }
+
+    #tabela-dinamica thead th .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-dinamica thead th .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+        color: #212529 !important;
+    }
+    #tabela-dinamica thead th .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
+    }
+    #tabela-dinamica thead th .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Células do corpo */
+    #tabela-dinamica tbody td {
+        font-size: 0.76rem !important;
+        line-height: 1.25 !important;
+        padding: 4px 8px !important;
+        vertical-align: middle !important;
+        border-bottom: 1px solid #e9ecef !important;
+    }
+
+    /* Alinhamentos específicos */
+    /* Coluna 1: Tipo de Agenda */
+    #tabela-dinamica th:nth-child(1), #tabela-dinamica td:nth-child(1) {
+        text-align: center !important;
+        width: 110px !important;
+    }
+
+    /* Coluna 2: Estabelecimento */
+    #tabela-dinamica th:nth-child(2), #tabela-dinamica td:nth-child(2) {
+        text-align: left !important;
+        min-width: 180px !important;
+    }
+
+    /* Coluna 3: Especialidade */
+    #tabela-dinamica th:nth-child(3), #tabela-dinamica td:nth-child(3) {
+        text-align: left !important;
+        min-width: 130px !important;
+    }
+
+    /* Coluna 4: Procedimento */
+    #tabela-dinamica th:nth-child(4), #tabela-dinamica td:nth-child(4) {
+        text-align: left !important;
+        min-width: 220px !important;
+    }
+
+    /* Coluna 5: Tipo de Atendimento */
+    #tabela-dinamica th:nth-child(5), #tabela-dinamica td:nth-child(5) {
+        text-align: center !important;
+        width: 120px !important;
+    }
+
+    /* Colunas de Métricas (6: Vagas Ofertadas, 7: Agendados, 8: Atendidos) */
+    #tabela-dinamica th:nth-child(6), #tabela-dinamica td:nth-child(6),
+    #tabela-dinamica th:nth-child(7), #tabela-dinamica td:nth-child(7),
+    #tabela-dinamica th:nth-child(8), #tabela-dinamica td:nth-child(8) {
+        text-align: center !important;
+        width: 100px !important;
+    }
+    #tabela-dinamica thead th:nth-child(6) {
+        background-color: #f1f5f9 !important;
+    }
+    #tabela-dinamica tbody td:nth-child(6) {
+        background-color: #fcfdfd !important;
+        font-weight: 500 !important;
+    }
+
+    /* Rodapé de Totais */
+    #tabela-dinamica tfoot th {
+        font-size: 0.78rem !important;
+        padding: 6px 8px !important;
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        vertical-align: middle !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(6),
+    #tabela-dinamica tfoot th:nth-child(7),
+    #tabela-dinamica tfoot th:nth-child(8) {
+        text-align: center !important;
+        font-size: 0.80rem !important;
+        color: #084298 !important;
     }
 </style>
 {% endif %}
@@ -1036,6 +1483,44 @@ div.dt-button-collection button.dt-button:hover {
                 $('#tabela-dinamica').append(tfootHtml02);
             }
 
+            // Configuração para Relatório 03 (SIGA - AT-02): Quebra de títulos e rodapé de totais
+            if (relIndice === '03') {
+                for (var c = 0; c < tableCols.length; c++) {
+                    if (tableCols[c].data === 'CBO / Especialidade') {
+                        tableCols[c].title = 'CBO /<br>Especialidade';
+                    }
+                    if (tableCols[c].data === 'Código de Procedimento') {
+                        tableCols[c].title = 'Código de<br>Procedimento';
+                    }
+                }
+                var tfootHtml03 = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
+                tfootHtml03 += '<th class="text-center">TOTAL</th>';
+                tfootHtml03 += '<th></th>';
+                tfootHtml03 += '<th></th>';
+                tfootHtml03 += '<th></th>';
+                tfootHtml03 += '<th class="text-start">Total Geral da Produção</th>';
+                for (var f = 5; f < tableCols.length; f++) {
+                    tfootHtml03 += '<th class="text-center"></th>';
+                }
+                tfootHtml03 += '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml03);
+            }
+
+            // Configuração para Relatório 04 (SIGA - VG-04): Linha de rodapé com totais
+            if (relIndice === '04') {
+                var tfootHtml04 = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
+                tfootHtml04 += '<th class="text-center">TOTAL</th>';
+                tfootHtml04 += '<th></th>';
+                tfootHtml04 += '<th></th>';
+                tfootHtml04 += '<th></th>';
+                tfootHtml04 += '<th class="text-start">Total Geral</th>';
+                tfootHtml04 += '<th class="text-center"></th>';
+                tfootHtml04 += '<th class="text-center"></th>';
+                tfootHtml04 += '<th class="text-center"></th>';
+                tfootHtml04 += '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml04);
+            }
+
             // Se existir linha de TOTAL nos dados (outros relatórios), extrai para o rodapé (tfoot)
             var totalRow = null;
             var filteredTableData = [];
@@ -1048,7 +1533,7 @@ div.dt-button-collection button.dt-button:hover {
                     filteredTableData.push(r);
                 }
             }
-            if (totalRow && relIndice !== '02') {
+            if (totalRow && relIndice !== '02' && relIndice !== '03' && relIndice !== '04') {
                 tableData = filteredTableData;
                 var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.92rem; border-top: 2px solid #0d6efd;">';
                 for (var j = 0; j < tableCols.length; j++) {
@@ -1069,7 +1554,7 @@ div.dt-button-collection button.dt-button:hover {
                 scrollX: false,
                 autoWidth: false,
                 footerCallback: function(row, data, start, end, display) {
-                    if (relIndice === '02') {
+                    if (relIndice === '02' || relIndice === '03' || relIndice === '04') {
                         var api = this.api();
                         var intVal = function(i) {
                             if (typeof i === 'number') return i;
@@ -1079,9 +1564,10 @@ div.dt-button-collection button.dt-button:hover {
                             }
                             return 0;
                         };
+                        var startCol = (relIndice === '02') ? 2 : 5;
 
                         api.columns().every(function(colIdx) {
-                            if (colIdx >= 2) {
+                            if (colIdx >= startCol) {
                                 // Soma global de todas as páginas para as linhas aplicadas (mesmo que em outras páginas)
                                 var globalTotal = api.column(colIdx, { search: 'applied' }).data().reduce(function(a, b) {
                                     return intVal(a) + intVal(b);
@@ -1174,15 +1660,20 @@ div.dt-button-collection button.dt-button:hover {
                 initComplete: function() {
                     window.initExcelFilters(this.api());
                     
-                    if (relIndice === '15') {
+                    if (relIndice === '03' || relIndice === '15') {
+                        var maxCols = (relIndice === '03') ? 5 : 4;
                         function fixarColunasSticky() {
                             var leftOffset = 0;
-                            for (var i = 1; i <= 4; i++) {
+                            for (var i = 1; i <= maxCols; i++) {
                                 var $th = $('#tabela-dinamica thead th:nth-child(' + i + ')');
-                                var w = $th.outerWidth();
-                                $('#tabela-dinamica th:nth-child(' + i + '), #tabela-dinamica td:nth-child(' + i + ')')
-                                    .css('left', leftOffset + 'px');
-                                leftOffset += w;
+                                if ($th.length && $th.is(':visible')) {
+                                    var w = $th.outerWidth();
+                                    var targetNodes = document.querySelectorAll('#tabela-dinamica th:nth-child(' + i + '), #tabela-dinamica td:nth-child(' + i + ')');
+                                    for (var n = 0; n < targetNodes.length; n++) {
+                                        targetNodes[n].style.setProperty('left', leftOffset + 'px', 'important');
+                                    }
+                                    leftOffset += w;
+                                }
                             }
                         }
                         fixarColunasSticky();
