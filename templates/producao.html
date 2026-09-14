@@ -322,7 +322,15 @@ div.dt-button-collection button.dt-button:hover {
             <!-- Tabela 3: Consolidado de Ações por CBO -->
             <div class="col-12 d-none" id="container-raas-acoes">
                 <div class="card shadow-sm p-3 border-info border-top border-3">
-                    <h4 class="text-info mb-3"><i class="bi bi-list-check me-2"></i>Série Histórica - Consolidado de Ações por CBO e Procedimento</h4>
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <h4 class="text-info mb-0"><i class="bi bi-list-check me-2"></i>Série Histórica - Consolidado de Ações por CBO e Procedimento</h4>
+                        <div class="d-flex align-items-center gap-2">
+                            <label class="form-label mb-0 small fw-bold text-muted" for="filtro-caps-acoes"><i class="bi bi-funnel me-1"></i>Filtrar Estabelecimento:</label>
+                            <select id="filtro-caps-acoes" class="form-select form-select-sm" style="min-width: 260px;">
+                                <option value="">Todos os Estabelecimentos</option>
+                            </select>
+                        </div>
+                    </div>
                     <table id="tabela-raas-acoes" class="table table-sm table-bordered w-100 small">
                     </table>
                 </div>
@@ -1111,13 +1119,6 @@ div.dt-button-collection button.dt-button:hover {
         text-align: center !important;
         width: 100px !important;
     }
-    #tabela-dinamica thead th:nth-child(6) {
-        background-color: #f1f5f9 !important;
-    }
-    #tabela-dinamica tbody td:nth-child(6) {
-        background-color: #fcfdfd !important;
-        font-weight: 500 !important;
-    }
 
     /* Rodapé de Totais */
     #tabela-dinamica tfoot th {
@@ -1133,6 +1134,311 @@ div.dt-button-collection button.dt-button:hover {
         text-align: center !important;
         font-size: 0.80rem !important;
         color: #084298 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '05' %}
+<style>
+    /* =================================================== */
+    /* ESTILIZAÇÃO PADRÃO RELATÓRIO 05 (RAAS CAPS)        */
+    /* =================================================== */
+
+    /* Remove setas de ordenação nativas do DataTables em todas as tabelas do 05 */
+    #tabela-raas-pacientes thead th:before, #tabela-raas-pacientes thead th:after,
+    #tabela-raas-prof thead th:before, #tabela-raas-prof thead th:after,
+    #tabela-raas-acoes thead th:before, #tabela-raas-acoes thead th:after {
+        display: none !important;
+    }
+    #tabela-raas-pacientes thead th.sorting, #tabela-raas-pacientes thead th.sorting_asc, #tabela-raas-pacientes thead th.sorting_desc,
+    #tabela-raas-prof thead th.sorting, #tabela-raas-prof thead th.sorting_asc, #tabela-raas-prof thead th.sorting_desc,
+    #tabela-raas-acoes thead th.sorting, #tabela-raas-acoes thead th.sorting_asc, #tabela-raas-acoes thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* --------------------------------------------------- */
+    /* 1. TABELA DE QUANTIDADE DE PACIENTES                */
+    /* --------------------------------------------------- */
+    #tabela-raas-pacientes {
+        width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }
+    #tabela-raas-pacientes thead th {
+        background-color: #f8f9fa !important;
+        vertical-align: middle !important;
+        padding: 6px 8px !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        color: #212529 !important;
+        border-bottom: 2px solid #dee2e6 !important;
+    }
+    #tabela-raas-pacientes thead th .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-raas-pacientes thead th .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+    }
+    #tabela-raas-pacientes thead th .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
+    }
+    #tabela-raas-pacientes thead th .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+    #tabela-raas-pacientes tbody td {
+        font-size: 0.76rem !important;
+        line-height: 1.25 !important;
+        padding: 4px 8px !important;
+        vertical-align: middle !important;
+        border-bottom: 1px solid #e9ecef !important;
+    }
+    #tabela-raas-pacientes th:nth-child(1), #tabela-raas-pacientes td:nth-child(1) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        min-width: 200px !important;
+    }
+    #tabela-raas-pacientes th:nth-child(n+2), #tabela-raas-pacientes td:nth-child(n+2) {
+        text-align: center !important;
+        min-width: 55px !important;
+    }
+    #tabela-raas-pacientes thead th:last-child, #tabela-raas-pacientes tbody td:last-child {
+        min-width: 70px !important;
+        font-weight: bold !important;
+        color: #0d6efd !important;
+        background-color: #f1f5f9 !important;
+        border-left: 2px solid #dee2e6 !important;
+    }
+    #tabela-raas-pacientes tbody tr:last-child td {
+        background-color: #cfe2ff !important;
+        font-weight: bold !important;
+        color: #084298 !important;
+        border-top: 2px solid #0d6efd !important;
+    }
+
+    /* --------------------------------------------------- */
+    /* 2. TABELA DE PRODUÇÃO POR PROFISSIONAL (RAAS_PROF)  */
+    /* --------------------------------------------------- */
+    #tabela-raas-prof {
+        width: max-content !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        table-layout: fixed !important;
+    }
+    /* 5 Colunas de Identificação Congeladas */
+    #tabela-raas-prof th:nth-child(1), #tabela-raas-prof td:nth-child(1) {
+        width: 140px !important; min-width: 140px !important; max-width: 140px !important;
+        position: sticky !important; left: 0px !important; box-sizing: border-box !important;
+        white-space: normal !important; line-height: 1.2 !important; word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-raas-prof th:nth-child(2), #tabela-raas-prof td:nth-child(2) {
+        width: 125px !important; min-width: 125px !important; max-width: 125px !important;
+        position: sticky !important; left: 140px !important; box-sizing: border-box !important;
+        white-space: normal !important; line-height: 1.2 !important; word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-raas-prof th:nth-child(3), #tabela-raas-prof td:nth-child(3) {
+        width: 125px !important; min-width: 125px !important; max-width: 125px !important;
+        position: sticky !important; left: 265px !important; box-sizing: border-box !important;
+        white-space: normal !important; line-height: 1.2 !important; word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-raas-prof th:nth-child(4), #tabela-raas-prof td:nth-child(4) {
+        width: 95px !important; min-width: 95px !important; max-width: 95px !important;
+        position: sticky !important; left: 390px !important; box-sizing: border-box !important;
+        text-align: center !important; border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-raas-prof th:nth-child(5), #tabela-raas-prof td:nth-child(5) {
+        width: 180px !important; min-width: 180px !important; max-width: 180px !important;
+        position: sticky !important; left: 485px !important; box-sizing: border-box !important;
+        white-space: normal !important; line-height: 1.2 !important; word-break: break-word !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+
+    #tabela-raas-prof thead th:nth-child(-n+5) {
+        z-index: 5 !important; background-color: #f8f9fa !important; vertical-align: middle !important;
+        padding: 4px 6px !important; height: 105px !important; box-sizing: border-box !important;
+    }
+    #tabela-raas-prof tbody td:nth-child(-n+5) {
+        z-index: 2 !important; background-color: #ffffff !important; padding: 3px 6px !important;
+        font-size: 0.74rem !important;
+    }
+    #tabela-raas-prof tfoot th:nth-child(-n+5) {
+        z-index: 5 !important; background-color: #cfe2ff !important; padding: 4px 6px !important;
+    }
+    #tabela-raas-prof thead th:nth-child(-n+5) .header-excel-container {
+        display: flex !important; align-items: center !important; justify-content: space-between !important;
+        width: 100% !important; height: 100% !important; gap: 4px !important;
+    }
+    #tabela-raas-prof thead th:nth-child(-n+5) .header-text {
+        font-size: 0.76rem !important; font-weight: 600 !important; line-height: 1.2 !important; color: #212529 !important;
+    }
+    #tabela-raas-prof thead th:nth-child(-n+5) .btn-excel-filter {
+        display: inline-flex !important; align-items: center !important; justify-content: center !important;
+        color: #6c757d !important; font-size: 0.82rem !important; cursor: pointer !important; flex-shrink: 0 !important; padding: 2px !important;
+    }
+    #tabela-raas-prof thead th:nth-child(-n+5) .btn-excel-filter:hover { color: #0d6efd !important; }
+    #tabela-raas-prof thead th:nth-child(4) .header-text { text-align: center !important; font-size: 0.74rem !important; line-height: 1.15 !important; }
+
+    /* Períodos na Vertical para RAAS_PROF (col 6 em diante) */
+    #tabela-raas-prof thead th:nth-child(n+6) {
+        vertical-align: bottom !important; text-align: center !important; padding: 6px 2px 4px 2px !important;
+        height: 105px !important; min-width: 42px !important; max-width: 46px !important; width: 42px !important;
+        box-sizing: border-box !important; background-color: #f8f9fa !important;
+    }
+    #tabela-raas-prof thead th:nth-child(n+6) .header-excel-container {
+        display: flex !important; flex-direction: column !important; align-items: center !important;
+        justify-content: flex-end !important; height: 100% !important; width: 100% !important; padding: 0 !important; gap: 6px !important;
+    }
+    #tabela-raas-prof thead th:nth-child(n+6) .header-text {
+        writing-mode: vertical-rl !important; transform: rotate(180deg) !important; white-space: nowrap !important;
+        text-align: left !important; font-size: 0.74rem !important; font-weight: 600 !important; letter-spacing: 0.2px !important;
+        color: #212529 !important; display: inline-block !important; margin-top: auto !important; margin-bottom: 2px !important;
+    }
+    #tabela-raas-prof thead th:nth-child(n+6) .btn-excel-filter {
+        margin-top: auto !important; margin-bottom: 2px !important; color: #6c757d !important; font-size: 0.80rem !important;
+        display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 1px !important;
+    }
+    #tabela-raas-prof tbody td:nth-child(n+6) {
+        text-align: center !important; font-size: 0.74rem !important; min-width: 42px !important; max-width: 46px !important;
+        width: 42px !important; padding: 3px 2px !important; white-space: nowrap !important; box-sizing: border-box !important;
+    }
+    #tabela-raas-prof tfoot th:nth-child(n+6) {
+        text-align: center !important; font-size: 0.76rem !important; min-width: 42px !important; max-width: 46px !important;
+        width: 42px !important; padding: 4px 2px !important; background-color: #cfe2ff !important; box-sizing: border-box !important;
+    }
+    #tabela-raas-prof thead th:last-child, #tabela-raas-prof tbody td:last-child {
+        min-width: 50px !important; max-width: 54px !important; width: 50px !important;
+        border-left: 2px solid #dee2e6 !important; color: #0d6efd !important; font-weight: bold !important;
+    }
+    #tabela-raas-prof thead th:last-child { background-color: #f1f5f9 !important; }
+    #tabela-raas-prof tbody td:last-child { background-color: #f8f9fa !important; }
+    #tabela-raas-prof tfoot th:last-child {
+        min-width: 50px !important; max-width: 54px !important; width: 50px !important;
+        background-color: #cfe2ff !important; border-left: 2px solid #0d6efd !important; color: #0d6efd !important; font-weight: bold !important;
+    }
+
+    /* --------------------------------------------------- */
+    /* 3. TABELA DE AÇÕES POR CBO (CONS_ACOES)             */
+    /* --------------------------------------------------- */
+    #tabela-raas-acoes {
+        width: max-content !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        table-layout: fixed !important;
+    }
+    /* 1 Coluna de Identificação Hierárquica Congelada (ESTABELECIMENTO / CBO / AÇÃO) */
+    #tabela-raas-acoes th:nth-child(1), #tabela-raas-acoes td:nth-child(1) {
+        width: 320px !important; min-width: 320px !important; max-width: 380px !important;
+        position: sticky !important; left: 0px !important; box-sizing: border-box !important;
+        white-space: normal !important; line-height: 1.25 !important; word-break: break-word !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+
+    #tabela-raas-acoes thead th:nth-child(1) {
+        z-index: 5 !important; background-color: #f8f9fa !important; vertical-align: middle !important;
+        padding: 4px 8px !important; height: 105px !important; box-sizing: border-box !important;
+    }
+    #tabela-raas-acoes tbody td:nth-child(1) {
+        z-index: 2 !important; padding: 3px 8px !important;
+        font-size: 0.75rem !important;
+    }
+    #tabela-raas-acoes tfoot th:nth-child(1) {
+        z-index: 5 !important; background-color: #cfe2ff !important; padding: 4px 8px !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(1) .header-excel-container {
+        display: flex !important; align-items: center !important; justify-content: space-between !important;
+        width: 100% !important; height: 100% !important; gap: 4px !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(1) .header-text {
+        font-size: 0.78rem !important; font-weight: 700 !important; line-height: 1.2 !important; color: #212529 !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(1) .btn-excel-filter {
+        display: inline-flex !important; align-items: center !important; justify-content: center !important;
+        color: #6c757d !important; font-size: 0.82rem !important; cursor: pointer !important; flex-shrink: 0 !important; padding: 2px !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(1) .btn-excel-filter:hover { color: #0d6efd !important; }
+
+    /* Períodos na Vertical para CONS_ACOES (col 2 em diante) */
+    #tabela-raas-acoes thead th:nth-child(n+2) {
+        vertical-align: bottom !important; text-align: center !important; padding: 6px 2px 4px 2px !important;
+        height: 105px !important; min-width: 42px !important; max-width: 46px !important; width: 42px !important;
+        box-sizing: border-box !important; background-color: #f8f9fa !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(n+2) .header-excel-container {
+        display: flex !important; flex-direction: column !important; align-items: center !important;
+        justify-content: flex-end !important; height: 100% !important; width: 100% !important; padding: 0 !important; gap: 6px !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(n+2) .header-text {
+        writing-mode: vertical-rl !important; transform: rotate(180deg) !important; white-space: nowrap !important;
+        text-align: left !important; font-size: 0.74rem !important; font-weight: 600 !important; letter-spacing: 0.2px !important;
+        color: #212529 !important; display: inline-block !important; margin-top: auto !important; margin-bottom: 2px !important;
+    }
+    #tabela-raas-acoes thead th:nth-child(n+2) .btn-excel-filter {
+        margin-top: auto !important; margin-bottom: 2px !important; color: #6c757d !important; font-size: 0.80rem !important;
+        display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 1px !important;
+    }
+    #tabela-raas-acoes tbody td:nth-child(n+2) {
+        text-align: center !important; font-size: 0.74rem !important; min-width: 42px !important; max-width: 46px !important;
+        width: 42px !important; padding: 3px 2px !important; white-space: nowrap !important; box-sizing: border-box !important;
+    }
+    #tabela-raas-acoes tfoot th:nth-child(n+2) {
+        text-align: center !important; font-size: 0.76rem !important; min-width: 42px !important; max-width: 46px !important;
+        width: 42px !important; padding: 4px 2px !important; background-color: #cfe2ff !important; box-sizing: border-box !important;
+    }
+    #tabela-raas-acoes thead th:last-child, #tabela-raas-acoes tbody td:last-child {
+        min-width: 52px !important; max-width: 58px !important; width: 52px !important;
+        border-left: 2px solid #dee2e6 !important; color: #0d6efd !important; font-weight: bold !important;
+    }
+    #tabela-raas-acoes thead th:last-child { background-color: #f1f5f9 !important; }
+    #tabela-raas-acoes tbody td:last-child { background-color: #f8f9fa !important; }
+    #tabela-raas-acoes tfoot th:last-child {
+        min-width: 52px !important; max-width: 58px !important; width: 52px !important;
+        background-color: #cfe2ff !important; border-left: 2px solid #0d6efd !important; color: #0d6efd !important; font-weight: bold !important;
+    }
+
+    /* Estilização das Linhas Especiais do Relatório 05 (Ações por CBO) */
+    #tabela-raas-acoes tr.linha-unidade-raas td {
+        background-color: #2c4373 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        font-size: 0.80rem !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.4px !important;
+        border-top: 2px solid #1a2a4c !important;
+        border-bottom: 2px solid #1a2a4c !important;
+    }
+    #tabela-raas-acoes tr.linha-cbo-total td {
+        background-color: #d9e2f3 !important;
+        color: #1a202c !important;
+        font-weight: 700 !important;
+        font-size: 0.76rem !important;
+        border-top: 1px solid #b8cce4 !important;
+        border-bottom: 1px solid #b8cce4 !important;
+    }
+    #tabela-raas-acoes tr.linha-procedimento-raas td {
+        background-color: #ffffff !important;
+        font-size: 0.74rem !important;
+        color: #2b2b2b !important;
+        border-bottom: 1px solid #f1f3f5 !important;
+    }
+    #tabela-raas-acoes tr.linha-procedimento-raas:hover td {
+        background-color: #f8f9fa !important;
     }
 </style>
 {% endif %}
@@ -1160,90 +1466,359 @@ div.dt-button-collection button.dt-button:hover {
 </style>
 {% endif %}
 
-{% if relatorio_selecionado in ['06', '07'] %}
+{% if relatorio_selecionado == '06' %}
 <style>
-    /* Cabeçalho estilo Painel de Monitoramento */
+    /* Otimização visual Relatório 06 (Painel de Monitoramento STS Penha) */
+    #tabela-dinamica {
+        width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }
+
+    /* Remove setas padrão de ordenação que poluem o cabeçalho */
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* Cabeçalhos padronizados */
     #tabela-dinamica thead th {
-        background-color: #2b579a !important;
-        color: #ffffff !important;
-        text-align: center;
-        font-weight: 600;
-        vertical-align: middle;
-        border: 1px solid #1a3c70 !important;
-        padding: 6px 4px !important;
-        font-size: 0.85rem;
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        vertical-align: middle !important;
+        padding: 6px 8px !important;
+        font-size: 0.78rem !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid #dee2e6 !important;
     }
-    #tabela-dinamica thead th select {
-        font-size: 0.75rem;
-        padding: 2px 4px;
-        margin-top: 4px;
+    #tabela-dinamica thead th .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 4px !important;
     }
-    {% if relatorio_selecionado == '07' %}
-    #tabela-dinamica thead th:nth-child(1) {
-        text-align: left;
-        min-width: 220px !important;
-        max-width: 300px !important;
-        white-space: normal !important;
+    #tabela-dinamica thead th .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
     }
-    #tabela-dinamica thead th:nth-child(2) {
-        text-align: left;
-        min-width: 260px !important;
-        max-width: 380px !important;
-        white-space: normal !important;
+    #tabela-dinamica thead th .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
     }
-    #tabela-dinamica tbody td:nth-child(1) {
-        padding: 6px 10px !important;
-        white-space: normal !important;
-        text-align: left;
-        font-weight: 600;
-        font-size: 0.82rem;
+    #tabela-dinamica thead th .btn-excel-filter:hover {
+        color: #0d6efd !important;
     }
-    #tabela-dinamica tbody td:nth-child(2) {
-        padding: 6px 10px !important;
-        white-space: normal !important;
-        text-align: left;
-        font-weight: 500;
-        font-size: 0.82rem;
+
+    /* Células do corpo */
+    #tabela-dinamica tbody td {
+        padding: 4px 6px !important;
+        vertical-align: middle !important;
+        text-align: center !important;
+        border-bottom: 1px solid #e9ecef !important;
+        font-size: 0.76rem !important;
     }
-    {% else %}
-    #tabela-dinamica thead th:first-child {
-        text-align: left;
+
+    /* Coluna 1: Indicadores */
+    #tabela-dinamica th:first-child, #tabela-dinamica td:first-child {
+        text-align: left !important;
         min-width: 280px !important;
         max-width: 420px !important;
         white-space: normal !important;
+        line-height: 1.25 !important;
+        font-weight: 500 !important;
     }
-    #tabela-dinamica tbody td:first-child {
-        padding: 6px 10px !important;
-        white-space: normal !important;
-        text-align: left;
-        font-weight: 500;
+
+    /* Colunas Mensais */
+    #tabela-dinamica th:nth-child(n+2):not(:last-child),
+    #tabela-dinamica td:nth-child(n+2):not(:last-child) {
+        text-align: center !important;
+        min-width: 55px !important;
     }
-    {% endif %}
-    #tabela-dinamica tbody td {
-        padding: 0 !important;
-        vertical-align: middle;
-        text-align: center;
-        border: 1px solid #dee2e6;
-        font-size: 0.85rem;
+
+    /* Coluna Desempenho (última coluna) */
+    #tabela-dinamica thead th:last-child {
+        min-width: 130px !important;
+        text-align: center !important;
+        background-color: #f1f5f9 !important;
+        border-left: 2px solid #dee2e6 !important;
     }
+    #tabela-dinamica tbody td:last-child {
+        min-width: 130px !important;
+        text-align: center !important;
+        background-color: #fcfdfd !important;
+        border-left: 2px solid #dee2e6 !important;
+    }
+
+    /* Padrão de Faixa / Badge para Indicadores */
     .pm-cell {
-        width: 100%;
-        height: 100%;
-        min-height: 32px;
-        padding: 6px 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        box-sizing: border-box;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+        padding: 2px 6px !important;
+        min-height: 22px !important;
+        height: 22px !important;
+        border-radius: 4px !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+        box-sizing: border-box !important;
+        line-height: 1 !important;
     }
-    .pm-green {
+    .pm-cell.pm-green {
         background-color: #d1e7dd !important;
         color: #0f5132 !important;
+        border: 1px solid #b7dfca !important;
     }
-    .pm-red {
+    .pm-cell.pm-red {
         background-color: #f8d7da !important;
         color: #842029 !important;
+        border: 1px solid #f1aeb5 !important;
+    }
+    #tabela-dinamica td:last-child .pm-cell {
+        height: auto !important;
+        min-height: 22px !important;
+        padding: 3px 8px !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '07' %}
+<style>
+    /* Otimização visual Relatório 07 (Painel de Monitoramento por Subprefeitura / Unidade): Colunas Fixas e Períodos Verticais */
+    #tabela-dinamica {
+        width: max-content !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        table-layout: fixed !important;
+    }
+
+    /* Remove setas padrão de ordenação que poluem o cabeçalho */
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* 2 Colunas de Identificação Congeladas (Sticky) */
+    /* Coluna 1: Estabelecimento */
+    #tabela-dinamica th:nth-child(1), #tabela-dinamica td:nth-child(1) {
+        width: 180px !important;
+        min-width: 180px !important;
+        max-width: 180px !important;
+        position: sticky !important;
+        left: 0px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: Indicadores */
+    #tabela-dinamica th:nth-child(2), #tabela-dinamica td:nth-child(2) {
+        width: 260px !important;
+        min-width: 260px !important;
+        max-width: 260px !important;
+        position: sticky !important;
+        left: 180px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.25 !important;
+        word-break: break-word !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+
+    /* Z-index e background para elementos sticky das 2 colunas */
+    #tabela-dinamica thead th:nth-child(-n+2) {
+        z-index: 5 !important;
+        background-color: #f8f9fa !important;
+        vertical-align: middle !important;
+        padding: 4px 6px !important;
+        height: 105px !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica tbody td:nth-child(-n+2) {
+        z-index: 2 !important;
+        background-color: #ffffff !important;
+        padding: 4px 8px !important;
+        font-size: 0.74rem !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+2) .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        height: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+2) .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+        color: #212529 !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+2) .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+2) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Colunas Mensais na Vertical (col 3 a 14) */
+    #tabela-dinamica thead th:nth-child(n+3):not(:last-child) {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 6px 2px 4px 2px !important;
+        height: 105px !important;
+        min-width: 42px !important;
+        max-width: 46px !important;
+        width: 42px !important;
+        box-sizing: border-box !important;
+        background-color: #f8f9fa !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+3):not(:last-child) .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+3):not(:last-child) .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+3):not(:last-child) .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+        font-size: 0.80rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 1px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(n+3):not(:last-child) {
+        text-align: center !important;
+        font-size: 0.74rem !important;
+        min-width: 42px !important;
+        max-width: 46px !important;
+        width: 42px !important;
+        padding: 3px 2px !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+        border-bottom: 1px solid #e9ecef !important;
+    }
+
+    /* Coluna Desempenho (última coluna) */
+    #tabela-dinamica thead th:last-child {
+        min-width: 130px !important;
+        width: 130px !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        background-color: #f1f5f9 !important;
+        border-left: 2px solid #dee2e6 !important;
+        height: 105px !important;
+    }
+    #tabela-dinamica thead th:last-child .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 4px !important;
+        width: 100% !important;
+    }
+    #tabela-dinamica thead th:last-child .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+    }
+    #tabela-dinamica thead th:last-child .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        padding: 2px !important;
+    }
+    #tabela-dinamica tbody td:last-child {
+        min-width: 130px !important;
+        width: 130px !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        background-color: #fcfdfd !important;
+        border-left: 2px solid #dee2e6 !important;
+        border-bottom: 1px solid #e9ecef !important;
+        padding: 4px 6px !important;
+    }
+
+    /* Padrão de Faixa / Badge para Indicadores */
+    .pm-cell {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+        padding: 2px 5px !important;
+        min-height: 22px !important;
+        height: 22px !important;
+        border-radius: 4px !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+        box-sizing: border-box !important;
+        line-height: 1 !important;
+    }
+    .pm-cell.pm-green {
+        background-color: #d1e7dd !important;
+        color: #0f5132 !important;
+        border: 1px solid #b7dfca !important;
+    }
+    .pm-cell.pm-red {
+        background-color: #f8d7da !important;
+        color: #842029 !important;
+        border: 1px solid #f1aeb5 !important;
+    }
+    #tabela-dinamica td:last-child .pm-cell {
+        height: auto !important;
+        min-height: 22px !important;
+        padding: 3px 8px !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
     }
 </style>
 {% endif %}
@@ -1660,8 +2235,8 @@ div.dt-button-collection button.dt-button:hover {
                 initComplete: function() {
                     window.initExcelFilters(this.api());
                     
-                    if (relIndice === '03' || relIndice === '15') {
-                        var maxCols = (relIndice === '03') ? 5 : 4;
+                    if (relIndice === '03' || relIndice === '15' || relIndice === '07') {
+                        var maxCols = (relIndice === '03') ? 5 : ((relIndice === '07') ? 2 : 4);
                         function fixarColunasSticky() {
                             var leftOffset = 0;
                             for (var i = 1; i <= maxCols; i++) {
@@ -1791,18 +2366,53 @@ div.dt-button-collection button.dt-button:hover {
             var tData = JSON.parse(dadosJson || '[]');
             var tCols = JSON.parse(colunasJson || '[]');
             if (tData.length === 0 || tCols.length === 0) return;
+
+            // Quebras de títulos nas colunas de identificação para prof e acoes
+            if (tabelaId === '#tabela-raas-prof') {
+                for (var c = 0; c < tCols.length; c++) {
+                    if (tCols[c].data === 'CBO / Especialidade' || tCols[c].data === 'DESCR_CBO') {
+                        tCols[c].title = 'CBO /<br>Especialidade';
+                    }
+                    if (tCols[c].data === 'Código de Procedimento' || tCols[c].data === 'COD_PROCEDIMENTO') {
+                        tCols[c].title = 'Código de<br>Procedimento';
+                    }
+                }
+
+                // Linha de Rodapé com Totais para Produção por Profissional
+                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
+                tfootHtml += '<th class="text-center">TOTAL</th>';
+                for (var k = 1; k < 4; k++) {
+                    tfootHtml += '<th></th>';
+                }
+                tfootHtml += '<th class="text-start">Total Geral</th>';
+                for (var f = 5; f < tCols.length; f++) {
+                    tfootHtml += '<th class="text-center"></th>';
+                }
+                tfootHtml += '</tr></tfoot>';
+                $(tabelaId).append(tfootHtml);
+            } else if (tabelaId === '#tabela-raas-acoes') {
+                // Linha de Rodapé com Totais para Ações por CBO
+                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
+                tfootHtml += '<th class="text-start">TOTAL GERAL CAPS</th>';
+                for (var f = 1; f < tCols.length; f++) {
+                    tfootHtml += '<th class="text-center"></th>';
+                }
+                tfootHtml += '</tr></tfoot>';
+                $(tabelaId).append(tfootHtml);
+            }
             
-            $(tabelaId).DataTable({
+            var dtInstance = $(tabelaId).DataTable({
                 data: tData,
                 columns: tCols,
+                order: [],
                 deferRender: true,
                 scrollX: false,
                 autoWidth: false,
                 language: {
                     url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
                 },
-                pageLength: 50,
-                lengthMenu: [10, 25, 50, 100],
+                pageLength: (tabelaId === '#tabela-raas-pacientes') ? 25 : (tabelaId === '#tabela-raas-acoes' ? 100 : 50),
+                lengthMenu: [10, 25, 50, 100, 200],
                 dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
                      '<"table-responsive"t>' +
                      '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
@@ -1828,8 +2438,122 @@ div.dt-button-collection button.dt-button:hover {
                         }
                     }
                 ],
+                createdRow: function(row, data, dataIndex) {
+                    if (tabelaId === '#tabela-raas-acoes') {
+                        var tipo = data['_tipo_linha'];
+                        var estab = data['_estabelecimento'];
+                        if (estab) {
+                            $(row).attr('data-estabelecimento', estab);
+                        }
+                        if (tipo === 'unidade') {
+                            $(row).addClass('linha-unidade-raas');
+                            $('td', row).eq(0).html('<i class="bi bi-hospital me-2"></i>' + data['ESTABELECIMENTO']);
+                        } else if (tipo === 'cbo') {
+                            $(row).addClass('linha-cbo-total');
+                            $('td', row).eq(0).html('<strong>' + data['ESTABELECIMENTO'] + '</strong>');
+                            $('td', row).addClass('fw-bold');
+                        } else if (tipo === 'procedimento') {
+                            $(row).addClass('linha-procedimento-raas');
+                            $('td', row).eq(0).html('<span class="ps-3">&bull;&nbsp;' + data['ESTABELECIMENTO'] + '</span>');
+                        }
+                    }
+                },
+                footerCallback: function(row, data, start, end, display) {
+                    var api = this.api();
+                    var intVal = function(i) {
+                        if (typeof i === 'number') return i;
+                        if (typeof i === 'string') {
+                            var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                            return isNaN(n) ? 0 : n;
+                        }
+                        return 0;
+                    };
+
+                    if (tabelaId === '#tabela-raas-prof') {
+                        var startCol = 5;
+                        api.columns().every(function(colIdx) {
+                            if (colIdx >= startCol) {
+                                var globalTotal = api.column(colIdx, { search: 'applied' }).data().reduce(function(a, b) {
+                                    return intVal(a) + intVal(b);
+                                }, 0);
+                                $(this.footer()).text(globalTotal.toLocaleString('pt-BR'));
+                            }
+                        });
+                    } else if (tabelaId === '#tabela-raas-acoes') {
+                        // Para Ações por CBO, somamos apenas as linhas de CBO para obter o total real sem duplicidade
+                        api.columns().every(function(colIdx) {
+                            if (colIdx >= 1) {
+                                var colDataSrc = api.column(colIdx).dataSrc();
+                                var totalCbo = 0;
+                                api.rows({ search: 'applied' }).every(function() {
+                                    var rData = this.data();
+                                    if (rData && rData['_tipo_linha'] === 'cbo') {
+                                        totalCbo += intVal(rData[colDataSrc]);
+                                    }
+                                });
+                                $(this.footer()).text(totalCbo > 0 ? totalCbo.toLocaleString('pt-BR') : '-');
+                            }
+                        });
+                    }
+                },
                 initComplete: function() {
                     window.initExcelFilters(this.api());
+
+                    if (tabelaId === '#tabela-raas-acoes') {
+                        // Dropdown de Filtro de Estabelecimentos para Ações por CBO
+                        var $filtroCaps = $('#filtro-caps-acoes');
+                        if ($filtroCaps.length) {
+                            var distinctEstabs = [];
+                            for (var i = 0; i < tData.length; i++) {
+                                var e = tData[i]['_estabelecimento'];
+                                if (e && distinctEstabs.indexOf(e) === -1) {
+                                    distinctEstabs.push(e);
+                                }
+                            }
+                            distinctEstabs.sort();
+                            $filtroCaps.empty().append('<option value="">Todos os Estabelecimentos</option>');
+                            for (var j = 0; j < distinctEstabs.length; j++) {
+                                $filtroCaps.append('<option value="' + distinctEstabs[j] + '">' + distinctEstabs[j] + '</option>');
+                            }
+
+                            // Filtro customizado DataTables
+                            $.fn.dataTable.ext.search.push(function(settings, searchData, index, rowData) {
+                                if (settings.nTable.id !== 'tabela-raas-acoes') return true;
+                                var selEstab = $('#filtro-caps-acoes').val();
+                                if (!selEstab) return true;
+                                return rowData && rowData['_estabelecimento'] === selEstab;
+                            });
+
+                            $filtroCaps.off('change').on('change', function() {
+                                dtInstance.draw();
+                            });
+                        }
+                    }
+
+                    if (tabelaId === '#tabela-raas-prof') {
+                        var maxCols = 5;
+                        function fixarColunasSticky() {
+                            var leftOffset = 0;
+                            for (var i = 1; i <= maxCols; i++) {
+                                var $th = $(tabelaId + ' thead th:nth-child(' + i + ')');
+                                if ($th.length && $th.is(':visible')) {
+                                    var w = $th.outerWidth();
+                                    var targetNodes = document.querySelectorAll(tabelaId + ' th:nth-child(' + i + '), ' + tabelaId + ' td:nth-child(' + i + ')');
+                                    for (var n = 0; n < targetNodes.length; n++) {
+                                        targetNodes[n].style.setProperty('left', leftOffset + 'px', 'important');
+                                    }
+                                    leftOffset += w;
+                                }
+                            }
+                        }
+                        fixarColunasSticky();
+                        setTimeout(fixarColunasSticky, 50);
+                        setTimeout(fixarColunasSticky, 300);
+                        $(window).on('resize', fixarColunasSticky);
+                        $(tabelaId).on('draw.dt column-visibility.dt', function() {
+                            setTimeout(fixarColunasSticky, 30);
+                        });
+                    }
                 }
             });
         }
