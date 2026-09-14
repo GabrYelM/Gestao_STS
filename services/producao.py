@@ -1319,7 +1319,7 @@ def gera_relatorio_05(periodo):
             pivot_pac = pd.concat([pivot_pac, pd.DataFrame([linha_total])])
 
             pivot_pac.rename(columns=mapa_rotulos, inplace=True)
-            pivot_pac.index.name = 'ESTABELECIMENTO'
+            pivot_pac.index.name = 'Estabelecimento'
             pivot_pac.columns.name = None
             df_pacientes = pivot_pac.reset_index().astype(object)
         else:
@@ -1353,7 +1353,7 @@ def gera_relatorio_05(periodo):
             pivot_prof = pivot_prof[cols_meses_prof]
             pivot_prof['Total Geral'] = pivot_prof.sum(axis=1)
             pivot_prof.rename(columns=mapa_rotulos, inplace=True)
-            pivot_prof.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'NOME_PROF', 'COD_PROCEDIMENTO', 'PROCEDIMENTO']
+            pivot_prof.index.names = ['Estabelecimento', 'CBO / Especialidade', 'Profissional', 'Código de Procedimento', 'Procedimento']
             pivot_prof.columns.name = None
             df_profissionais = pivot_prof.reset_index().astype(object)
         else:
@@ -1376,19 +1376,74 @@ def gera_relatorio_05(periodo):
 
             pivot_acoes = pd.pivot_table(
                 df_acoes_raw,
-                index=['estabelecimento', 'descr_cbo', 'cod_acao', 'procedimento'],
+                index=['estabelecimento', 'descr_cbo', 'procedimento'],
                 columns='ano_mes',
                 values='quantidade',
                 aggfunc='sum',
                 fill_value=0
             )
-            cols_meses_acoes = [m for m in meses_lista if m in pivot_acoes.columns]
-            pivot_acoes = pivot_acoes[cols_meses_acoes]
+            for m in meses_lista:
+                if m not in pivot_acoes.columns:
+                    pivot_acoes[m] = 0
+            pivot_acoes = pivot_acoes[meses_lista]
             pivot_acoes['Total Geral'] = pivot_acoes.sum(axis=1)
             pivot_acoes.rename(columns=mapa_rotulos, inplace=True)
-            pivot_acoes.index.names = ['ESTABELECIMENTO', 'DESCR_CBO', 'COD_PROCEDIMENTO', 'PROCEDIMENTO']
-            pivot_acoes.columns.name = None
-            df_acoes = pivot_acoes.reset_index().astype(object)
+            cols_meses_formatados = [mapa_rotulos[m] for m in meses_lista]
+
+            rows_acoes = []
+            estabelecimentos = sorted(df_acoes_raw['estabelecimento'].unique())
+            for estab in estabelecimentos:
+                if estab not in pivot_acoes.index:
+                    continue
+                sub_df = pivot_acoes.loc[estab]
+                if sub_df.empty:
+                    continue
+
+                # Linha da Unidade (Cabeçalho do Estabelecimento)
+                row_estab = {
+                    'ESTABELECIMENTO': estab,
+                    '_estabelecimento': estab,
+                    '_tipo_linha': 'unidade'
+                }
+                for col in cols_meses_formatados + ['Total Geral']:
+                    row_estab[col] = ''
+                rows_acoes.append(row_estab)
+
+                # Subtotais por CBO e Procedimentos
+                cbos = sorted(sub_df.index.get_level_values(0).unique())
+                for cbo in cbos:
+                    cbo_df = sub_df.loc[cbo]
+                    if isinstance(cbo_df, pd.Series):
+                        cbo_df = cbo_df.to_frame().T
+
+                    # Linha de Subtotal do CBO (destaque com soma dos procedimentos)
+                    row_cbo = {
+                        'ESTABELECIMENTO': cbo,
+                        '_estabelecimento': estab,
+                        '_tipo_linha': 'cbo'
+                    }
+                    for col in cols_meses_formatados:
+                        v = int(cbo_df[col].sum())
+                        row_cbo[col] = v if v > 0 else ''
+                    tot_cbo = int(cbo_df['Total Geral'].sum())
+                    row_cbo['Total Geral'] = tot_cbo if tot_cbo > 0 else ''
+                    rows_acoes.append(row_cbo)
+
+                    # Linhas detalhadas de cada procedimento sob o CBO
+                    for proc in cbo_df.index:
+                        row_proc = {
+                            'ESTABELECIMENTO': proc,
+                            '_estabelecimento': estab,
+                            '_tipo_linha': 'procedimento'
+                        }
+                        for col in cols_meses_formatados:
+                            v = int(cbo_df.loc[proc, col])
+                            row_proc[col] = v if v > 0 else ''
+                        tot_proc = int(cbo_df.loc[proc, 'Total Geral'])
+                        row_proc['Total Geral'] = tot_proc if tot_proc > 0 else ''
+                        rows_acoes.append(row_proc)
+
+            df_acoes = pd.DataFrame(rows_acoes).astype(object)
         else:
             df_acoes = None
 

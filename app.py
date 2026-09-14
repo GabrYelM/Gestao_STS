@@ -748,7 +748,8 @@ def download_excel(indice, periodo):
                 if df_prof is not None and not df_prof.empty:
                     df_prof.to_excel(writer, index=False, sheet_name='RAAS_PROF')
                 if df_acoes is not None and not df_acoes.empty:
-                    df_acoes.to_excel(writer, index=False, sheet_name='CONS_ACOES')
+                    df_acoes_export = df_acoes[[c for c in df_acoes.columns if not str(c).startswith('_')]].copy()
+                    df_acoes_export.to_excel(writer, index=False, sheet_name='CONS_ACOES')
             output.seek(0)
             return send_file(output, download_name=f"Relatorio_05_RAAS_CAPS_{periodo}.xlsx", as_attachment=True)
         elif indice == '08':
@@ -908,7 +909,7 @@ def producao():
                     json_dados_prof = json.dumps(df_prof.fillna("").to_dict(orient="records"))
 
                 if df_acoes is not None and not df_acoes.empty:
-                    colunas_acoes = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_acoes.columns]
+                    colunas_acoes = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_acoes.columns if not str(col).startswith('_')]
                     json_colunas_acoes = json.dumps(colunas_acoes)
                     json_dados_acoes = json.dumps(df_acoes.fillna("").to_dict(orient="records"))
                 
