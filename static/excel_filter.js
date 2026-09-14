@@ -22,15 +22,18 @@ window.initExcelFilters = function(dtApi, colIndices) {
         // Evita duplicar se já inicializado
         if ($header.find('.btn-excel-filter').length > 0) return;
 
-        // Cria container flex no header
-        var headerText = $header.contents().filter(function() {
+        // Cria container flex no header preservando tags como <br> se presentes
+        var hasBr = $header.find('br').length > 0 || $header.html().indexOf('<br') !== -1;
+        var headerDisplay = hasBr ? $header.html().trim() : ($header.contents().filter(function() {
             return this.nodeType === 3;
-        }).text().trim() || $header.text().trim();
+        }).text().trim() || $header.text().trim());
+        var rawTextTitle = $header.text().trim().replace(/\s+/g, ' ');
+        var nowrapClass = hasBr ? '' : 'text-nowrap';
 
-        // Limpa texto puro e envolve em estrutura flex com botão de funil e alça de redimensionamento
+        // Limpa texto e envolve em estrutura flex com botão de funil e alça de redimensionamento
         $header.html(`
             <div class="d-flex align-items-center justify-content-between gap-1 w-100 header-excel-container">
-                <span class="header-text text-nowrap" title="${headerText}">${headerText}</span>
+                <span class="header-text ${nowrapClass}" title="${rawTextTitle}">${headerDisplay}</span>
                 <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col="${colIdx}">
                     <i class="bi bi-funnel filter-icon"></i>
                 </button>

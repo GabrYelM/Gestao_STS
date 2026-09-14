@@ -397,8 +397,298 @@ div.dt-button-collection button.dt-button:hover {
         <script id="dados-tabela-json" type="application/json">{{ json_dados | safe }}</script>
         <script id="colunas-tabela-json" type="application/json">{{ json_colunas | safe }}</script>
     {% endif %}
-
 </div>
+
+{% if relatorio_selecionado == '02' %}
+<style>
+    /* Otimização visual para Relatório 02 (BPA): Colunas fixas travadas, 2 Células no cabeçalho das unidades e Total no Rodapé */
+    #tabela-dinamica {
+        width: max-content !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+    }
+
+    /* Remove setas padrão de ordenação que ocupam espaço e sobrepõem ícones */
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* Quadro Verde: Coluna 1 - Código de Procedimento (largura travada, não encolhe ao rolar) */
+    #tabela-dinamica thead th.col-cod,
+    #tabela-dinamica tbody td:nth-child(1),
+    #tabela-dinamica tfoot th:nth-child(1) {
+        width: 105px !important;
+        min-width: 105px !important;
+        max-width: 105px !important;
+        position: sticky !important;
+        left: 0 !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica thead th.col-cod {
+        z-index: 5 !important;
+        background-color: #f8f9fa !important;
+        font-size: 0.76rem !important;
+        padding: 4px 6px !important;
+        vertical-align: middle !important;
+        text-align: center !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-dinamica tbody td:nth-child(1) {
+        z-index: 2 !important;
+        background-color: #ffffff !important;
+        font-size: 0.74rem !important;
+        text-align: center !important;
+        padding: 3px 4px !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        z-index: 5 !important;
+        background-color: #cfe2ff !important;
+        font-size: 0.78rem !important;
+        text-align: center !important;
+        padding: 6px 4px !important;
+        border-right: 1px solid #b6d4fe !important;
+    }
+
+    /* Container do cabeçalho da Coluna 1 (duas linhas, escrita padrão com Código por extenso) */
+    #tabela-dinamica thead th.col-cod .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 2px !important;
+    }
+    #tabela-dinamica thead th.col-cod .header-text {
+        line-height: 1.15 !important;
+        text-align: center !important;
+        white-space: normal !important;
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        color: #212529 !important;
+    }
+    #tabela-dinamica thead th.col-cod .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #495057 !important;
+        font-size: 0.85rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+    }
+    #tabela-dinamica thead th.col-cod .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Quadro Verde: Coluna 2 - Procedimentos (congelada imediatamente após a coluna 1) */
+    #tabela-dinamica thead th.col-proc,
+    #tabela-dinamica tbody td:nth-child(2),
+    #tabela-dinamica tfoot th:nth-child(2) {
+        min-width: 280px !important;
+        max-width: 380px !important;
+        position: sticky !important;
+        left: 105px !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica thead th.col-proc {
+        z-index: 5 !important;
+        background-color: #f8f9fa !important;
+        font-size: 0.78rem !important;
+        padding: 6px 8px !important;
+        vertical-align: middle !important;
+        text-align: left !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica tbody td:nth-child(2) {
+        z-index: 2 !important;
+        background-color: #ffffff !important;
+        font-size: 0.74rem !important;
+        line-height: 1.25 !important;
+        padding: 3px 8px !important;
+        white-space: normal !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2) {
+        z-index: 5 !important;
+        background-color: #cfe2ff !important;
+        font-size: 0.78rem !important;
+        padding: 6px 8px !important;
+        text-align: left !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th.col-proc .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-dinamica thead th.col-proc .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #495057 !important;
+        font-size: 0.85rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+    }
+    #tabela-dinamica thead th.col-proc .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Quadro Vermelho: Célula Superior (Linha 1) - CNES e Tipo da Unidade em duas linhas por extenso */
+    #tabela-dinamica thead th.th-unit-tipo {
+        width: 52px !important;
+        min-width: 52px !important;
+        max-width: 62px !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        padding: 4px 1px !important;
+        background-color: #f1f5f9 !important;
+        border-bottom: 1px solid #dee2e6 !important;
+        height: 72px !important;
+    }
+    #tabela-dinamica thead th.th-unit-tipo .cnes-text {
+        font-size: 0.65rem !important;
+        font-weight: 700 !important;
+        color: #334155 !important;
+        letter-spacing: -0.2px !important;
+        line-height: 1.1 !important;
+        margin-bottom: 2px !important;
+    }
+    #tabela-dinamica thead th.th-unit-tipo .tipo-badge {
+        font-size: 0.54rem !important;
+        font-weight: 600 !important;
+        display: inline-block !important;
+        padding: 2px 2px !important;
+        border-radius: 3px !important;
+        background-color: #e2e8f0 !important;
+        color: #0f172a !important;
+        line-height: 1.12 !important;
+        margin-top: 1px !important;
+        word-break: normal !important;
+        width: 100% !important;
+        max-width: 52px !important;
+    }
+
+    /* Quadro Vermelho: Célula Inferior (Linha 2) - Nome da Unidade Completo na Vertical */
+    #tabela-dinamica thead th.th-unit-nome {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 6px 2px 4px 2px !important;
+        height: 310px !important;
+        min-width: 52px !important;
+        max-width: 62px !important;
+        width: 52px !important;
+        background-color: #f8f9fa !important;
+    }
+    #tabela-dinamica thead th.th-unit-nome .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th.th-unit-nome .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        max-height: 290px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+    }
+    #tabela-dinamica thead th.th-unit-nome .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+    }
+    #tabela-dinamica thead th.th-unit-nome .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Valores numéricos das unidades (mantidos com a fonte inalterada) */
+    #tabela-dinamica tbody td:nth-child(n+3) {
+        text-align: center !important;
+        padding: 4px 2px !important;
+        font-size: 0.84rem !important;
+        min-width: 48px !important;
+        max-width: 54px !important;
+        width: 48px !important;
+    }
+
+    /* Coluna Total Geral */
+    #tabela-dinamica thead th.th-total {
+        background-color: #f0f4f8 !important;
+        border-left: 2px solid #0d6efd !important;
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 6px 2px 4px 2px !important;
+        width: 48px !important;
+        min-width: 48px !important;
+    }
+    #tabela-dinamica thead th.th-total .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th.th-total .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        font-size: 0.78rem !important;
+        font-weight: 700 !important;
+        color: #0d6efd !important;
+        max-height: 250px !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+    }
+    #tabela-dinamica thead th.th-total .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #0d6efd !important;
+    }
+    #tabela-dinamica tbody td:last-child {
+        background-color: #f8fafc !important;
+        border-left: 2px solid #0d6efd !important;
+        font-weight: bold !important;
+        color: #0d6efd !important;
+    }
+
+    /* Rodapé com Totais Globais */
+    #tabela-dinamica tfoot th:nth-child(n+3) {
+        text-align: center !important;
+        padding: 6px 2px !important;
+        font-size: 0.84rem !important;
+        background-color: #cfe2ff !important;
+    }
+    #tabela-dinamica tfoot th:last-child {
+        background-color: #cfe2ff !important;
+        border-left: 2px solid #0d6efd !important;
+        font-weight: bold !important;
+        color: #0d6efd !important;
+    }
+</style>
+{% endif %}
 
 {% if relatorio_selecionado == '15' %}
 <style>
@@ -641,7 +931,112 @@ div.dt-button-collection button.dt-button:hover {
             var tableCols = JSON.parse(colunasEl.textContent || '[]');
             var relIndice = "{{ relatorio_selecionado }}";
 
-            // Se existir linha de TOTAL nos dados, extrai para o rodapé (tfoot) para fixar permanentemente na última linha
+            // Se for Relatório 02 (BPA), divide o cabeçalho das unidades em 2 células:
+            // Célula 1 (superior): CNES + Tipo da Unidade
+            // Célula 2 (inferior): Nome Curto da Unidade na vertical + Filtro
+            if (relIndice === '02') {
+                function splitUnidadeColuna(colStr) {
+                    var parts = colStr.trim().split(' ');
+                    if (parts.length < 2) {
+                        return { cnes: '', tipo: '', nome: colStr };
+                    }
+                    var cnes = '';
+                    var restIndex = 0;
+                    if (/^\d+$/.test(parts[0])) {
+                        cnes = parts[0];
+                        restIndex = 1;
+                    }
+                    var rest = parts.slice(restIndex).join(' ');
+                    var tipos = [
+                        'AMA 12H', 'AMA 24H', 'AMA UBS', 'CAPS AD II', 'CAPS AD III',
+                        'CAPS ADULTO III', 'CAPS INFANTOJUVENIL III', 'CECCO', 'CEO II',
+                        'CER II', 'CER III', 'HOSPITAL DIA', 'SAE IST AIDS', 'UBS', 'UVIS'
+                    ];
+                    for (var tIdx = 0; tIdx < tipos.length; tIdx++) {
+                        var t = tipos[tIdx];
+                        if (rest.indexOf(t + ' ') === 0) {
+                            return { cnes: cnes, tipo: t, nome: rest.substring(t.length + 1).trim(), nomeExibicao: rest };
+                        } else if (rest === t) {
+                            return { cnes: cnes, tipo: t, nome: t, nomeExibicao: rest };
+                        }
+                    }
+                    return { cnes: cnes, tipo: '', nome: rest, nomeExibicao: rest };
+                }
+
+                function formatarTipoBadge(tipo) {
+                    if (!tipo) return '';
+                    tipo = tipo.trim();
+                    if (tipo === 'AMA 12H') return 'AMA<br>12H';
+                    if (tipo === 'AMA 24H') return 'AMA<br>24H';
+                    if (tipo === 'AMA UBS' || tipo === 'AMA/UBS') return 'AMA<br>UBS';
+                    if (tipo === 'CAPS AD II') return 'CAPS AD<br>II';
+                    if (tipo === 'CAPS AD III') return 'CAPS AD<br>III';
+                    if (tipo === 'CAPS ADULTO III') return 'CAPS<br>ADULTO III';
+                    if (tipo === 'CAPS INFANTOJUVENIL III') return '<span style="font-size: 0.48rem; letter-spacing: -0.2px; display: inline-block;">CAPS INFANTO-<br>JUVENIL III</span>';
+                    if (tipo === 'CECCO') return 'CECCO';
+                    if (tipo === 'CEO II') return 'CEO<br>II';
+                    if (tipo === 'CER II') return 'CER<br>II';
+                    if (tipo === 'CER III') return 'CER<br>III';
+                    if (tipo === 'HOSPITAL DIA') return 'HOSPITAL<br>DIA';
+                    if (tipo === 'SAE IST AIDS') return 'SAE IST<br>AIDS';
+                    if (tipo === 'UBS') return 'UBS';
+                    if (tipo === 'UVIS') return 'UVIS';
+
+                    if (tipo.includes(' ') && !tipo.includes('<br>')) {
+                        var parts = tipo.split(' ');
+                        if (parts.length === 2) {
+                            return parts[0] + '<br>' + parts[1];
+                        }
+                    }
+                    return tipo;
+                }
+
+                var theadRow1 = '<tr>';
+                var theadRow2 = '<tr>';
+
+                theadRow1 += '<th rowspan="2" class="col-cod">Código de<br>Procedimento</th>';
+                theadRow1 += '<th rowspan="2" class="col-proc">Procedimentos</th>';
+
+                if (tableCols.length > 0) {
+                    tableCols[0].title = 'Código de Procedimento';
+                }
+
+                for (var c = 0; c < tableCols.length; c++) {
+                    var colObj = tableCols[c];
+                    var colName = colObj.data;
+                    if (colName === 'CÓD PROCEDIMENTO' || colName === 'Procedimentos') {
+                        // Fixos na primeira linha com rowspan=2
+                    } else if (colName === 'Total Geral') {
+                        theadRow1 += '<th rowspan="2" class="th-total">Total Geral</th>';
+                    } else {
+                        var info = splitUnidadeColuna(colName);
+                        colObj.title = info.nomeExibicao; // Nome com tipo para a seleção de colunas
+                        
+                        theadRow1 += '<th class="th-unit-tipo">';
+                        if (info.cnes) theadRow1 += '<div class="cnes-text">' + info.cnes + '</div>';
+                        if (formatarTipoBadge(info.tipo)) theadRow1 += '<div class="tipo-badge">' + formatarTipoBadge(info.tipo) + '</div>';
+                        theadRow1 += '</th>';
+
+                        theadRow2 += '<th class="th-unit-nome">' + info.nomeExibicao + '</th>';
+                    }
+                }
+                theadRow1 += '</tr>';
+                theadRow2 += '</tr>';
+
+                $('#tabela-dinamica').html('<thead>' + theadRow1 + theadRow2 + '</thead>');
+
+                // Linha de Rodapé para o Relatório 02 com totais globais
+                var tfootHtml02 = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
+                tfootHtml02 += '<th class="col-cod text-center">TOTAL</th>';
+                tfootHtml02 += '<th class="col-proc text-start">Total Geral da Produção</th>';
+                for (var f = 2; f < tableCols.length; f++) {
+                    tfootHtml02 += '<th class="text-center"></th>';
+                }
+                tfootHtml02 += '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml02);
+            }
+
+            // Se existir linha de TOTAL nos dados (outros relatórios), extrai para o rodapé (tfoot)
             var totalRow = null;
             var filteredTableData = [];
             for (var i = 0; i < tableData.length; i++) {
@@ -653,7 +1048,7 @@ div.dt-button-collection button.dt-button:hover {
                     filteredTableData.push(r);
                 }
             }
-            if (totalRow) {
+            if (totalRow && relIndice !== '02') {
                 tableData = filteredTableData;
                 var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.92rem; border-top: 2px solid #0d6efd;">';
                 for (var j = 0; j < tableCols.length; j++) {
@@ -673,6 +1068,29 @@ div.dt-button-collection button.dt-button:hover {
                 deferRender: true,
                 scrollX: false,
                 autoWidth: false,
+                footerCallback: function(row, data, start, end, display) {
+                    if (relIndice === '02') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        api.columns().every(function(colIdx) {
+                            if (colIdx >= 2) {
+                                // Soma global de todas as páginas para as linhas aplicadas (mesmo que em outras páginas)
+                                var globalTotal = api.column(colIdx, { search: 'applied' }).data().reduce(function(a, b) {
+                                    return intVal(a) + intVal(b);
+                                }, 0);
+                                $(this.footer()).text(globalTotal.toLocaleString('pt-BR'));
+                            }
+                        });
+                    }
+                },
                 rowCallback: function(row, data) {
                     if (relIndice === '15') {
                         var sigla = data['SIGLA'];
@@ -744,6 +1162,9 @@ div.dt-button-collection button.dt-button:hover {
                             footer: true,
                             format: {
                                 header: function(data, columnIdx, node) {
+                                    if (relIndice === '02' && tableCols && tableCols[columnIdx] && tableCols[columnIdx].data) {
+                                        return tableCols[columnIdx].data;
+                                    }
                                     return $(node).find('.header-text').text().trim() || $(node).text().trim();
                                 }
                             }
