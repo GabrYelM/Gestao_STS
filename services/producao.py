@@ -1399,14 +1399,19 @@ def gera_relatorio_05(periodo):
                 if sub_df.empty:
                     continue
 
-                # Linha da Unidade (Cabeçalho do Estabelecimento)
+                # Linha da Unidade (Cabeçalho do Estabelecimento com Totais da Unidade)
                 row_estab = {
                     'ESTABELECIMENTO': estab,
+                    'CBO / PROCEDIMENTO': 'TOTAL DA UNIDADE',
                     '_estabelecimento': estab,
+                    '_cbo': 'TODOS',
                     '_tipo_linha': 'unidade'
                 }
-                for col in cols_meses_formatados + ['Total Geral']:
-                    row_estab[col] = ''
+                for col in cols_meses_formatados:
+                    v = int(sub_df[col].sum())
+                    row_estab[col] = v if v > 0 else ''
+                tot_estab = int(sub_df['Total Geral'].sum())
+                row_estab['Total Geral'] = tot_estab if tot_estab > 0 else ''
                 rows_acoes.append(row_estab)
 
                 # Subtotais por CBO e Procedimentos
@@ -1418,8 +1423,10 @@ def gera_relatorio_05(periodo):
 
                     # Linha de Subtotal do CBO (destaque com soma dos procedimentos)
                     row_cbo = {
-                        'ESTABELECIMENTO': cbo,
+                        'ESTABELECIMENTO': estab,
+                        'CBO / PROCEDIMENTO': cbo,
                         '_estabelecimento': estab,
+                        '_cbo': cbo,
                         '_tipo_linha': 'cbo'
                     }
                     for col in cols_meses_formatados:
@@ -1432,8 +1439,10 @@ def gera_relatorio_05(periodo):
                     # Linhas detalhadas de cada procedimento sob o CBO
                     for proc in cbo_df.index:
                         row_proc = {
-                            'ESTABELECIMENTO': proc,
+                            'ESTABELECIMENTO': estab,
+                            'CBO / PROCEDIMENTO': proc,
                             '_estabelecimento': estab,
+                            '_cbo': cbo,
                             '_tipo_linha': 'procedimento'
                         }
                         for col in cols_meses_formatados:
