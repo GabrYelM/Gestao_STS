@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, jsonify, request, session, url_for
 from sqlalchemy import text
 from concurrent.futures import ThreadPoolExecutor
+import threading
 from decorators import *
 app = Flask(__name__)
 
@@ -125,22 +126,45 @@ def inject_network_info():
     return dict(ip_local=ip, porta=port, url_rede=network_url)
 
 gerenciador_tarefas = ThreadPoolExecutor(max_workers=1)
+evento_cancelar_extracao = threading.Event()
 
 def executar_bot(funcao_busca, mes, ano, usuario, senha):
+    if evento_cancelar_extracao.is_set():
+        return None, "Interrompido por cancelamento"
     p, context, page = su.bot_setup_page(usuario, senha, default_timeout=60000)
     try:
+        if evento_cancelar_extracao.is_set():
+            return None, "Interrompido por cancelamento"
         caminho = funcao_busca(mes, ano, page, 60000, 100)
         return caminho, None
     except Exception as e:
+        if evento_cancelar_extracao.is_set():
+            return None, "Interrompido por cancelamento"
         nome_f = getattr(funcao_busca, '__name__', 'Bot')
         msg_erro = f"{nome_f} ({mes}/{ano}): {str(e)}"
         print(f"Erro no bot: {msg_erro}")
         return None, msg_erro
     finally:
-        context.close()
-        p.stop()
+        try:
+            context.close()
+        except Exception:
+            pass
+        try:
+            p.stop()
+        except Exception:
+            pass
 
-status_extracao = {"em_andamento": False, "concluido": False, "progresso": "", "erros": []}
+status_extracao = {
+    "em_andamento": False,
+    "concluido": False,
+    "cancelado": False,
+    "cancelando": False,
+    "progresso": "",
+    "erros": [],
+    "sucessos": [],
+    "total_sucessos": 0,
+    "total_erros": 0
+}
 
 def gerar_lista_meses(m_inicio, a_inicio, m_fim, a_fim):
     meses_ordem = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
@@ -182,9 +206,12 @@ MAPA_NOMES_RELATORIOS = {
 }
 
 def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha, usuario_pm=None, senha_pm=None):
-    global status_extracao
+    global status_extracao, evento_cancelar_extracao
+    evento_cancelar_extracao.clear()
     status_extracao["em_andamento"] = True
     status_extracao["concluido"] = False
+    status_extracao["cancelado"] = False
+    status_extracao["cancelando"] = False
     status_extracao["progresso"] = "Iniciando fila..."
     status_extracao["sucessos"] = []
     status_extracao["erros"] = []
@@ -240,13 +267,15 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     sucessos_fila = []
     erros_fila = []
 
-    if gac02_item:
+    if gac02_item and not evento_cancelar_extracao.is_set():
         chave, bot_gac, etl_gac = gac02_item
         nome_rel = MAPA_NOMES_RELATORIOS.get(chave, chave)
         status_extracao["progresso"] = "Extraindo GAC02 (Snapshot Geral)..."
         try:
             caminho_gac, erro_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
-            if caminho_gac:
+            if evento_cancelar_extracao.is_set():
+                pass
+            elif caminho_gac:
                 etl_gac(caminho_gac, periodo_gac)
                 sucessos_fila.append({
                     "codigo": chave,
@@ -273,10 +302,13 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                 "motivo": f"Erro no processamento (ETL): {str(e)}"
             })
 
-    if relatorio_escolhido != "GAC02" and len(funcoes_loop) > 0:
+    if relatorio_escolhido != "GAC02" and len(funcoes_loop) > 0 and not evento_cancelar_extracao.is_set():
         lista_periodos = gerar_lista_meses(mes_inicio, ano_inicio, mes_fim, ano_fim)
 
         for mes, ano in lista_periodos:
+            if evento_cancelar_extracao.is_set():
+                print("Interrupção da extração solicitada pelo usuário.")
+                break
             status_extracao["progresso"] = f"Extraindo {mes}/{ano}..."
             print(f"Iniciando fila para {mes}/{ano}")
             
@@ -285,12 +317,18 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
             with ThreadPoolExecutor(max_workers=4) as bot_executor:
                 futuros = []
                 for chave, func_bot, func_etl in funcoes_loop:
+                    if evento_cancelar_extracao.is_set():
+                        break
                     futuro = bot_executor.submit(executar_bot, func_bot, mes, ano, usuario, senha)
                     futuros.append((chave, futuro, func_etl))
                     
                 for chave, futuro, func_etl in futuros:
+                    if evento_cancelar_extracao.is_set():
+                        break
                     nome_rel = MAPA_NOMES_RELATORIOS.get(chave, chave)
                     caminho, erro_bot = futuro.result()
+                    if evento_cancelar_extracao.is_set():
+                        break
                     if caminho:
                         try:
                             status_extracao["progresso"] = f"Gravando {chave} ({mes}/{ano}) no BD..."
@@ -311,7 +349,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                                 "periodo": periodo,
                                 "motivo": f"Erro no processamento (ETL): {str(e)}"
                             })
-                    elif erro_bot:
+                    elif erro_bot and not evento_cancelar_extracao.is_set():
                         erros_fila.append({
                             "codigo": chave,
                             "relatorio": nome_rel,
@@ -320,7 +358,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                             "motivo": erro_bot
                         })
 
-    if relatorio_escolhido == "CARGA_COMPLETA_BI_PM":
+    if relatorio_escolhido == "CARGA_COMPLETA_BI_PM" and not evento_cancelar_extracao.is_set():
         status_extracao["progresso"] = "Extração do BI concluída. Iniciando Painel de Monitoramento..."
         u_pm = usuario_pm if usuario_pm else usuario
         s_pm = senha_pm if senha_pm else senha
@@ -338,7 +376,11 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     status_extracao["total_sucessos"] = len(sucessos_fila)
     status_extracao["total_erros"] = len(erros_fila)
 
-    if erros_fila and sucessos_fila:
+    if evento_cancelar_extracao.is_set():
+        status_extracao["cancelado"] = True
+        status_extracao["cancelando"] = False
+        status_extracao["progresso"] = f"Extração cancelada pelo usuário com segurança ({len(sucessos_fila)} gravados antes da parada)."
+    elif erros_fila and sucessos_fila:
         status_extracao["progresso"] = f"Concluído parcialmente ({len(sucessos_fila)} atualizados, {len(erros_fila)} falhas)."
     elif erros_fila and not sucessos_fila:
         status_extracao["progresso"] = f"Concluído com erro nas rotinas solicitadas."
@@ -361,10 +403,12 @@ def executar_extracao_pm_sync(usuario, senha, relatorio_escolhido="TODOS"):
         p, browser, page = bot_setup_page(usuario, senha, default_timeout=600000)
         try:
             # 1. Painel de monitoramento PENHA (Relatório 06)
-            if relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_PM", "PM_TODOS", "REL06"]:
+            if not evento_cancelar_extracao.is_set() and relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_PM", "PM_TODOS", "REL06"]:
                 status_extracao["progresso"] = "Extraindo Painel de monitoramento PENHA..."
                 html_sts = buscaPainelMonitoramento(usuario, senha, tipo_local="STS", page=page)
-                if html_sts:
+                if evento_cancelar_extracao.is_set():
+                    pass
+                elif html_sts:
                     status_extracao["progresso"] = "Gravando Painel PENHA (REL-06) no BD..."
                     processa_painel_monitoramento(html_sts, tabela_db='REL-06', default_localidade='STS PENHA')
                     sucessos_pm.append({
@@ -382,10 +426,12 @@ def executar_extracao_pm_sync(usuario, senha, relatorio_escolhido="TODOS"):
                     })
                     
             # 2. Painel de monitoramento por estabelecimento (Relatório 07)
-            if relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_PM", "PM_TODOS", "REL07"]:
+            if not evento_cancelar_extracao.is_set() and relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_PM", "PM_TODOS", "REL07"]:
                 status_extracao["progresso"] = "Extraindo Painel de monitoramento por estabelecimento..."
                 html_subpref = buscaPainelMonitoramento(usuario, senha, tipo_local="Subprefeitura", page=page)
-                if html_subpref:
+                if evento_cancelar_extracao.is_set():
+                    pass
+                elif html_subpref:
                     status_extracao["progresso"] = "Gravando dados por estabelecimento (REL-07) no BD..."
                     processa_painel_monitoramento(html_subpref, tabela_db='REL-07', default_localidade='Subprefeitura PENHA')
                     sucessos_pm.append({
@@ -402,8 +448,14 @@ def executar_extracao_pm_sync(usuario, senha, relatorio_escolhido="TODOS"):
                         "motivo": "Não foi possível extrair a tabela por estabelecimento"
                     })
         finally:
-            browser.close()
-            p.stop()
+            try:
+                browser.close()
+            except Exception:
+                pass
+            try:
+                p.stop()
+            except Exception:
+                pass
             
     except Exception as e:
         print(f"Erro na extração do Painel de Monitoramento: {e}")
@@ -417,9 +469,12 @@ def executar_extracao_pm_sync(usuario, senha, relatorio_escolhido="TODOS"):
 
 
 def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
-    global status_extracao
+    global status_extracao, evento_cancelar_extracao
+    evento_cancelar_extracao.clear()
     status_extracao["em_andamento"] = True
     status_extracao["concluido"] = False
+    status_extracao["cancelado"] = False
+    status_extracao["cancelando"] = False
     status_extracao["progresso"] = "Conectando ao Painel de Monitoramento..."
     status_extracao["status"] = "em_andamento"
     status_extracao["sucessos"] = []
@@ -436,13 +491,17 @@ def processo_background_pm(usuario, senha, relatorio_escolhido="TODOS"):
     status_extracao["erros"] = erros_pm
     status_extracao["total_sucessos"] = len(sucessos_pm)
     status_extracao["total_erros"] = len(erros_pm)
-    if erros_pm and sucessos_pm:
+    if evento_cancelar_extracao.is_set():
+        status_extracao["cancelado"] = True
+        status_extracao["cancelando"] = False
+        status_extracao["progresso"] = f"Coleta cancelada pelo usuário com segurança ({len(sucessos_pm)} atualizados antes da parada)."
+    elif erros_pm and sucessos_pm:
         status_extracao["progresso"] = f"Painel de Monitoramento concluído parcialmente ({len(sucessos_pm)} atualizados, {len(erros_pm)} falhas)."
     elif erros_pm and not sucessos_pm:
         status_extracao["progresso"] = f"Painel de Monitoramento concluído com falha ({len(erros_pm)} erros)."
     else:
         status_extracao["progresso"] = f"100% Concluído com sucesso ({len(sucessos_pm)} atualizados)!"
-    status_extracao["status"] = "sucesso" if not erros_pm else "parcial"
+    status_extracao["status"] = "cancelado" if evento_cancelar_extracao.is_set() else ("sucesso" if not erros_pm else "parcial")
     status_extracao["em_andamento"] = False
     status_extracao["concluido"] = True
 
@@ -713,6 +772,21 @@ def gerar_relatorios():
 def status_extracao_route():
     return jsonify(status_extracao)
 
+@app.route("/cancelar_extracao", methods=["POST"])
+@admin_required
+def cancelar_extracao_route():
+    global status_extracao, evento_cancelar_extracao
+    if not status_extracao.get("em_andamento", False):
+        return jsonify({"mensagem": "Nenhuma extração em andamento no momento."}), 200
+    
+    evento_cancelar_extracao.set()
+    status_extracao["cancelando"] = True
+    status_extracao["progresso"] = "Interrupção solicitada. Finalizando tarefas ativas com segurança..."
+    return jsonify({
+        "status": "cancelando",
+        "mensagem": "Cancelamento solicitado com sucesso! As tarefas em andamento serão concluídas e a fila será interrompida com segurança."
+    })
+
 
 import io
 from flask import send_file
@@ -753,9 +827,11 @@ def download_excel(indice, periodo):
             output.seek(0)
             return send_file(output, download_name=f"Relatorio_05_RAAS_CAPS_{periodo}.xlsx", as_attachment=True)
         elif indice == '08':
-            df = prod.gera_relatorio_08(periodo)
+            output = prod.exportar_excel_relatorio_08(periodo)
+            return send_file(output, download_name=f"Relatorio_08_Pre_Natal_Penha_{periodo}.xlsx", as_attachment=True)
         elif indice == '09':
-            df = prod.gera_relatorio_09(periodo)
+            output = prod.exportar_excel_relatorio_09(periodo)
+            return send_file(output, download_name=f"Relatorio_09_Consulta_Odontologica_Gestante_{periodo}.xlsx", as_attachment=True)
         elif indice == '10':
             df = prod.gera_relatorio_10(periodo)
         elif indice == '11':
@@ -1012,11 +1088,29 @@ def producao():
         except Exception as e:
             tabela_html = f"<div class='alert alert-danger'>Erro ao gerar relatório: {e}</div>"
 
+        mapa_pop_fem = prod.obter_populacao_fem_25_64() if indice == '10' else {}
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("format") == "json":
+            return jsonify({
+                "status": "success" if not tabela_html else "error",
+                "mensagem_erro": tabela_html,
+                "dados": json.loads(json_dados) if json_dados else [],
+                "colunas": json.loads(json_colunas) if json_colunas else [],
+                "pop_fem_25_64": mapa_pop_fem,
+                "fonte_dados": fonte_dados,
+                "data_geracao": data_geracao,
+                "relatorio_selecionado": indice,
+                "periodo_selecionado": periodo
+            })
+
+    mapa_pop_fem = prod.obter_populacao_fem_25_64() if indice == '10' else {}
+
     return render_template(
         "producao.html",
         tabela_html=tabela_html,
         json_dados=json_dados,
         json_colunas=json_colunas,
+        json_pop_fem_25_64=json.dumps(mapa_pop_fem),
         relatorio_selecionado=indice,
         periodo_selecionado=periodo,
         periodos_disponiveis=periodos_disponiveis,
@@ -1025,7 +1119,26 @@ def producao():
         data_geracao=data_geracao
     )
 
+from flask import send_file
 
+@app.route("/download_excel/<relatorio_id>/<periodo>", endpoint="download_excel_com_periodo")
+@app.route("/download_excel/<relatorio_id>", endpoint="download_excel_sem_periodo")
+def download_excel_relatorio(relatorio_id, periodo=None):
+    if relatorio_id == '08':
+        output = prod.exportar_excel_relatorio_08(periodo)
+        filename = f"Relatorio_08_Pre_Natal_{periodo or 'geral'}.xlsx"
+    elif relatorio_id == '09':
+        output = prod.exportar_excel_relatorio_09(periodo)
+        filename = f"Relatorio_09_Consulta_Odontologica_{periodo or 'geral'}.xlsx"
+    elif relatorio_id == '10':
+        output = prod.exportar_excel_relatorio_10(periodo)
+        filename = f"Relatorio_10_Papanicolau_{periodo or 'geral'}.xlsx"
+    else:
+        return "Relatório não suportado para download direto", 404
+        
+    if not output:
+        return "Nenhum dado encontrado", 404
+    return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 import zipfile
 import os

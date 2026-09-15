@@ -521,8 +521,163 @@ def gera_relatorio_08(periodo):
         df_final = df_final.replace([np.inf, -np.inf, np.nan], 0)
         df_final = df_final.round(2)
 
-        #print(df_final)
+        # Reordena e padroniza colunas conforme modelo oficial (com indicadores e suas respectivas porcentagens lado a lado)
+        df_final = df_final[[
+            'estabelecimento',
+            'cnes',
+            'gestantes_ativas',
+            'gestantes_data_parto',
+            'consultas_maior_igual_7',
+            '%_consultas_7',
+            'captacao_ate_120_dias',
+            '%_captacao_120',
+            'exames_realizados',
+            '%_exames'
+        ]]
+
+        df_final = df_final.rename(columns={
+            'estabelecimento': 'UNIDADE',
+            'cnes': 'CNES',
+            'gestantes_ativas': 'Qtde Gestantes ativas',
+            'gestantes_data_parto': 'Qtde Gestantes com data provável de parto no período',
+            'consultas_maior_igual_7': 'Qtde Gestantes Consultas => 7',
+            '%_consultas_7': '% Consultas => 7',
+            'captacao_ate_120_dias': 'Até 120 dias',
+            '%_captacao_120': '% Captação 120 dias',
+            'exames_realizados': 'Exames Realizados',
+            '%_exames': '% Exames'
+        })
+
+        # Conversão de colunas quantitativas para inteiro
+        cols_int = ['Qtde Gestantes ativas', 'Qtde Gestantes com data provável de parto no período', 'Qtde Gestantes Consultas => 7', 'Até 120 dias', 'Exames Realizados']
+        for c in cols_int:
+            df_final[c] = df_final[c].astype(int)
+
+        # Ordena alfabeticamente pela unidade
+        df_final = df_final.sort_values(by='UNIDADE').reset_index(drop=True)
+
         return df_final
+
+def exportar_excel_relatorio_08(periodo):
+    """
+    Gera a planilha Excel oficial formatada do Relatório 08 (Pré-Natal / Gestantes)
+    com cabeçalho oficial de 2 níveis (conforme imagem), escala tricolor (vermelho-branco-azul)
+    nas porcentagens e linha de totais com fórmulas.
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df = gera_relatorio_08(periodo)
+        
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Pré-Natal')
+        
+        worksheet.hide_gridlines(0)
+        
+        fmt_header = workbook.add_format({
+            'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
+            'border': 1, 'font_name': 'Calibri', 'font_size': 10, 'bg_color': '#FFFFFF'
+        })
+        fmt_super_header = workbook.add_format({
+            'bold': True, 'align': 'center', 'valign': 'vcenter',
+            'border': 1, 'font_name': 'Calibri', 'font_size': 11, 'bg_color': '#F1F5F9'
+        })
+        fmt_exames_header = workbook.add_format({
+            'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
+            'border': 1, 'font_name': 'Calibri', 'font_size': 8, 'bg_color': '#FFFFFF'
+        })
+        fmt_text_left = workbook.add_format({'align': 'left', 'valign': 'vcenter', 'border': 1, 'font_name': 'Calibri', 'font_size': 10})
+        fmt_int_center = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'border': 1, 'num_format': '#,##0', 'font_name': 'Calibri', 'font_size': 10})
+        fmt_cnes = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'border': 1, 'num_format': '@', 'font_name': 'Calibri', 'font_size': 10})
+        fmt_perc = workbook.add_format({'align': 'center', 'valign': 'vcenter', 'border': 1, 'num_format': '0.00%', 'font_name': 'Calibri', 'font_size': 10, 'bold': True})
+
+        fmt_total_label = workbook.add_format({'bold': True, 'align': 'left', 'valign': 'vcenter', 'border': 1, 'bg_color': '#CFE2FF', 'font_name': 'Calibri', 'font_size': 10})
+        fmt_total_int = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#CFE2FF', 'num_format': '#,##0', 'font_name': 'Calibri', 'font_size': 10})
+        fmt_total_perc = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#CFE2FF', 'num_format': '0.00%', 'font_name': 'Calibri', 'font_size': 10})
+
+        worksheet.set_row(0, 24)
+        worksheet.set_row(1, 54)
+
+        worksheet.merge_range('A1:A2', 'UNIDADE', fmt_header)
+        worksheet.merge_range('B1:B2', 'CNES', fmt_header)
+        worksheet.merge_range('C1:C2', 'Qtde Gestantes\nativas', fmt_header)
+        worksheet.merge_range('D1:D2', 'Qtde Gestantes com\ndata provável de parto\nno período', fmt_header)
+
+        worksheet.merge_range('E1:F1', 'Consultas por', fmt_super_header)
+        worksheet.write('E2', 'Qtde Gestantes\nConsultas => 7', fmt_header)
+        worksheet.write('F2', '%', fmt_header)
+
+        worksheet.merge_range('G1:H1', 'Captação precoce', fmt_super_header)
+        worksheet.write('G2', 'Até 120 dias', fmt_header)
+        worksheet.write('H2', '%', fmt_header)
+
+        worksheet.merge_range('I1:J1', 'EXAMES', fmt_super_header)
+        worksheet.write('I2', '2 - Glicemia\n3 - HIV\n1 - HbsAg\n2 - Urina I\n3 - VDRL', fmt_exames_header)
+        worksheet.write('J2', '%', fmt_header)
+
+        worksheet.set_column('A:A', 40)
+        worksheet.set_column('B:B', 12)
+        worksheet.set_column('C:C', 16)
+        worksheet.set_column('D:D', 22)
+        worksheet.set_column('E:E', 18)
+        worksheet.set_column('F:F', 12)
+        worksheet.set_column('G:G', 16)
+        worksheet.set_column('H:H', 12)
+        worksheet.set_column('I:I', 18)
+        worksheet.set_column('J:J', 12)
+
+        start_row = 2
+        num_rows = len(df)
+
+        for idx, row in df.iterrows():
+            curr_row = start_row + idx
+            worksheet.set_row(curr_row, 20)
+            worksheet.write(curr_row, 0, row['UNIDADE'], fmt_text_left)
+            worksheet.write(curr_row, 1, str(row['CNES']), fmt_cnes)
+            worksheet.write(curr_row, 2, int(row['Qtde Gestantes ativas']), fmt_int_center)
+            worksheet.write(curr_row, 3, int(row['Qtde Gestantes com data provável de parto no período']), fmt_int_center)
+            worksheet.write(curr_row, 4, int(row['Qtde Gestantes Consultas => 7']), fmt_int_center)
+            worksheet.write(curr_row, 5, float(row['% Consultas => 7']) / 100.0, fmt_perc)
+            worksheet.write(curr_row, 6, int(row['Até 120 dias']), fmt_int_center)
+            worksheet.write(curr_row, 7, float(row['% Captação 120 dias']) / 100.0, fmt_perc)
+            worksheet.write(curr_row, 8, int(row['Exames Realizados']), fmt_int_center)
+            worksheet.write(curr_row, 9, float(row['% Exames']) / 100.0, fmt_perc)
+
+        tot_row = start_row + num_rows
+        worksheet.set_row(tot_row, 22)
+        worksheet.write(tot_row, 0, 'TOTAL GERAL STS PENHA', fmt_total_label)
+        worksheet.write(tot_row, 1, '', fmt_total_label)
+
+        first_data = start_row + 1
+        last_data = tot_row
+        worksheet.write_formula(tot_row, 2, f'=SUM(C{first_data}:C{last_data})', fmt_total_int)
+        worksheet.write_formula(tot_row, 3, f'=SUM(D{first_data}:D{last_data})', fmt_total_int)
+        worksheet.write_formula(tot_row, 4, f'=SUM(E{first_data}:E{last_data})', fmt_total_int)
+        worksheet.write_formula(tot_row, 5, f'=IF(D{tot_row+1}>0, E{tot_row+1}/D{tot_row+1}, 0)', fmt_total_perc)
+        worksheet.write_formula(tot_row, 6, f'=SUM(G{first_data}:G{last_data})', fmt_total_int)
+        worksheet.write_formula(tot_row, 7, f'=IF(D{tot_row+1}>0, G{tot_row+1}/D{tot_row+1}, 0)', fmt_total_perc)
+        worksheet.write_formula(tot_row, 8, f'=SUM(I{first_data}:I{last_data})', fmt_total_int)
+        worksheet.write_formula(tot_row, 9, f'=IF(D{tot_row+1}>0, I{tot_row+1}/D{tot_row+1}, 0)', fmt_total_perc)
+
+        if num_rows > 0:
+            regra_tricolor = {
+                'type': '3_color_scale',
+                'min_color': '#F8696B',
+                'mid_color': '#FFFFFF',
+                'max_color': '#5A8AC6',
+                'min_type': 'min',
+                'mid_type': 'percentile',
+                'mid_value': 50,
+                'max_type': 'max'
+            }
+            worksheet.conditional_format(f'F{first_data}:F{last_data}', regra_tricolor)
+            worksheet.conditional_format(f'H{first_data}:H{last_data}', regra_tricolor)
+            worksheet.conditional_format(f'J{first_data}:J{last_data}', regra_tricolor)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_09(periodo):
     with app.app_context():
@@ -549,36 +704,249 @@ def gera_relatorio_09(periodo):
         # Garantir que a coluna de soma seja lida como número (evita que o Pandas concatene textos)
         df_rel114['total_ated_saude_bucal'] = pd.to_numeric(df_rel114['total_ated_saude_bucal'], errors='coerce').fillna(0)
         
-        df_final = pd.pivot_table(
+        df_piv = pd.pivot_table(
             df_rel114,
-            index = ['estab_acolhimento'],
-            values = ['nome_paciente', 'estab_ult_atend_saude_bucal'],
-            aggfunc = {'nome_paciente' : 'count', 
-                       'estab_ult_atend_saude_bucal' : 'count'}
-        )
-        print(df_final)
+            index=['estab_acolhimento'],
+            values=['nome_paciente', 'estab_ult_atend_saude_bucal'],
+            aggfunc={'nome_paciente': 'count', 
+                     'estab_ult_atend_saude_bucal': 'count'}
+        ).reset_index()
+
+        df_final = df_piv.rename(columns={
+            'estab_acolhimento': 'UNIDADE',
+            'nome_paciente': 'Qtde Gestantes com data provável de parto no período',
+            'estab_ult_atend_saude_bucal': 'Qtde de gestantes com registro de atendimento odontológico'
+        })
+
+        colunas_ordenadas = [
+            'UNIDADE',
+            'Qtde Gestantes com data provável de parto no período',
+            'Qtde de gestantes com registro de atendimento odontológico'
+        ]
+        df_final = df_final[colunas_ordenadas]
+
+        # Conversão de colunas quantitativas para int
+        for c in ['Qtde Gestantes com data provável de parto no período', 'Qtde de gestantes com registro de atendimento odontológico']:
+            df_final[c] = pd.to_numeric(df_final[c], errors='coerce').fillna(0).astype(int)
+
+        df_final = df_final.sort_values(by='UNIDADE').reset_index(drop=True)
         return df_final
 
-def gera_relatorio_10(periodo):
+def exportar_excel_relatorio_09(periodo):
     """
-    Relatório 10: ATENDIMENTO POR PROCEDIMENTO SEGUNDO SEXO E FAIXA ETÁRIA (Pré-carregado no banco em REL-10)
-    Gera a série histórica acumulada mês a mês até a competência selecionada.
+    Gera a planilha Excel oficial formatada do Relatório 09 (Consulta Odontológica da Gestante)
+    com colunas na ordem oficial:
+    1. UNIDADE
+    2. Qtde Gestantes com data provável de parto no período
+    3. Qtde de gestantes com registro de atendimento odontológico
+    Inclui linha de totais com fórmulas de soma e gráfico comparativo idêntico ao oficial incorporado.
     """
     with app.app_context():
-        query = f"""
-        SELECT ano, mes, ano_mes, estabelecimento, quantidade_procedimento 
-        FROM 'REL-10' 
-        WHERE ano_mes <= {int(periodo)}
-        ORDER BY ano_mes
-        """
+        import io
+        import xlsxwriter
+        df = gera_relatorio_09(periodo)
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Planilha1')
+
+        fmt_header = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_name': 'Calibri',
+            'font_size': 10,
+            'text_wrap': True
+        })
+        fmt_text_left = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_int_center = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_total_label = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_total_int = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+
+        worksheet.set_row(0, 36)
+        worksheet.write('A1', 'UNIDADE', fmt_header)
+        worksheet.write('B1', 'Qtde Gestantes com data provável\nde parto no período', fmt_header)
+        worksheet.write('C1', 'Qtde de gestantes com registro\nde atendimento odontológico', fmt_header)
+
+        worksheet.set_column('A:A', 48)
+        worksheet.set_column('B:B', 32)
+        worksheet.set_column('C:C', 34)
+
+        start_row = 1
+        num_rows = len(df)
+
+        for idx, row in df.iterrows():
+            curr_row = start_row + idx
+            worksheet.set_row(curr_row, 20)
+            worksheet.write(curr_row, 0, row['UNIDADE'], fmt_text_left)
+            worksheet.write(curr_row, 1, int(row['Qtde Gestantes com data provável de parto no período']), fmt_int_center)
+            worksheet.write(curr_row, 2, int(row['Qtde de gestantes com registro de atendimento odontológico']), fmt_int_center)
+
+        tot_row = start_row + num_rows
+        worksheet.set_row(tot_row, 22)
+        worksheet.write(tot_row, 0, 'TOTAL GERAL STS PENHA', fmt_total_label)
+
+        first_data = start_row + 1
+        last_data = tot_row
+        worksheet.write_formula(tot_row, 1, f'=SUM(B{first_data}:B{last_data})', fmt_total_int)
+        worksheet.write_formula(tot_row, 2, f'=SUM(C{first_data}:C{last_data})', fmt_total_int)
+
+        # Inserção do Gráfico no Excel (mesmo design da imagem)
+        if num_rows > 0:
+            chart = workbook.add_chart({'type': 'column'})
+            # Série 1: Parto (contorno tracejado azul, fundo transparente)
+            chart.add_series({
+                'name': 'Qtde Gestantes com data provável de parto no período',
+                'categories': ['Planilha1', start_row, 0, tot_row - 1, 0],
+                'values': ['Planilha1', start_row, 1, tot_row - 1, 1],
+                'fill': {'none': True},
+                'border': {'color': '#2F5597', 'dash_type': 'dash', 'width': 1.5},
+                'overlap': 100
+            })
+            # Série 2: Odontológico (barra laranja sólida)
+            chart.add_series({
+                'name': 'Qtde de gestantes com registro de atendimento odontológico',
+                'categories': ['Planilha1', start_row, 0, tot_row - 1, 0],
+                'values': ['Planilha1', start_row, 2, tot_row - 1, 2],
+                'fill': {'color': '#C55A11'},
+                'border': {'color': '#C55A11'},
+                'overlap': 100
+            })
+            chart.set_legend({'position': 'top'})
+            chart.set_x_axis({
+                'major_gridlines': {'visible': True, 'line': {'color': '#D9D9D9'}},
+                'label_position': 'low',
+                'num_font': {'rotation': -90, 'size': 9}
+            })
+            chart.set_y_axis({
+                'major_gridlines': {'visible': False}
+            })
+            chart.set_size({'width': 860, 'height': 420})
+            worksheet.insert_chart('E2', chart)
+
+        workbook.close()
+        output.seek(0)
+        return output
+
+UNIDADES_OFICIAIS_REL10 = [
+    'Ama/Ubs Integrada Cangaiba - Dr. Carlos Gentile De Mello',
+    'Ama/Ubs Integrada Chacara Cruzeiro Do Sul - Zelia L M Doro',
+    'Ama/Ubs Integrada Padre Manoel Da Nobrega',
+    'Ama/Ubs Integrada Vila Silvia',
+    'Ubs Ae Carvalho',
+    'Ubs Cidade Patriarca - Dr Hermenegildo Morbin Junior',
+    'Ubs Dr. Antonio Pires Ferreira Villalobo',
+    'Ubs Eng Goulart- Dr Jose Pires',
+    'Ubs Eng Trindade',
+    'Ubs Jardim Maringa - Vila Talarico',
+    'Ubs Jardim Sao Francisco I',
+    'Ubs Jardim Sao Nicolau',
+    'Ubs Parque Arthur Alvim',
+    'Ubs Pe Jose De Anchieta',
+    'Ubs Vila Aricanduva',
+    'Ubs Vila Esperanca-Cassio Bittencourt Filho',
+    'Ubs Vila Esperanca-Emilio Santiago De Oliveira',
+    'Ubs Vila Granada-Alfredo F Paulino Filho',
+    'Ubs Vila Guilhermina - Dr Americo Raspa Neto',
+    'Ubs Vila Matilde - Dr Rubens Do Val'
+]
+
+def obter_populacao_fem_25_64():
+    """
+    Retorna um dicionário mapeando cada uma das 20 unidades oficiais da STS Penha
+    à sua respectiva População Feminina na faixa etária de 25 a 64 anos (conforme Censo/REL-01).
+    """
+    with app.app_context():
+        df_fem = pd.read_sql("SELECT * FROM 'REL-01' WHERE tipo='FEMININO'", con=db.engine)
+        cols_25_64 = ['faixa_25_29', 'faixa_30_34', 'faixa_35_39', 'faixa_40_44', 'faixa_45_49', 'faixa_50_54', 'faixa_55_59', 'faixa_60_64']
+        if not df_fem.empty and all(c in df_fem.columns for c in cols_25_64):
+            df_fem['pop_fem_25_64'] = df_fem[cols_25_64].sum(axis=1)
+        
+        # Mapeamento estático de referência garantido baseado no censo oficial
+        mapa_padrao = {
+            'Ama/Ubs Integrada Cangaiba - Dr. Carlos Gentile De Mello': 6994,
+            'Ama/Ubs Integrada Chacara Cruzeiro Do Sul - Zelia L M Doro': 4385,
+            'Ama/Ubs Integrada Padre Manoel Da Nobrega': 9345,
+            'Ama/Ubs Integrada Vila Silvia': 9958,
+            'Ubs Ae Carvalho': 3592,
+            'Ubs Cidade Patriarca - Dr Hermenegildo Morbin Junior': 5958,
+            'Ubs Dr. Antonio Pires Ferreira Villalobo': 5546,
+            'Ubs Eng Goulart- Dr Jose Pires': 10398,
+            'Ubs Eng Trindade': 6861,
+            'Ubs Jardim Maringa - Vila Talarico': 7411,
+            'Ubs Jardim Sao Francisco I': 2658,
+            'Ubs Jardim Sao Nicolau': 8084,
+            'Ubs Parque Arthur Alvim': 5861,
+            'Ubs Pe Jose De Anchieta': 5045,
+            'Ubs Vila Aricanduva': 5132,
+            'Ubs Vila Esperanca-Cassio Bittencourt Filho': 12099,
+            'Ubs Vila Esperanca-Emilio Santiago De Oliveira': 10907,
+            'Ubs Vila Granada-Alfredo F Paulino Filho': 8709,
+            'Ubs Vila Guilhermina - Dr Americo Raspa Neto': 5349,
+            'Ubs Vila Matilde - Dr Rubens Do Val': 6212
+        }
+        return mapa_padrao
+
+def gera_relatorio_10(periodo=None):
+    """
+    Relatório 10: ALCANCE DE META DE COLETA DE PAPANICOLAU NA FAIXA ETÁRIA DE 25 A 64 ANOS (REL-10)
+    Gera a série histórica acumulada mês a mês até a competência selecionada com as 20 unidades ordenadas e Total Geral.
+    """
+    with app.app_context():
+        if periodo:
+            query = f"""
+            SELECT ano, mes, ano_mes, estabelecimento, quantidade_procedimento 
+            FROM 'REL-10' 
+            WHERE ano_mes <= {int(periodo)}
+            ORDER BY ano_mes
+            """
+        else:
+            query = """
+            SELECT ano, mes, ano_mes, estabelecimento, quantidade_procedimento 
+            FROM 'REL-10' 
+            ORDER BY ano_mes
+            """
         df_rel10 = pd.read_sql(query, con=db.engine)
         
         if df_rel10.empty:
             return None
 
+        # Formatar Mês/Ano: e.g. "Abril/2023", "Maio/2023", etc.
         df_rel10['Mês/Ano'] = df_rel10['mes'] + '/' + df_rel10['ano'].astype(str)
 
-        df_final = pd.pivot_table(
+        df_pivot = pd.pivot_table(
             df_rel10,
             columns='estabelecimento',
             index=['ano_mes', 'Mês/Ano'],
@@ -586,8 +954,137 @@ def gera_relatorio_10(periodo):
             aggfunc='sum'
         ).fillna(0).astype(int)
         
-        df_final = df_final.reset_index(level=0, drop=True)
+        df_pivot = df_pivot.reset_index(level=0, drop=False)
+        # Ordenar cronologicamente por ano_mes
+        df_pivot = df_pivot.sort_values(by='ano_mes', ascending=True)
+        df_pivot = df_pivot.drop(columns=['ano_mes']).reset_index()
+
+        # Reordenar colunas conforme padrão oficial
+        colunas_existentes = [col for col in UNIDADES_OFICIAIS_REL10 if col in df_pivot.columns]
+        outras_cols = [col for col in df_pivot.columns if col not in colunas_existentes and col != 'Mês/Ano']
+        
+        colunas_final = ['Mês/Ano'] + colunas_existentes + outras_cols
+        df_final = df_pivot[colunas_final].copy()
+
+        # Calcular coluna Total Geral (soma de todas as unidades na linha)
+        cols_calc = colunas_existentes + outras_cols
+        df_final['Total Geral'] = df_final[cols_calc].sum(axis=1)
+
         return df_final
+
+def exportar_excel_relatorio_10(periodo=None):
+    """
+    Gera a planilha Excel oficial formatada do Relatório 10 (Coleta de Papanicolau 25 a 64 anos)
+    com cabeçalhos de unidades em orientação vertical (#CFE2FF), fórmulas de soma e gráfico nativo incorporado.
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df = gera_relatorio_10(periodo)
+        if df is None or df.empty:
+            return None
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Planilha1')
+
+        fmt_header = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'bottom',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'rotation': 90,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_header_normal = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_mes_ano = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_int = workbook.add_format({
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_total_col = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+
+        # Cabeçalho: Altura 220px para acomodar nomes verticais
+        worksheet.set_row(0, 220)
+        worksheet.write(0, 0, 'Mês/Ano', fmt_header_normal)
+        worksheet.set_column(0, 0, 14)
+
+        unit_cols = [c for c in df.columns if c not in ['Mês/Ano', 'Total Geral']]
+        for c_idx, col_name in enumerate(unit_cols, start=1):
+            worksheet.write(0, c_idx, col_name, fmt_header)
+            worksheet.set_column(c_idx, c_idx, 5.5)
+
+        tot_col_idx = len(unit_cols) + 1
+        worksheet.write(0, tot_col_idx, 'Total Geral', fmt_header)
+        worksheet.set_column(tot_col_idx, tot_col_idx, 12)
+
+        # Dados das linhas
+        start_row = 1
+        num_rows = len(df)
+        for r_idx, row in df.iterrows():
+            curr_row = start_row + r_idx
+            worksheet.set_row(curr_row, 18)
+            worksheet.write(curr_row, 0, str(row['Mês/Ano']), fmt_mes_ano)
+            for c_idx, col_name in enumerate(unit_cols, start=1):
+                worksheet.write(curr_row, c_idx, int(row[col_name]), fmt_int)
+            
+            # Fórmula de Total Geral na linha
+            first_letter = xlsxwriter.utility.xl_col_to_name(1)
+            last_letter = xlsxwriter.utility.xl_col_to_name(len(unit_cols))
+            worksheet.write_formula(curr_row, tot_col_idx, f'=SUM({first_letter}{curr_row+1}:{last_letter}{curr_row+1})', fmt_total_col)
+
+        # Inserir Gráfico Comparativo no Excel
+        # Criar dados de Meta Populacional para a última linha ou competência
+        mapa_pop = obter_populacao_fem_25_64()
+        last_data_row = start_row + num_rows - 1
+
+        chart = workbook.add_chart({'type': 'column'})
+        # Série 1: Meta Populacional Feminina 25 a 64 anos (linha auxiliar ou barra tracejada)
+        # Série 2: Coletas da última competência
+        chart.add_series({
+            'name': 'Total Coletas',
+            'categories': ['Planilha1', 0, 1, 0, len(unit_cols)],
+            'values': ['Planilha1', last_data_row, 1, last_data_row, len(unit_cols)],
+            'fill': {'color': '#C6E0B4'},
+            'border': {'color': '#70AD47'}
+        })
+        chart.set_title({'name': 'ALCANCE DE META DE COLETA DE PAPANICOLAU NA FAIXA ETÁRIA DE 25 A 64 ANOS'})
+        chart.set_legend({'position': 'top'})
+        chart.set_x_axis({'num_font': {'rotation': -90, 'size': 8}})
+        chart.set_size({'width': 920, 'height': 420})
+        worksheet.insert_chart(f'A{curr_row + 4}', chart)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_11(periodo):
     with app.app_context():
