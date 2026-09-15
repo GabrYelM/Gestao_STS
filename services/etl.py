@@ -217,7 +217,7 @@ def processa_at03(caminho, periodo=None):
 
             # Pre-consolidação automática do Relatório 10 (REL-10)
             faixas_validas = [
-                '20 a 24 anos', '25 a 29 anos', '30 a 34 anos', '35 a 39 anos',
+                '25 a 29 anos', '30 a 34 anos', '35 a 39 anos',
                 '40 a 44 anos', '45 a 49 anos', '50 a 54 anos', '55 a 59 anos', '60 a 64 anos'
             ]
             mapa_mes_num = {
@@ -226,11 +226,18 @@ def processa_at03(caminho, periodo=None):
                 'Agosto': '08', 'Setembro': '09', 'Outubro': '10', 'Novembro': '11', 'Dezembro': '12'
             }
             
-            df_rel10_sub = df_limpo[
+            mask_rel10 = (
                 (df_limpo['sts'].astype(str).str.upper().str.contains('STS PENHA', na=False)) &
                 (~df_limpo['estabelecimento'].astype(str).str.lower().str.contains('sae dst/aids penha', na=False)) &
                 (df_limpo['faixa_etaria'].astype(str).isin(faixas_validas))
-            ].copy()
+            )
+            if 'nome_procedimento' in df_limpo.columns:
+                mask_rel10 = mask_rel10 & (
+                    df_limpo['nome_procedimento'].astype(str).str.lower().str.contains('citopat|papanic', na=False) |
+                    df_limpo['nome_procedimento'].isna()
+                )
+
+            df_rel10_sub = df_limpo[mask_rel10].copy()
 
             if not df_rel10_sub.empty:
                 df_rel10_agg = df_rel10_sub.groupby(['ano', 'mes', 'estabelecimento'], as_index=False)['quantidade_procedimento'].sum()
@@ -470,7 +477,28 @@ def processa_cg06(caminho, periodo=None):
     print('CG-06 carregado')
 
 def processa_gac02(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'municipio')
+    if str(caminho).lower().endswith(('.xlsx', '.xls')):
+        # Leitura flexível de Excel (compatível com os exports do SIGA com cabeçalhos de execução)
+        xl = pd.ExcelFile(caminho)
+        sheet = 'GAC02 - Gestantes ativas' if 'GAC02 - Gestantes ativas' in xl.sheet_names else xl.sheet_names[0]
+        df_sample = pd.read_excel(caminho, sheet_name=sheet, header=None, nrows=10)
+        skip = 0
+        data_exec_encontrada = None
+        for idx, row in df_sample.iterrows():
+            row_str = " ".join([str(v) for v in row.dropna()])
+            if "execu" in row_str.lower():
+                import re
+                m = re.search(r'(\d{2})/(\d{2})/(\d{4})', row_str)
+                if m:
+                    d_e, m_e, a_e = m.groups()
+                    data_exec_encontrada = f"{a_e}-{m_e}-{d_e}"
+            if "municipio" in row_str.lower():
+                skip = idx
+                break
+        df = pd.read_excel(caminho, sheet_name=sheet, skiprows=skip)
+    else:
+        df = read_clean_csv(caminho, 'municipio')
+        data_exec_encontrada = None
 
     traduz_col = {
         'cnes': 'cnes',
@@ -481,17 +509,26 @@ def processa_gac02(caminho, periodo=None):
         'qtde_consultas': 'qtde_consultas',
     }
 
-    df = df.rename(columns=traduz_col)
-    # df = df.dropna(subset=['cnes']) # <- Descomente se quiser forçar remoção de lixo
-
-    col = list(traduz_col.values())
+    df = renomear_colunas_flexivel(df, traduz_col)
+    col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
 
+    # Tipagem limpa
+    if 'cnes' in df_limpo.columns:
+        df_limpo['cnes'] = pd.to_numeric(df_limpo['cnes'], errors='coerce').fillna(0).astype(int)
+    if 'qtde_consultas' in df_limpo.columns:
+        df_limpo['qtde_consultas'] = pd.to_numeric(df_limpo['qtde_consultas'], errors='coerce').fillna(0).astype(int)
+
+    import calendar
     if periodo:
         ano_str = str(periodo)[:4]
-        mes_str = str(periodo)[4:]
-        data_referencia = f"{ano_str}-{mes_str}-01"
+        mes_str = str(periodo)[4:6]
+        ultimo_dia = calendar.monthrange(int(ano_str), int(mes_str))[1]
+        data_referencia = data_exec_encontrada or f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
         mes_filtro = f"{ano_str}-{mes_str}"
+    elif data_exec_encontrada:
+        data_referencia = data_exec_encontrada
+        mes_filtro = data_exec_encontrada[:7]
     else:
         data_referencia = datetime.today().strftime('%Y-%m-%d')
         mes_filtro = datetime.today().strftime('%Y-%m')
@@ -503,9 +540,9 @@ def processa_gac02(caminho, periodo=None):
         db.session.execute(text(f"DELETE FROM 'GAC-02' WHERE data_extracao LIKE '{mes_filtro}-%'"))
         db.session.commit()
         df_limpo.to_sql(name='GAC-02', con=db.engine, if_exists='append', index=False)
-        registrar_competencia('08', mes_filtro)
+        registrar_competencia('08', mes_filtro.replace('-', ''))
 
-    print(f'GAC-02 carregado para a competência {mes_filtro}')
+    print(f'GAC-02 carregado para a competência {mes_filtro} (Data: {data_referencia})')
 
 def processa_rel114(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)

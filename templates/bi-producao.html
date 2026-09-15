@@ -137,10 +137,13 @@
                         </small>
                     </div>
 
-                    <div class="d-grid mt-4">
+                    <div class="d-grid gap-2 mt-4">
                         <button type="button" class="btn btn-success" id="btn-gerar">
                             <span id="spinner-gerar" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
                             <span id="texto-botao"><i class="bi bi-play-circle me-1"></i> Iniciar Extração</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger d-none shadow-sm fw-semibold" id="btn-cancelar">
+                            <i class="bi bi-stop-circle me-1"></i> Cancelar Extração
                         </button>
                     </div>
                 </div>
@@ -298,6 +301,7 @@
 {% block scripts %}
 <script>
     const btnGerar = document.getElementById('btn-gerar');
+    const btnCancelar = document.getElementById('btn-cancelar');
     const spinnerGerar = document.getElementById('spinner-gerar');
     const textoBotao = document.getElementById('texto-botao');
     const mesInicio = document.getElementById('mes-inicio');
@@ -326,9 +330,17 @@
             btnGerar.classList.add('disabled');
             if (spinnerGerar) spinnerGerar.classList.remove('d-none');
             if (textoBotao) textoBotao.innerHTML = msg || 'Processando...';
+            if (btnCancelar) {
+                btnCancelar.classList.remove('d-none');
+                btnCancelar.disabled = false;
+                btnCancelar.innerHTML = '<i class="bi bi-stop-circle me-1"></i> Cancelar Extração';
+            }
         } else {
             btnGerar.classList.remove('disabled');
             if (spinnerGerar) spinnerGerar.classList.add('d-none');
+            if (btnCancelar) {
+                btnCancelar.classList.add('d-none');
+            }
             atualizarVisibilidadeCampos();
         }
     }
@@ -401,7 +413,20 @@
         const modoPM = isOnlyPM(valAtual);
         const modoGeral = isCargaCompletaGeral(valAtual);
 
-        if (erros.length === 0 && sucessos.length > 0) {
+        if (status.cancelado) {
+            banner.className = "alert alert-warning border-0 shadow-sm d-flex align-items-center mb-3";
+            banner.innerHTML = `<i class="bi bi-pause-circle-fill fs-4 me-2 text-warning"></i> <div><strong>Extração interrompida pelo usuário com segurança!</strong> O processo foi finalizado de forma controlada sem risco ao banco de dados. ${sucessos.length > 0 ? `Os ${sucessos.length} relatório(s) finalizados antes da parada foram gravados.` : 'Nenhum relatório foi gravado antes do cancelamento.'}</div>`;
+            if (erros.length > 0) {
+                itemTabFalhas.style.display = 'block';
+            } else {
+                itemTabFalhas.style.display = 'none';
+            }
+            if (sucessos.length > 0) {
+                new bootstrap.Tab(tabSucessos).show();
+            } else if (erros.length > 0) {
+                new bootstrap.Tab(tabFalhas).show();
+            }
+        } else if (erros.length === 0 && sucessos.length > 0) {
             banner.className = "alert alert-success border-0 shadow-sm d-flex align-items-center mb-3";
             let msgTexto = `<strong>Extração e gravação 100% concluídas!</strong> Todas as rotinas solicitadas (${sucessos.length} itens) foram atualizadas com sucesso no banco de dados.`;
             if (modoPM) {
@@ -533,6 +558,10 @@
                                 if (status.progresso && textoBotao) {
                                     textoBotao.innerHTML = status.progresso;
                                 }
+                                if (status.cancelando && btnCancelar && !btnCancelar.disabled) {
+                                    btnCancelar.disabled = true;
+                                    btnCancelar.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Interrompendo com segurança...';
+                                }
                                 if (status.concluido) {
                                     clearInterval(radar);
                                     setBotaoLoading(false);
@@ -546,6 +575,27 @@
                     console.error(error);
                     setBotaoLoading(false);
                 });
+        });
+    }
+
+    if (btnCancelar) {
+        btnCancelar.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (confirm("Deseja realmente cancelar a extração do BI em andamento?\n\nO processo será finalizado com segurança sem risco de corrupção do banco de dados.")) {
+                btnCancelar.disabled = true;
+                btnCancelar.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Interrompendo com segurança...';
+                if (textoBotao) {
+                    textoBotao.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Interrompendo fila...';
+                }
+                fetch('/cancelar_extracao', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(res => res.json())
+                .catch(err => {
+                    console.error("Erro ao solicitar cancelamento:", err);
+                });
+            }
         });
     }
 </script>

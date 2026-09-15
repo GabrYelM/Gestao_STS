@@ -48,6 +48,9 @@
                         <button type="button" id="btn-coletar" class="btn btn-success px-4 py-2 fw-bold shadow-sm">
                             <i class="bi bi-play-fill me-1"></i> Coletar Dados do Painel
                         </button>
+                        <button type="button" id="btn-cancelar-pm" class="btn btn-outline-danger px-4 py-2 fw-bold shadow-sm d-none">
+                            <i class="bi bi-stop-circle me-1"></i> Cancelar Coleta
+                        </button>
                         <a href="/" class="btn btn-outline-secondary px-4 py-2">Voltar</a>
                     </div>
                 </div>
@@ -186,7 +189,20 @@
         countSucessos.textContent = sucessos.length;
         countFalhas.textContent = erros.length;
 
-        if (erros.length === 0 && sucessos.length > 0) {
+        if (status.cancelado) {
+            banner.className = "alert alert-warning border-0 shadow-sm d-flex align-items-center mb-3";
+            banner.innerHTML = `<i class="bi bi-pause-circle-fill fs-4 me-2 text-warning"></i> <div><strong>Coleta cancelada pelo usuário com segurança!</strong> O processo foi finalizado de forma controlada sem risco ao banco de dados. ${sucessos.length > 0 ? `As tabelas concluídas (${sucessos.length}) foram gravadas.` : 'Nenhuma tabela foi gravada.'}</div>`;
+            if (erros.length > 0) {
+                itemTabFalhas.style.display = 'block';
+            } else {
+                itemTabFalhas.style.display = 'none';
+            }
+            if (sucessos.length > 0) {
+                new bootstrap.Tab(tabSucessos).show();
+            } else if (erros.length > 0) {
+                new bootstrap.Tab(tabFalhas).show();
+            }
+        } else if (erros.length === 0 && sucessos.length > 0) {
             banner.className = "alert alert-success border-0 shadow-sm d-flex align-items-center mb-3";
             banner.innerHTML = `<i class="bi bi-check-circle-fill fs-4 me-2"></i> <div><strong>Coleta e gravação 100% concluídas!</strong> Os dados do Painel de Monitoramento foram atualizados com sucesso no banco de dados.</div>`;
             itemTabFalhas.style.display = 'none';
@@ -248,6 +264,7 @@
 
     document.addEventListener("DOMContentLoaded", () => {
         const btnColetar = document.getElementById("btn-coletar");
+        const btnCancelarPm = document.getElementById("btn-cancelar-pm");
         const usuarioInput = document.getElementById("usuario-pm");
         const senhaInput = document.getElementById("senha-pm");
         const relatorioSelect = document.getElementById("relatorio-escolhido-pm");
@@ -264,6 +281,11 @@
 
             btnColetar.disabled = true;
             btnColetar.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Conectando e Coletando...';
+            if (btnCancelarPm) {
+                btnCancelarPm.classList.remove("d-none");
+                btnCancelarPm.disabled = false;
+                btnCancelarPm.innerHTML = '<i class="bi bi-stop-circle me-1"></i> Cancelar Coleta';
+            }
 
             fetch('/painel_monitoramento', {
                 method: 'POST',
@@ -289,11 +311,18 @@
                             if (status.em_andamento) {
                                 btnColetar.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${status.progresso}`;
                             }
+                            if (status.cancelando && btnCancelarPm && !btnCancelarPm.disabled) {
+                                btnCancelarPm.disabled = true;
+                                btnCancelarPm.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Interrompendo...';
+                            }
                             if (status.concluido) {
                                 clearInterval(radar);
                                 btnColetar.disabled = false;
                                 btnColetar.innerHTML = '<i class="bi bi-play-fill me-1"></i> Coletar Dados do Painel';
                                 btnColetar.className = 'btn btn-success px-4';
+                                if (btnCancelarPm) {
+                                    btnCancelarPm.classList.add("d-none");
+                                }
                                 exibirModalResultado(status);
                             }
                         })
@@ -305,8 +334,27 @@
                 btnColetar.disabled = false;
                 btnColetar.innerHTML = '<i class="bi bi-play-fill me-1"></i> Coletar Dados do Painel';
                 btnColetar.className = 'btn btn-success px-4';
+                if (btnCancelarPm) {
+                    btnCancelarPm.classList.add("d-none");
+                }
             });
         });
+
+        if (btnCancelarPm) {
+            btnCancelarPm.addEventListener("click", () => {
+                if (confirm("Deseja realmente cancelar a coleta do Painel de Monitoramento em andamento?\n\nO processo será finalizado com segurança sem risco de corrupção do banco de dados.")) {
+                    btnCancelarPm.disabled = true;
+                    btnCancelarPm.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Interrompendo com segurança...';
+                    btnColetar.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Interrompendo coleta...';
+                    fetch('/cancelar_extracao', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                    .then(res => res.json())
+                    .catch(err => console.error("Erro ao solicitar cancelamento:", err));
+                }
+            });
+        }
     });
 </script>
 {% endblock %}

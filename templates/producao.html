@@ -180,7 +180,7 @@ div.dt-button-collection button.dt-button:hover {
                     <option value="" selected>{% if relatorio_selecionado == '01' %}Dados Demográficos (Censo 2010){% else %}Série Histórica (Últimos 12 meses){% endif %}</option>
                 </select>
             {% else %}
-                <select class="form-select" name="periodo" onchange="if(document.querySelector('select[name=indice_relatorio]').value) { document.getElementById('loading-overlay').classList.remove('d-none'); this.form.submit(); }">
+                <select class="form-select" name="periodo" onchange="aoMudarPeriodo(this)">
                     {% for valor, texto in periodos_disponiveis %}
                         <option value="{{ valor }}" {% if periodo_selecionado == valor %}selected{% endif %}>{{ texto }}</option>
                     {% endfor %}
@@ -427,13 +427,67 @@ div.dt-button-collection button.dt-button:hover {
         </div>
     </div>
     {% endif %}
-        <div class="card shadow-sm p-3">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom">
-                <h4 class="mb-0">Resultado:</h4>
+    {% if relatorio_selecionado == '09' %}
+    <!-- Card com Gráfico Comparativo Oficial (Odontológico x Parto) -->
+    <div class="card shadow-sm p-4 mb-4 border-0 rounded-3" id="card-grafico-09" style="background: #ffffff; transition: opacity 0.25s ease;">
+        <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom flex-wrap gap-2">
+            <h5 class="fw-bold mb-0 text-dark">
+                <i class="bi bi-bar-chart-fill me-2 text-primary"></i>Comparativo: Gestantes com Atendimento Odontológico x Previsão de Parto
+            </h5>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill" id="badge-competencia-grafico">
+                    <i class="bi bi-calendar-event me-1"></i>Competência: {% if periodo_selecionado and periodo_selecionado|length == 6 %}{{ periodo_selecionado[4:6] }}/{{ periodo_selecionado[:4] }}{% else %}{{ periodo_selecionado }}{% endif %}
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm d-flex align-items-center" onclick="document.getElementById('card-tabela-principal').scrollIntoView({ behavior: 'smooth', block: 'start' })" title="Rolar até a tabela detalhada">
+                    <i class="bi bi-arrow-down-circle me-1"></i> Ver Tabela
+                </button>
+            </div>
+        </div>
+        <div style="position: relative; height: 480px; width: 100%;">
+            <canvas id="grafico-relatorio-09"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if relatorio_selecionado == '10' %}
+    <!-- Card com Gráfico Comparativo Oficial (Papanicolau x Meta Populacional) -->
+    <div class="card shadow-sm p-4 mb-4 border-0 rounded-3" id="card-grafico-10" style="background: #ffffff; transition: opacity 0.25s ease;">
+        <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom flex-wrap gap-2">
+            <h5 class="fw-bold mb-0 text-dark">
+                <i class="bi bi-bar-chart-fill me-2 text-primary"></i>Alcance de Meta de Coleta de Papanicolau na Faixa Etária de 25 a 64 Anos
+            </h5>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill" id="badge-competencia-grafico-10">
+                    <i class="bi bi-calendar-event me-1"></i>Competência: {% if periodo_selecionado and periodo_selecionado|length == 6 %}{{ periodo_selecionado[4:6] }}/{{ periodo_selecionado[:4] }}{% else %}{{ periodo_selecionado }}{% endif %}
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm d-flex align-items-center" onclick="document.getElementById('card-tabela-principal').scrollIntoView({ behavior: 'smooth', block: 'start' })" title="Rolar até a tabela detalhada">
+                    <i class="bi bi-arrow-down-circle me-1"></i> Ver Tabela
+                </button>
+            </div>
+        </div>
+        <div style="position: relative; height: 480px; width: 100%;">
+            <canvas id="grafico-relatorio-10"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm p-3" id="card-tabela-principal" style="transition: opacity 0.25s ease;">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 pb-2 border-bottom">
+            <h4 class="mb-0 text-primary fw-bold">
+                {% if relatorio_selecionado == '08' %}
+                    <i class="bi bi-heart-pulse me-2"></i>08. Planilha de Acompanhamento do Pré-Natal
+                {% elif relatorio_selecionado == '09' %}
+                    <i class="bi bi-person-heart me-2"></i>09. Planilha de Consulta Odontológica da Gestante
+                {% elif relatorio_selecionado == '10' %}
+                    <i class="bi bi-gender-female me-2"></i>10. Alcance de Meta de Coleta de Papanicolau na Faixa Etária de 25 a 64 Anos
+                {% else %}
+                    Resultado:
+                {% endif %}
+            </h4>
                 {% if fonte_dados %}
                 <div class="text-muted small d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> {{ fonte_dados }}</span>
-                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> {{ data_geracao }}</span>
+                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> <span id="texto-fonte-dados">{{ fonte_dados }}</span></span>
+                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> <span id="texto-data-geracao">{{ data_geracao }}</span></span>
                 </div>
                 {% endif %}
             </div>
@@ -447,8 +501,50 @@ div.dt-button-collection button.dt-button:hover {
         <!-- Dados JSON embutidos de forma segura para evitar erros de sintaxe no editor -->
         <script id="dados-tabela-json" type="application/json">{{ json_dados | safe }}</script>
         <script id="colunas-tabela-json" type="application/json">{{ json_colunas | safe }}</script>
+        <script id="dados-pop-fem-json" type="application/json">{{ json_pop_fem_25_64 | safe }}</script>
     {% endif %}
 </div>
+
+{% if relatorio_selecionado == '10' %}
+<style>
+    /* Estilização Padronizada para Relatório 10 (Papanicolau 25 a 64 anos) */
+    #tabela-dinamica thead th {
+        background-color: #CFE2FF !important;
+        color: #084298 !important;
+        font-weight: 700 !important;
+        border: 1px solid #9ec5fe !important;
+        text-align: center !important;
+        vertical-align: middle !important;
+        font-size: 0.72rem !important;
+        padding: 6px 4px !important;
+    }
+    #tabela-dinamica thead th:first-child {
+        text-align: left !important;
+        min-width: 90px !important;
+        font-size: 0.75rem !important;
+    }
+    #tabela-dinamica thead th:last-child {
+        background-color: #b6d4fe !important;
+        min-width: 90px !important;
+    }
+    #tabela-dinamica tbody td:first-child {
+        font-weight: 600 !important;
+        text-align: left !important;
+        background-color: #f8fafc !important;
+    }
+    #tabela-dinamica tbody td:last-child {
+        font-weight: 700 !important;
+        background-color: #f0fdf4 !important;
+    }
+    #tabela-dinamica tfoot th {
+        background-color: #CFE2FF !important;
+        color: #084298 !important;
+        font-weight: 700 !important;
+        border: 1px solid #9ec5fe !important;
+        font-size: 0.75rem !important;
+    }
+</style>
+{% endif %}
 
 {% if relatorio_selecionado == '02' %}
 <style>
@@ -1828,6 +1924,216 @@ div.dt-button-collection button.dt-button:hover {
 </style>
 {% endif %}
 
+{% if relatorio_selecionado == '08' %}
+<style>
+    /* Estilização Oficial e Padronização do Relatório 08 (Pré-Natal / Gestantes) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    /* Remove setas padrão de ordenação do DataTables que poluem o cabeçalho */
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* Cabeçalhos padronizados (Fundo neutro suave padrão do projeto #f8f9fa, bordas padrão #dee2e6) */
+    #tabela-dinamica thead th {
+        vertical-align: middle !important;
+        text-align: center !important;
+        font-weight: 600 !important;
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        padding: 6px 8px !important;
+        font-size: 0.78rem !important;
+    }
+
+    /* Super-cabeçalhos de agrupamento (Consultas por, Captação precoce, EXAMES) */
+    #tabela-dinamica thead tr:first-child th.super-header {
+        background-color: #f1f5f9 !important;
+        color: #0d6efd !important;
+        font-weight: 700 !important;
+        border-bottom: 2px solid #0d6efd !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 0.3px !important;
+    }
+
+    /* Sub-lista dos exames na segunda linha do cabeçalho */
+    #tabela-dinamica thead th.exames-sublist {
+        font-size: 0.72rem !important;
+        line-height: 1.25 !important;
+        font-weight: 600 !important;
+        text-align: left !important;
+        padding: 4px 6px !important;
+        background-color: #f8f9fa !important;
+    }
+
+    /* Colunas de porcentagem */
+    #tabela-dinamica thead th.th-perc {
+        width: 68px !important;
+        min-width: 68px !important;
+        max-width: 75px !important;
+        font-size: 0.80rem !important;
+        font-weight: 700 !important;
+    }
+
+    /* Estrutura flex e botão de filtro Excel no header */
+    #tabela-dinamica thead th .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-dinamica thead th .header-text {
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+    }
+    #tabela-dinamica thead th .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
+    }
+    #tabela-dinamica thead th .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Coluna UNIDADE fixa (Sticky) à esquerda */
+    #tabela-dinamica thead th:first-child,
+    #tabela-dinamica tbody td:first-child,
+    #tabela-dinamica tfoot th:first-child {
+        position: sticky !important;
+        left: 0 !important;
+        z-index: 3 !important;
+        background-color: #ffffff !important;
+        text-align: left !important;
+        font-weight: 600 !important;
+        min-width: 240px !important;
+        max-width: 280px !important;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.05) !important;
+        border-right: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th:first-child {
+        z-index: 5 !important;
+        background-color: #f8f9fa !important;
+    }
+    #tabela-dinamica tfoot th:first-child {
+        z-index: 5 !important;
+        background-color: #cfe2ff !important;
+    }
+
+    /* Células do corpo */
+    #tabela-dinamica tbody td {
+        vertical-align: middle !important;
+        text-align: center !important;
+        font-size: 0.78rem !important;
+        padding: 4px 6px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+    #tabela-dinamica tbody td.cell-perc {
+        font-weight: 700 !important;
+        color: #0f172a !important;
+    }
+
+    /* Linha de totais no rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.82rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        text-align: center !important;
+        vertical-align: middle !important;
+        padding: 6px 8px !important;
+        border: 1px solid #b6d4fe !important;
+    }
+{% endif %}
+ 
+{% if relatorio_selecionado == '09' %}
+<style>
+    /* Padronização Oficial do Relatório 09 (Consulta Odontológica da Gestante) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        vertical-align: middle !important;
+        text-align: center !important;
+        font-weight: 600 !important;
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        padding: 8px 10px !important;
+        font-size: 0.80rem !important;
+    }
+
+    #tabela-dinamica thead th:first-child {
+        text-align: left !important;
+        min-width: 280px !important;
+    }
+
+    #tabela-dinamica tbody td:first-child {
+        text-align: left !important;
+        font-weight: 500 !important;
+    }
+
+    #tabela-dinamica tbody td {
+        vertical-align: middle !important;
+        text-align: center !important;
+        font-size: 0.80rem !important;
+        padding: 6px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.84rem !important;
+    }
+
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        text-align: center !important;
+        padding: 8px 10px !important;
+        border: 1px solid #b6d4fe !important;
+    }
+
+    #tabela-dinamica tfoot th:first-child {
+        text-align: left !important;
+    }
+</style>
+{% endif %}
+ 
 {% if relatorio_selecionado == '12' %}
 <style>
     /* Permite quebra de linha nos cabeçalhos longos de insumos */
@@ -1913,6 +2219,7 @@ div.dt-button-collection button.dt-button:hover {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.colVis.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
     window.mapaCompetencias = {{ json_competencias_por_relatorio | safe or '{}' }};
@@ -1947,6 +2254,134 @@ div.dt-button-collection button.dt-button:hover {
         }
         document.getElementById('loading-overlay').classList.remove('d-none');
         selectRel.form.submit();
+    }
+
+    window.chartRelatorio09 = null;
+    window.chartRelatorio10 = null;
+
+    function aoMudarPeriodo(selectPeriodo) {
+        var selectRel = document.querySelector('select[name=indice_relatorio]');
+        if (!selectRel || !selectRel.value) return;
+
+        var relIndice = selectRel.value;
+        var novoPeriodo = selectPeriodo.value;
+        if (!novoPeriodo) return;
+
+        // Para relatórios com tabela única (DataTables), faz atualização fluida via AJAX
+        if ($.fn.DataTable.isDataTable('#tabela-dinamica') && relIndice !== '01' && relIndice !== '05' && relIndice !== '16') {
+            var cardGrafico = document.getElementById('card-grafico-09') || document.getElementById('card-grafico-10');
+            var cardTabela = document.getElementById('card-tabela-principal');
+            if (cardGrafico) cardGrafico.style.opacity = '0.7';
+            if (cardTabela) cardTabela.style.opacity = '0.7';
+
+            var formData = new FormData(document.getElementById('form-producao'));
+
+            fetch('/producao', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(function(res) {
+                if (!res.ok) throw new Error('Erro na resposta do servidor');
+                return res.json();
+            })
+            .then(function(res) {
+                if (cardGrafico) cardGrafico.style.opacity = '1';
+                if (cardTabela) cardTabela.style.opacity = '1';
+
+                if (res.status === 'success') {
+                    window.tableData = res.dados;
+
+                    // 1. Atualiza o gráfico do Relatório 09 com animação fluida
+                    if (window.chartRelatorio09) {
+                        var newLabels = [];
+                        var newParto = [];
+                        var newOdonto = [];
+
+                        res.dados.forEach(function(row) {
+                            newLabels.push(row['UNIDADE'] || '');
+                            newParto.push(parseInt(row['Qtde Gestantes com data provável de parto no período'], 10) || 0);
+                            newOdonto.push(parseInt(row['Qtde de gestantes com registro de atendimento odontológico'], 10) || 0);
+                        });
+
+                        window.chartRelatorio09.data.labels = newLabels;
+                        window.chartRelatorio09.data.datasets[0].data = newParto;
+                        window.chartRelatorio09.data.datasets[1].data = newOdonto;
+                        window.chartRelatorio09.update();
+                    }
+
+                    // 1.2 Atualiza o gráfico do Relatório 10 com animação fluida
+                    if (window.chartRelatorio10 && res.dados && res.dados.length > 0) {
+                        var unitLabels = [];
+                        var sampleRow = res.dados[0];
+                        Object.keys(sampleRow).forEach(function(key) {
+                            if (key !== 'Mês/Ano' && key !== 'Total Geral' && key !== 'id') {
+                                unitLabels.push(key);
+                            }
+                        });
+
+                        var popMap = res.pop_fem_25_64 || window.popFemMap || {};
+                        var dataPop = unitLabels.map(function(u) { return Math.round((popMap[u] || 0) / 3); });
+
+                        var totalPerUnit = {};
+                        unitLabels.forEach(function(u) { totalPerUnit[u] = 0; });
+                        res.dados.forEach(function(row) {
+                            unitLabels.forEach(function(u) {
+                                totalPerUnit[u] += (parseInt(row[u], 10) || 0);
+                            });
+                        });
+                        var dataTotal = unitLabels.map(function(u) { return totalPerUnit[u]; });
+
+                        window.chartRelatorio10.data.labels = unitLabels;
+                        window.chartRelatorio10.data.datasets[0].data = dataPop;
+                        window.chartRelatorio10.data.datasets[1].data = dataTotal;
+                        window.chartRelatorio10.data.datasets[2].data = dataTotal;
+                        window.chartRelatorio10.update();
+                    }
+
+                    // 2. Atualiza os dados na tabela do DataTables
+                    var dt = $('#tabela-dinamica').DataTable();
+                    if (dt) {
+                        dt.clear();
+                        dt.rows.add(res.dados);
+                        dt.draw();
+                    }
+
+                    // 3. Atualiza os badges
+                    var compFormatada = res.periodo_selecionado;
+                    if (compFormatada && compFormatada.length === 6 && /^\d+$/.test(compFormatada)) {
+                        compFormatada = compFormatada.substring(4, 6) + '/' + compFormatada.substring(0, 4);
+                    }
+                    var badgeComp = document.getElementById('badge-competencia-grafico');
+                    if (badgeComp) {
+                        badgeComp.innerHTML = '<i class="bi bi-calendar-event me-1"></i>Competência: ' + compFormatada;
+                    }
+                    var badgeComp10 = document.getElementById('badge-competencia-grafico-10');
+                    if (badgeComp10) {
+                        badgeComp10.innerHTML = '<i class="bi bi-calendar-event me-1"></i>Competência: ' + compFormatada;
+                    }
+                    var txtFonte = document.getElementById('texto-fonte-dados');
+                    if (txtFonte && res.fonte_dados) {
+                        txtFonte.textContent = res.fonte_dados;
+                    }
+                    var txtData = document.getElementById('texto-data-geracao');
+                    if (txtData && res.data_geracao) {
+                        txtData.textContent = res.data_geracao;
+                    }
+                } else {
+                    document.getElementById('form-producao').submit();
+                }
+            })
+            .catch(function(err) {
+                console.error('Erro na atualização fluida:', err);
+                document.getElementById('form-producao').submit();
+            });
+        } else {
+            document.getElementById('loading-overlay').classList.remove('d-none');
+            document.getElementById('form-producao').submit();
+        }
     }
 
     $(document).ready(function() {
@@ -2101,6 +2536,113 @@ div.dt-button-collection button.dt-button:hover {
                 $('#tabela-dinamica').append(tfootHtml04);
             }
 
+            // Configuração para Relatório 08 (Pré-Natal / Gestantes): Cabeçalho oficial de 2 níveis e rodapé de totais
+            if (relIndice === '08') {
+                for (var tc = 0; tc < tableCols.length; tc++) {
+                    delete tableCols[tc].title;
+                }
+
+                var theadRow1 = '<tr>' +
+                    '<th rowspan="2" class="text-center align-middle" style="min-width: 220px; max-width: 280px;">UNIDADE</th>' +
+                    '<th rowspan="2" class="text-center align-middle" style="width: 75px; min-width: 75px;">CNES</th>' +
+                    '<th rowspan="2" class="text-center align-middle" style="width: 85px; min-width: 85px;">Qtde Gestantes<br>ativas</th>' +
+                    '<th rowspan="2" class="text-center align-middle" style="width: 120px; min-width: 110px;">Qtde Gestantes com<br>data provável de parto<br>no período</th>' +
+                    '<th colspan="2" class="text-center align-middle super-header">Consultas por</th>' +
+                    '<th colspan="2" class="text-center align-middle super-header">Captação precoce</th>' +
+                    '<th colspan="2" class="text-center align-middle super-header">EXAMES</th>' +
+                '</tr>';
+
+                var theadRow2 = '<tr>' +
+                    '<th class="text-center align-middle" style="width: 100px; min-width: 95px;">Qtde Gestantes<br>Consultas =&gt; 7</th>' +
+                    '<th class="text-center align-middle th-perc" style="width: 65px; min-width: 65px;">%</th>' +
+                    '<th class="text-center align-middle" style="width: 90px; min-width: 85px;">Até 120 dias</th>' +
+                    '<th class="text-center align-middle th-perc" style="width: 65px; min-width: 65px;">%</th>' +
+                    '<th class="text-start align-middle exames-sublist" style="width: 115px; min-width: 110px;">2 - Glicemia<br>3 - HIV<br>1 - HbsAg<br>2 - Urina I<br>3 - VDRL</th>' +
+                    '<th class="text-center align-middle th-perc" style="width: 65px; min-width: 65px;">%</th>' +
+                '</tr>';
+
+                $('#tabela-dinamica').html('<thead>' + theadRow1 + theadRow2 + '</thead>');
+
+                var tfootHtml08 = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">' +
+                    '<th class="text-start">TOTAL GERAL STS PENHA</th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml08);
+            }
+
+            // Configuração para Relatório 09 (Consulta Odontológica da Gestante): Rodapé de totais
+            if (relIndice === '09') {
+                var tfootHtml09 = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">' +
+                    '<th class="text-start">TOTAL GERAL STS PENHA</th>' +
+                    '<th class="text-center"></th>' +
+                    '<th class="text-center"></th>' +
+                '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml09);
+            }
+
+            // Estatísticas e interpolação de cores para Escala Tricolor (Relatório 08)
+            var statsCols08 = {};
+            if (relIndice === '08') {
+                function calcularPercentil(arr, p) {
+                    if (!arr.length) return 0;
+                    var sorted = arr.slice().sort(function(a, b) { return a - b; });
+                    var pos = (sorted.length - 1) * p;
+                    var base = Math.floor(pos);
+                    var rest = pos - base;
+                    if (sorted[base + 1] !== undefined) {
+                        return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+                    } else {
+                        return sorted[base];
+                    }
+                }
+
+                var percColNames = ['% Consultas => 7', '% Captação 120 dias', '% Exames'];
+                for (var pIdx = 0; pIdx < percColNames.length; pIdx++) {
+                    var cName = percColNames[pIdx];
+                    var vals = [];
+                    for (var dIdx = 0; dIdx < tableData.length; dIdx++) {
+                        var num = parseFloat(tableData[dIdx][cName]);
+                        if (!isNaN(num)) vals.push(num);
+                    }
+                    if (vals.length > 0) {
+                        statsCols08[cName] = {
+                            min: Math.min.apply(null, vals),
+                            p50: calcularPercentil(vals, 0.5),
+                            max: Math.max.apply(null, vals)
+                        };
+                    }
+                }
+            }
+
+            function calcularCorEscalaTricolor(val, minVal, p50Val, maxVal) {
+                if (val === null || val === undefined || isNaN(val)) return '';
+                if (maxVal === minVal) return 'rgb(255, 255, 255)';
+
+                var r, g, b;
+                if (val <= p50Val) {
+                    // Interpola entre Min (#F8696B -> 248, 105, 107) e P50 (#FFFFFF -> 255, 255, 255)
+                    var t = (p50Val > minVal) ? Math.max(0, Math.min(1, (val - minVal) / (p50Val - minVal))) : 1;
+                    r = Math.round(248 + (255 - 248) * t);
+                    g = Math.round(105 + (255 - 105) * t);
+                    b = Math.round(107 + (255 - 107) * t);
+                } else {
+                    // Interpola entre P50 (#FFFFFF -> 255, 255, 255) e Max (#5A8AC6 -> 90, 138, 198)
+                    var t = (maxVal > p50Val) ? Math.max(0, Math.min(1, (val - p50Val) / (maxVal - p50Val))) : 0;
+                    r = Math.round(255 + (90 - 255) * t);
+                    g = Math.round(255 + (138 - 255) * t);
+                    b = Math.round(255 + (198 - 255) * t);
+                }
+                return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+            }
+
             // Se existir linha de TOTAL nos dados (outros relatórios), extrai para o rodapé (tfoot)
             var totalRow = null;
             var filteredTableData = [];
@@ -2113,7 +2655,7 @@ div.dt-button-collection button.dt-button:hover {
                     filteredTableData.push(r);
                 }
             }
-            if (totalRow && relIndice !== '02' && relIndice !== '03' && relIndice !== '04') {
+            if (totalRow && relIndice !== '02' && relIndice !== '03' && relIndice !== '04' && relIndice !== '08' && relIndice !== '10') {
                 tableData = filteredTableData;
                 var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.92rem; border-top: 2px solid #0d6efd;">';
                 for (var j = 0; j < tableCols.length; j++) {
@@ -2121,6 +2663,16 @@ div.dt-button-collection button.dt-button:hover {
                     var colVal = totalRow[colKey] !== undefined ? totalRow[colKey] : '';
                     var alignClass = (j === 0) ? 'text-start' : 'text-center';
                     tfootHtml += '<th class="' + alignClass + '" style="padding: 8px 10px;">' + colVal + '</th>';
+                }
+                tfootHtml += '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml);
+            }
+
+            if ((relIndice === '08' || relIndice === '09' || relIndice === '10') && $('#tabela-dinamica tfoot').length === 0) {
+                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.85rem; border-top: 2px solid #0d6efd;">';
+                for (var j = 0; j < tableCols.length; j++) {
+                    var alignClass = (j === 0) ? 'text-start' : 'text-end';
+                    tfootHtml += '<th class="' + alignClass + '" style="padding: 6px 8px;"></th>';
                 }
                 tfootHtml += '</tr></tfoot>';
                 $('#tabela-dinamica').append(tfootHtml);
@@ -2155,10 +2707,131 @@ div.dt-button-collection button.dt-button:hover {
                                 $(this.footer()).text(globalTotal.toLocaleString('pt-BR'));
                             }
                         });
+                    } else if (relIndice === '08') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        var totAtivas = api.column(2, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totParto = api.column(3, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totCons7 = api.column(4, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totCapt120 = api.column(6, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totExames = api.column(8, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+
+                        $(api.column(0).footer()).text('TOTAL GERAL STS PENHA');
+                        $(api.column(1).footer()).text('');
+                        $(api.column(2).footer()).text(totAtivas.toLocaleString('pt-BR'));
+                        $(api.column(3).footer()).text(totParto.toLocaleString('pt-BR'));
+                        $(api.column(4).footer()).text(totCons7.toLocaleString('pt-BR'));
+
+                        var percCons7 = totParto > 0 ? (totCons7 / totParto) * 100 : 0;
+                        $(api.column(5).footer()).text(percCons7.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%');
+
+                        $(api.column(6).footer()).text(totCapt120.toLocaleString('pt-BR'));
+
+                        var percCapt120 = totParto > 0 ? (totCapt120 / totParto) * 100 : 0;
+                        $(api.column(7).footer()).text(percCapt120.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%');
+
+                        $(api.column(8).footer()).text(totExames.toLocaleString('pt-BR'));
+
+                        var percExames = totParto > 0 ? (totExames / totParto) * 100 : 0;
+                        $(api.column(9).footer()).text(percExames.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%');
+                    } else if (relIndice === '09') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        var totParto = api.column(1, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totOdonto = api.column(2, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+
+                        $(api.column(0).footer()).text('TOTAL GERAL STS PENHA');
+                        $(api.column(1).footer()).text(totParto.toLocaleString('pt-BR'));
+                        $(api.column(2).footer()).text(totOdonto.toLocaleString('pt-BR'));
+                    } else if (relIndice === '10') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        $(api.column(0).footer()).text('TOTAL GERAL');
+                        api.columns().every(function(colIdx) {
+                            if (colIdx >= 1) {
+                                var colTot = api.column(colIdx, { search: 'applied' }).data().reduce(function(a, b) {
+                                    return intVal(a) + intVal(b);
+                                }, 0);
+                                $(this.footer()).text(colTot.toLocaleString('pt-BR'));
+                            }
+                        });
                     }
                 },
                 rowCallback: function(row, data) {
-                    if (relIndice === '15') {
+                    if (relIndice === '08') {
+                        var percCols = [
+                            { idx: 5, key: '% Consultas => 7' },
+                            { idx: 7, key: '% Captação 120 dias' },
+                            { idx: 9, key: '% Exames' }
+                        ];
+                        for (var pc = 0; pc < percCols.length; pc++) {
+                            var colInfo = percCols[pc];
+                            var cell = $('td', row).eq(colInfo.idx);
+                            var rawVal = parseFloat(data[colInfo.key]);
+                            if (!isNaN(rawVal)) {
+                                var st = statsCols08[colInfo.key];
+                                if (st) {
+                                    var bgCor = calcularCorEscalaTricolor(rawVal, st.min, st.p50, st.max);
+                                    cell.css({
+                                        'background-color': bgCor,
+                                        'font-weight': '700',
+                                        'color': '#1e293b'
+                                    });
+                                    cell.addClass('cell-perc');
+                                }
+                                cell.text(rawVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%');
+                            }
+                        }
+                        var intCols = [2, 3, 4, 6, 8];
+                        for (var ic = 0; ic < intCols.length; ic++) {
+                            var cellInt = $('td', row).eq(intCols[ic]);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                            }
+                        }
+                    } else if (relIndice === '09') {
+                        for (var ic = 1; ic <= 2; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                            }
+                        }
+                    } else if (relIndice === '10') {
+                        for (var ic = 1; ic < tableCols.length; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                                cellInt.addClass('text-end');
+                            }
+                        }
+                    } else if (relIndice === '15') {
                         var sigla = data['SIGLA'];
                         var limite = 0;
                         if (sigla === 'EAP20H' || sigla === 'eAP-20h' || sigla === 'eAP 20h') limite = 2000;
@@ -2215,10 +2888,10 @@ div.dt-button-collection button.dt-button:hover {
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
                         className: 'btn btn-success',
                         action: function(e, dt, button, config) {
-                            if (relIndice === '12') {
+                            if (relIndice === '08' || relIndice === '09' || relIndice === '12') {
                                 var selectPeriodo = document.querySelector('select[name=periodo]');
                                 var per = (selectPeriodo && selectPeriodo.value) ? selectPeriodo.value : '{{ periodo_selecionado }}';
-                                window.location.href = '/download_excel/12/' + per;
+                                window.location.href = '/download_excel/' + relIndice + '/' + per;
                             } else {
                                 $.fn.dataTable.ext.buttons.excelHtml5.action.call(this, e, dt, button, config);
                             }
@@ -2238,10 +2911,12 @@ div.dt-button-collection button.dt-button:hover {
                     }
                 ],
                 initComplete: function() {
-                    window.initExcelFilters(this.api());
+                    if (typeof window.initExcelFilters === 'function') {
+                        window.initExcelFilters(this.api());
+                    }
                     
-                    if (relIndice === '03' || relIndice === '15' || relIndice === '07') {
-                        var maxCols = (relIndice === '03') ? 5 : ((relIndice === '07') ? 2 : 4);
+                    if (relIndice === '03' || relIndice === '15' || relIndice === '07' || relIndice === '08') {
+                        var maxCols = (relIndice === '03') ? 5 : ((relIndice === '07') ? 2 : ((relIndice === '08') ? 1 : 4));
                         function fixarColunasSticky() {
                             var leftOffset = 0;
                             for (var i = 1; i <= maxCols; i++) {
@@ -2263,6 +2938,417 @@ div.dt-button-collection button.dt-button:hover {
                         $('#tabela-dinamica').on('draw.dt column-visibility.dt', function() {
                             setTimeout(fixarColunasSticky, 30);
                         });
+                    }
+
+                    if (relIndice === '09') {
+                        var canvas09 = document.getElementById('grafico-relatorio-09');
+                        if (canvas09 && typeof Chart !== 'undefined') {
+                            function renderizarGrafico09(dadosTabela) {
+                                var labels = [];
+                                var dataParto = [];
+                                var dataOdonto = [];
+
+                                dadosTabela.forEach(function(row) {
+                                    labels.push(row['UNIDADE'] || '');
+                                    dataParto.push(parseInt(row['Qtde Gestantes com data provável de parto no período'], 10) || 0);
+                                    dataOdonto.push(parseInt(row['Qtde de gestantes com registro de atendimento odontológico'], 10) || 0);
+                                });
+
+                                if (window.chartRelatorio09) {
+                                    window.chartRelatorio09.data.labels = labels;
+                                    window.chartRelatorio09.data.datasets[0].data = dataParto;
+                                    window.chartRelatorio09.data.datasets[1].data = dataOdonto;
+                                    window.chartRelatorio09.update();
+                                    return;
+                                }
+
+                                window.chartRelatorio09 = new Chart(canvas09, {
+                                    type: 'bar',
+                                    data: {
+                                        labels: labels,
+                                        datasets: [
+                                            {
+                                                label: 'Qtde Gestantes com data provável de parto no período',
+                                                data: dataParto,
+                                                backgroundColor: 'rgba(255, 255, 255, 0)',
+                                                borderWidth: 0,
+                                                grouped: false,
+                                                order: 2
+                                            },
+                                            {
+                                                label: 'Qtde de gestantes com registro de atendimento odontológico',
+                                                data: dataOdonto,
+                                                backgroundColor: '#c55a11',
+                                                borderColor: '#c55a11',
+                                                borderWidth: 1,
+                                                grouped: false,
+                                                order: 1
+                                            }
+                                        ]
+                                    },
+                                    plugins: [{
+                                        id: 'dashedBarPlugin09',
+                                        afterDatasetDraw: function(chart, args) {
+                                            if (args.index === 0) {
+                                                var ctx = chart.ctx;
+                                                var meta = chart.getDatasetMeta(0);
+                                                ctx.save();
+                                                ctx.setLineDash([4, 3]);
+                                                ctx.strokeStyle = '#2f5597';
+                                                ctx.lineWidth = 1.5;
+                                                meta.data.forEach(function(bar) {
+                                                    var x = bar.x;
+                                                    var y = bar.y;
+                                                    var base = bar.base;
+                                                    var width = bar.width;
+                                                    var left = x - width / 2;
+                                                    var height = base - y;
+                                                    ctx.strokeRect(left, y, width, height);
+                                                });
+                                                ctx.restore();
+                                            }
+                                        }
+                                    }],
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        interaction: {
+                                            mode: 'index',
+                                            intersect: false
+                                        },
+                                        plugins: {
+                                            legend: {
+                                                position: 'top',
+                                                labels: {
+                                                    generateLabels: function(chart) {
+                                                        return [
+                                                            {
+                                                                text: 'Qtde de gestantes com registro de atendimento odontológico',
+                                                                fillStyle: '#c55a11',
+                                                                strokeStyle: '#c55a11',
+                                                                lineWidth: 1,
+                                                                datasetIndex: 1
+                                                            },
+                                                            {
+                                                                text: 'Qtde Gestantes com data provável de parto no período',
+                                                                fillStyle: '#ffffff',
+                                                                strokeStyle: '#2f5597',
+                                                                lineWidth: 1.5,
+                                                                lineDash: [4, 3],
+                                                                datasetIndex: 0
+                                                            }
+                                                        ];
+                                                    },
+                                                    font: {
+                                                        size: 11,
+                                                        weight: '600'
+                                                    },
+                                                    boxWidth: 18,
+                                                    boxHeight: 14,
+                                                    padding: 20
+                                                }
+                                            },
+                                            tooltip: {
+                                                callbacks: {
+                                                    afterBody: function(context) {
+                                                        var p = 0, o = 0;
+                                                        context.forEach(function(c) {
+                                                            if (c.datasetIndex === 0) p = c.raw;
+                                                            if (c.datasetIndex === 1) o = c.raw;
+                                                        });
+                                                        if (p > 0) {
+                                                            var perc = ((o / p) * 100).toFixed(1);
+                                                            return 'Cobertura Odontológica: ' + perc + '%';
+                                                        }
+                                                        return '';
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        layout: {
+                                            padding: {
+                                                bottom: 15
+                                            }
+                                        },
+                                        scales: {
+                                            x: {
+                                                grid: {
+                                                    display: true,
+                                                    color: '#e2e8f0',
+                                                    drawTicks: true
+                                                },
+                                                ticks: {
+                                                    maxRotation: 90,
+                                                    minRotation: 90,
+                                                    font: {
+                                                        size: 10,
+                                                        weight: '600'
+                                                    },
+                                                    color: '#334155'
+                                                }
+                                            },
+                                            y: {
+                                                beginAtZero: true,
+                                                grid: {
+                                                    display: false
+                                                },
+                                                ticks: {
+                                                    font: {
+                                                        size: 11
+                                                    },
+                                                    color: '#64748b'
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+
+                            // Renderiza inicial
+                            renderizarGrafico09(tableData);
+
+                            // Atualiza dinamicamente conforme filtros
+                            var dtApi = $('#tabela-dinamica').DataTable();
+                            dtApi.on('search.dt', function() {
+                                var rowsFiltradas = dtApi.rows({ search: 'applied' }).data().toArray();
+                                renderizarGrafico09(rowsFiltradas);
+                            });
+                        }
+                    }
+
+                    if (relIndice === '10') {
+                        var canvas10 = document.getElementById('grafico-relatorio-10');
+                        if (canvas10 && typeof Chart !== 'undefined') {
+                            var popFemMap = {};
+                            var popFemEl = document.getElementById('dados-pop-fem-json');
+                            if (popFemEl) {
+                                try {
+                                    popFemMap = JSON.parse(popFemEl.textContent || '{}');
+                                } catch(e) {
+                                    popFemMap = {};
+                                }
+                            }
+                            window.popFemMap = popFemMap;
+
+                            function renderizarGrafico10(dadosTabela) {
+                                if (!dadosTabela || dadosTabela.length === 0) return;
+                                
+                                var unitLabels = [];
+                                var sampleRow = dadosTabela[0];
+                                Object.keys(sampleRow).forEach(function(key) {
+                                    if (key !== 'Mês/Ano' && key !== 'Total Geral' && key !== 'id') {
+                                        unitLabels.push(key);
+                                    }
+                                });
+
+                                var dataPop = unitLabels.map(function(u) {
+                                    return Math.round((window.popFemMap[u] || 0) / 3);
+                                });
+
+                                var totalPerUnit = {};
+                                unitLabels.forEach(function(u) { totalPerUnit[u] = 0; });
+                                dadosTabela.forEach(function(row) {
+                                    unitLabels.forEach(function(u) {
+                                        totalPerUnit[u] += (parseInt(row[u], 10) || 0);
+                                    });
+                                });
+                                var dataTotal = unitLabels.map(function(u) { return totalPerUnit[u]; });
+
+                                if (window.chartRelatorio10) {
+                                    window.chartRelatorio10.data.labels = unitLabels;
+                                    window.chartRelatorio10.data.datasets[0].data = dataPop;
+                                    window.chartRelatorio10.data.datasets[1].data = dataTotal;
+                                    window.chartRelatorio10.data.datasets[2].data = dataTotal;
+                                    window.chartRelatorio10.update();
+                                    return;
+                                }
+
+                                window.chartRelatorio10 = new Chart(canvas10, {
+                                    type: 'bar',
+                                    data: {
+                                        labels: unitLabels,
+                                        datasets: [
+                                            {
+                                                type: 'bar',
+                                                label: 'POP FEM 25 A 64A',
+                                                data: dataPop,
+                                                backgroundColor: 'rgba(255, 255, 255, 0)',
+                                                borderWidth: 0,
+                                                grouped: false,
+                                                order: 2
+                                            },
+                                            {
+                                                type: 'bar',
+                                                label: 'Total',
+                                                data: dataTotal,
+                                                backgroundColor: '#c6e0b4',
+                                                borderColor: '#70ad47',
+                                                borderWidth: 1.5,
+                                                grouped: false,
+                                                order: 1
+                                            },
+                                            {
+                                                type: 'line',
+                                                label: 'Linha Conexão',
+                                                data: dataTotal,
+                                                borderColor: '#a6a6a6',
+                                                borderWidth: 1.2,
+                                                pointRadius: 0,
+                                                fill: false,
+                                                order: 0
+                                            }
+                                        ]
+                                    },
+                                    plugins: [{
+                                        id: 'dashedBarPlugin10',
+                                        afterDatasetDraw: function(chart, args) {
+                                            if (args.index === 0) {
+                                                var ctx = chart.ctx;
+                                                var meta = chart.getDatasetMeta(0);
+                                                ctx.save();
+                                                ctx.setLineDash([4, 3]);
+                                                ctx.strokeStyle = '#b00000';
+                                                ctx.lineWidth = 2;
+                                                meta.data.forEach(function(bar) {
+                                                    var x = bar.x;
+                                                    var y = bar.y;
+                                                    var base = bar.base;
+                                                    var width = bar.width;
+                                                    var left = x - width / 2;
+                                                    var height = base - y;
+                                                    ctx.strokeRect(left, y, width, height);
+                                                });
+                                                ctx.restore();
+                                            }
+                                        }
+                                    }],
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        interaction: {
+                                            mode: 'index',
+                                            intersect: false
+                                        },
+                                        plugins: {
+                                            title: {
+                                                display: true,
+                                                text: 'ALCANCE DE META DE COLETA DE PAPANICOLAU NA FAIXA ETÁRIA DE 25 A 64 ANOS',
+                                                font: {
+                                                    size: 15,
+                                                    weight: 'bold'
+                                                },
+                                                color: '#000000',
+                                                padding: {
+                                                    top: 5,
+                                                    bottom: 15
+                                                }
+                                            },
+                                            legend: {
+                                                position: 'top',
+                                                labels: {
+                                                    generateLabels: function(chart) {
+                                                        return [
+                                                            {
+                                                                text: 'POP FEM 25 A 64A',
+                                                                fillStyle: '#ffffff',
+                                                                strokeStyle: '#b00000',
+                                                                lineWidth: 2,
+                                                                lineDash: [4, 3],
+                                                                datasetIndex: 0
+                                                            },
+                                                            {
+                                                                text: 'Total',
+                                                                fillStyle: '#c6e0b4',
+                                                                strokeStyle: '#70ad47',
+                                                                lineWidth: 1.5,
+                                                                datasetIndex: 1
+                                                            }
+                                                        ];
+                                                    },
+                                                    font: {
+                                                        size: 11,
+                                                        weight: '600'
+                                                    },
+                                                    boxWidth: 18,
+                                                    boxHeight: 14,
+                                                    padding: 20
+                                                }
+                                            },
+                                            tooltip: {
+                                                callbacks: {
+                                                    label: function(context) {
+                                                        if (context.datasetIndex === 0) {
+                                                            return 'Meta Rastreamento (Pop 25-64 / 3): ' + context.raw.toLocaleString('pt-BR');
+                                                        } else if (context.datasetIndex === 1) {
+                                                            return 'Total Coletas Realizadas: ' + context.raw.toLocaleString('pt-BR');
+                                                        }
+                                                        return null;
+                                                    },
+                                                    afterBody: function(context) {
+                                                        var pop = 0, tot = 0;
+                                                        context.forEach(function(c) {
+                                                            if (c.datasetIndex === 0) pop = c.raw;
+                                                            if (c.datasetIndex === 1) tot = c.raw;
+                                                        });
+                                                        if (pop > 0) {
+                                                            var perc = ((tot / pop) * 100).toFixed(1);
+                                                            return 'Alcance da Meta: ' + perc + '%';
+                                                        }
+                                                        return '';
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        layout: {
+                                            padding: {
+                                                bottom: 15
+                                            }
+                                        },
+                                        scales: {
+                                            x: {
+                                                grid: {
+                                                    display: true,
+                                                    color: '#e2e8f0',
+                                                    drawTicks: true
+                                                },
+                                                ticks: {
+                                                    maxRotation: 55,
+                                                    minRotation: 45,
+                                                    font: {
+                                                        size: 9.5,
+                                                        weight: '600'
+                                                    },
+                                                    color: '#1e293b'
+                                                }
+                                            },
+                                            y: {
+                                                beginAtZero: true,
+                                                grid: {
+                                                    display: true,
+                                                    color: '#f1f5f9'
+                                                },
+                                                ticks: {
+                                                    font: {
+                                                        size: 11
+                                                    },
+                                                    color: '#64748b'
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+
+                            // Renderiza inicial
+                            renderizarGrafico10(tableData);
+
+                            // Atualiza dinamicamente conforme filtros
+                            var dtApi = $('#tabela-dinamica').DataTable();
+                            dtApi.on('search.dt', function() {
+                                var rowsFiltradas = dtApi.rows({ search: 'applied' }).data().toArray();
+                                renderizarGrafico10(rowsFiltradas);
+                            });
+                        }
                     }
                 }
             });
