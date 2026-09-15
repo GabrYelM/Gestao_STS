@@ -1342,62 +1342,68 @@ div.dt-button-collection button.dt-button:hover {
         border-spacing: 0 !important;
         table-layout: fixed !important;
     }
-    /* 1 Coluna de Identificação Hierárquica Congelada (ESTABELECIMENTO / CBO / AÇÃO) */
+    /* 2 Colunas de Identificação Hierárquica Congeladas (ESTABELECIMENTO e CBO / PROCEDIMENTO) */
     #tabela-raas-acoes th:nth-child(1), #tabela-raas-acoes td:nth-child(1) {
-        width: 320px !important; min-width: 320px !important; max-width: 380px !important;
+        width: 155px !important; min-width: 155px !important; max-width: 165px !important;
         position: sticky !important; left: 0px !important; box-sizing: border-box !important;
+        white-space: normal !important; line-height: 1.25 !important; word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
+    }
+    #tabela-raas-acoes th:nth-child(2), #tabela-raas-acoes td:nth-child(2) {
+        width: 260px !important; min-width: 260px !important; max-width: 285px !important;
+        position: sticky !important; left: 155px !important; box-sizing: border-box !important;
         white-space: normal !important; line-height: 1.25 !important; word-break: break-word !important;
         border-right: 2px solid #adb5bd !important;
     }
 
-    #tabela-raas-acoes thead th:nth-child(1) {
+    #tabela-raas-acoes thead th:nth-child(-n+2) {
         z-index: 5 !important; background-color: #f8f9fa !important; vertical-align: middle !important;
         padding: 4px 8px !important; height: 105px !important; box-sizing: border-box !important;
     }
-    #tabela-raas-acoes tbody td:nth-child(1) {
+    #tabela-raas-acoes tbody td:nth-child(-n+2) {
         z-index: 2 !important; padding: 3px 8px !important;
         font-size: 0.75rem !important;
     }
-    #tabela-raas-acoes tfoot th:nth-child(1) {
+    #tabela-raas-acoes tfoot th:nth-child(-n+2) {
         z-index: 5 !important; background-color: #cfe2ff !important; padding: 4px 8px !important;
     }
-    #tabela-raas-acoes thead th:nth-child(1) .header-excel-container {
+    #tabela-raas-acoes thead th:nth-child(-n+2) .header-excel-container {
         display: flex !important; align-items: center !important; justify-content: space-between !important;
         width: 100% !important; height: 100% !important; gap: 4px !important;
     }
-    #tabela-raas-acoes thead th:nth-child(1) .header-text {
+    #tabela-raas-acoes thead th:nth-child(-n+2) .header-text {
         font-size: 0.78rem !important; font-weight: 700 !important; line-height: 1.2 !important; color: #212529 !important;
     }
-    #tabela-raas-acoes thead th:nth-child(1) .btn-excel-filter {
+    #tabela-raas-acoes thead th:nth-child(-n+2) .btn-excel-filter {
         display: inline-flex !important; align-items: center !important; justify-content: center !important;
         color: #6c757d !important; font-size: 0.82rem !important; cursor: pointer !important; flex-shrink: 0 !important; padding: 2px !important;
     }
-    #tabela-raas-acoes thead th:nth-child(1) .btn-excel-filter:hover { color: #0d6efd !important; }
+    #tabela-raas-acoes thead th:nth-child(-n+2) .btn-excel-filter:hover { color: #0d6efd !important; }
 
-    /* Períodos na Vertical para CONS_ACOES (col 2 em diante) */
-    #tabela-raas-acoes thead th:nth-child(n+2) {
+    /* Períodos na Vertical para CONS_ACOES (col 3 em diante) */
+    #tabela-raas-acoes thead th:nth-child(n+3) {
         vertical-align: bottom !important; text-align: center !important; padding: 6px 2px 4px 2px !important;
         height: 105px !important; min-width: 42px !important; max-width: 46px !important; width: 42px !important;
         box-sizing: border-box !important; background-color: #f8f9fa !important;
     }
-    #tabela-raas-acoes thead th:nth-child(n+2) .header-excel-container {
+    #tabela-raas-acoes thead th:nth-child(n+3) .header-excel-container {
         display: flex !important; flex-direction: column !important; align-items: center !important;
         justify-content: flex-end !important; height: 100% !important; width: 100% !important; padding: 0 !important; gap: 6px !important;
     }
-    #tabela-raas-acoes thead th:nth-child(n+2) .header-text {
+    #tabela-raas-acoes thead th:nth-child(n+3) .header-text {
         writing-mode: vertical-rl !important; transform: rotate(180deg) !important; white-space: nowrap !important;
         text-align: left !important; font-size: 0.74rem !important; font-weight: 600 !important; letter-spacing: 0.2px !important;
         color: #212529 !important; display: inline-block !important; margin-top: auto !important; margin-bottom: 2px !important;
     }
-    #tabela-raas-acoes thead th:nth-child(n+2) .btn-excel-filter {
+    #tabela-raas-acoes thead th:nth-child(n+3) .btn-excel-filter {
         margin-top: auto !important; margin-bottom: 2px !important; color: #6c757d !important; font-size: 0.80rem !important;
         display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: 1px !important;
     }
-    #tabela-raas-acoes tbody td:nth-child(n+2) {
+    #tabela-raas-acoes tbody td:nth-child(n+3) {
         text-align: center !important; font-size: 0.74rem !important; min-width: 42px !important; max-width: 46px !important;
         width: 42px !important; padding: 3px 2px !important; white-space: nowrap !important; box-sizing: border-box !important;
     }
-    #tabela-raas-acoes tfoot th:nth-child(n+2) {
+    #tabela-raas-acoes tfoot th:nth-child(n+3) {
         text-align: center !important; font-size: 0.76rem !important; min-width: 42px !important; max-width: 46px !important;
         width: 42px !important; padding: 4px 2px !important; background-color: #cfe2ff !important; box-sizing: border-box !important;
     }
@@ -1417,9 +1423,8 @@ div.dt-button-collection button.dt-button:hover {
         background-color: #2c4373 !important;
         color: #ffffff !important;
         font-weight: 700 !important;
-        font-size: 0.80rem !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.4px !important;
+        font-size: 0.78rem !important;
+        letter-spacing: 0.3px !important;
         border-top: 2px solid #1a2a4c !important;
         border-bottom: 2px solid #1a2a4c !important;
     }
@@ -2391,10 +2396,11 @@ div.dt-button-collection button.dt-button:hover {
                 tfootHtml += '</tr></tfoot>';
                 $(tabelaId).append(tfootHtml);
             } else if (tabelaId === '#tabela-raas-acoes') {
-                // Linha de Rodapé com Totais para Ações por CBO
+                // Linha de Rodapé com Totais para Ações por CBO (2 colunas de texto: Estabelecimento e CBO/Procedimento)
                 var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
                 tfootHtml += '<th class="text-start">TOTAL GERAL CAPS</th>';
-                for (var f = 1; f < tCols.length; f++) {
+                tfootHtml += '<th class="text-center text-muted small">(Consolidado)</th>';
+                for (var f = 2; f < tCols.length; f++) {
                     tfootHtml += '<th class="text-center"></th>';
                 }
                 tfootHtml += '</tr></tfoot>';
@@ -2411,11 +2417,16 @@ div.dt-button-collection button.dt-button:hover {
                 language: {
                     url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
                 },
-                pageLength: (tabelaId === '#tabela-raas-pacientes') ? 25 : (tabelaId === '#tabela-raas-acoes' ? 100 : 50),
+                paging: (tabelaId !== '#tabela-raas-acoes'),
+                pageLength: (tabelaId === '#tabela-raas-acoes') ? -1 : ((tabelaId === '#tabela-raas-pacientes') ? 25 : 50),
                 lengthMenu: [10, 25, 50, 100, 200],
-                dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
-                     '<"table-responsive"t>' +
-                     '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                dom: (tabelaId === '#tabela-raas-acoes')
+                    ? '<"row mb-3 align-items-center"<"col-sm-12 col-md-6 text-start"B><"col-sm-12 col-md-6 text-end"f>>' +
+                      '<"table-responsive"t>' +
+                      '<"row mt-3"<"col-sm-12 col-md-12"i>>'
+                    : '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
+                      '<"table-responsive"t>' +
+                      '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
                 buttons: [
                     {
                         extend: 'colvis',
@@ -2448,13 +2459,19 @@ div.dt-button-collection button.dt-button:hover {
                         if (tipo === 'unidade') {
                             $(row).addClass('linha-unidade-raas');
                             $('td', row).eq(0).html('<i class="bi bi-hospital me-2"></i>' + data['ESTABELECIMENTO']);
+                            $('td', row).eq(1).html('<strong>TOTAL DA UNIDADE</strong>');
+                            $('td', row).addClass('fw-bold text-white');
                         } else if (tipo === 'cbo') {
                             $(row).addClass('linha-cbo-total');
-                            $('td', row).eq(0).html('<strong>' + data['ESTABELECIMENTO'] + '</strong>');
+                            $('td', row).eq(0).html('<span class="fw-semibold">' + data['ESTABELECIMENTO'] + '</span>');
+                            $('td', row).eq(1).html('<strong>' + data['CBO / PROCEDIMENTO'] + '</strong>');
                             $('td', row).addClass('fw-bold');
                         } else if (tipo === 'procedimento') {
                             $(row).addClass('linha-procedimento-raas');
-                            $('td', row).eq(0).html('<span class="ps-3">&bull;&nbsp;' + data['ESTABELECIMENTO'] + '</span>');
+                            $('td', row).eq(0).html('<span class="text-muted" style="font-size: 0.72rem;">' + data['ESTABELECIMENTO'] + '</span>');
+                            var cboNome = data['_cbo'] || '';
+                            $('td', row).eq(1).html('<span class="ps-3 text-secondary">&bull;&nbsp;</span>' + data['CBO / PROCEDIMENTO'])
+                                               .attr('title', 'CBO: ' + cboNome);
                         }
                     }
                 },
@@ -2480,9 +2497,9 @@ div.dt-button-collection button.dt-button:hover {
                             }
                         });
                     } else if (tabelaId === '#tabela-raas-acoes') {
-                        // Para Ações por CBO, somamos apenas as linhas de CBO para obter o total real sem duplicidade
+                        // Para Ações por CBO, somamos apenas as linhas de CBO (ou Unidade) para obter o total real sem duplicidade
                         api.columns().every(function(colIdx) {
-                            if (colIdx >= 1) {
+                            if (colIdx >= 2) {
                                 var colDataSrc = api.column(colIdx).dataSrc();
                                 var totalCbo = 0;
                                 api.rows({ search: 'applied' }).every(function() {
@@ -2516,12 +2533,27 @@ div.dt-button-collection button.dt-button:hover {
                                 $filtroCaps.append('<option value="' + distinctEstabs[j] + '">' + distinctEstabs[j] + '</option>');
                             }
 
-                            // Filtro customizado DataTables
+                            // Filtro customizado DataTables integrando filtro de Estabelecimento e filtro de CBO
                             $.fn.dataTable.ext.search.push(function(settings, searchData, index, rowData) {
                                 if (settings.nTable.id !== 'tabela-raas-acoes') return true;
+                                
+                                // 1. Filtro do Select no Topo
                                 var selEstab = $('#filtro-caps-acoes').val();
-                                if (!selEstab) return true;
-                                return rowData && rowData['_estabelecimento'] === selEstab;
+                                if (selEstab && rowData && rowData['_estabelecimento'] !== selEstab) {
+                                    return false;
+                                }
+
+                                // 2. Filtro de CBO (do dropdown Excel da coluna 1)
+                                if (window._filtroCboAtivo && rowData) {
+                                    // Mantém a linha de cabeçalho da unidade se o estabelecimento estiver ativo
+                                    if (rowData['_tipo_linha'] === 'unidade') return true;
+                                    var cbo = rowData['_cbo'];
+                                    if (!window._filtroCboAtivo.has(cbo)) {
+                                        return false;
+                                    }
+                                }
+
+                                return true;
                             });
 
                             $filtroCaps.off('change').on('change', function() {
@@ -2530,8 +2562,8 @@ div.dt-button-collection button.dt-button:hover {
                         }
                     }
 
-                    if (tabelaId === '#tabela-raas-prof') {
-                        var maxCols = 5;
+                    if (tabelaId === '#tabela-raas-prof' || tabelaId === '#tabela-raas-acoes') {
+                        var maxCols = (tabelaId === '#tabela-raas-prof') ? 5 : 2;
                         function fixarColunasSticky() {
                             var leftOffset = 0;
                             for (var i = 1; i <= maxCols; i++) {

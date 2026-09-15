@@ -133,15 +133,34 @@ window.initExcelFilters = function(dtApi, colIndices) {
         var uniqueData = [];
         var valCounts = {};
         
-        column.data().each(function(d) {
-            var rawText = $('<div>').html(d).text().trim();
-            if (rawText === '') rawText = '(Vazio)';
-            if (!valCounts[rawText]) {
-                valCounts[rawText] = 0;
-                uniqueData.push(rawText);
-            }
-            valCounts[rawText]++;
-        });
+        if ($tableNode.is('#tabela-raas-acoes') && colIdx === 1) {
+            // Para a coluna CBO / PROCEDIMENTO do Relatório 05, agrupamos o filtro exclusivamente pelas categorias de CBO
+            var cbosVistos = {};
+            dtApi.rows().every(function() {
+                var rowData = this.data();
+                if (rowData && rowData['_cbo'] && rowData['_cbo'] !== 'TODOS') {
+                    var c = rowData['_cbo'];
+                    if (!cbosVistos[c]) {
+                        cbosVistos[c] = 0;
+                        uniqueData.push(c);
+                    }
+                    if (rowData['_tipo_linha'] === 'cbo') {
+                        cbosVistos[c]++;
+                    }
+                }
+            });
+            valCounts = cbosVistos;
+        } else {
+            column.data().each(function(d) {
+                var rawText = $('<div>').html(d).text().trim();
+                if (rawText === '') rawText = '(Vazio)';
+                if (!valCounts[rawText]) {
+                    valCounts[rawText] = 0;
+                    uniqueData.push(rawText);
+                }
+                valCounts[rawText]++;
+            });
+        }
 
         // Ordena valores numericamente ou alfabeticamente
         uniqueData.sort(function(a, b) {
@@ -295,7 +314,12 @@ window.initExcelFilters = function(dtApi, colIndices) {
         // Botão Limpar Filtro
         $dropdown.find('.btn-limpar-filtro').on('click', function() {
             delete activeFilters[colIdx];
-            column.search('').draw();
+            if ($tableNode.is('#tabela-raas-acoes') && colIdx === 1) {
+                window._filtroCboAtivo = null;
+                dtApi.draw();
+            } else {
+                column.search('').draw();
+            }
             atualizarIconeColuna(column, false);
             fecharTodosDropdowns();
         });
@@ -334,6 +358,22 @@ window.initExcelFilters = function(dtApi, colIndices) {
                     if (val === '(Vazio)') val = '^$';
                     checkedValues.push(val);
                 });
+            }
+
+            if ($tableNode.is('#tabela-raas-acoes') && colIdx === 1) {
+                var isAll = (checkedValues.length === uniqueData.length && searchTerm === '');
+                if (isAll) {
+                    delete activeFilters[colIdx];
+                    window._filtroCboAtivo = null;
+                    atualizarIconeColuna(column, false);
+                } else {
+                    activeFilters[colIdx] = checkedValues;
+                    window._filtroCboAtivo = new Set(checkedValues);
+                    atualizarIconeColuna(column, true);
+                }
+                dtApi.draw();
+                fecharTodosDropdowns();
+                return;
             }
 
             if (checkedValues.length === 0) {
