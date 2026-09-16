@@ -27,8 +27,8 @@ MAPA_RELATORIO_TABELAS = {
     '13': [('AG-04', 'ano_mes')],
     '14': [('VG-02', 'ano_mes')],
     '15': [('REL-135', 'ano_mes_competencia')],
-    '16': [('REL-16', 'data_extracao')],
-    '17': [('REL-134', 'data_extracao')]
+    '16': [('REL-16', 'ano_mes'), ('REL-16', 'data_extracao')],
+    '17': [('REL-134', 'ano_mes'), ('REL-134', 'data_extracao')]
 }
 
 def formatar_descricao_competencia(competencia):
@@ -275,8 +275,9 @@ def obter_status_importacao_dtic(periodo):
             r = db.session.execute(text("""
                 SELECT COUNT(*) as total, MAX(data_extracao) as dt
                 FROM 'REL-114'
-                WHERE previsao_parto LIKE '%/' || :mes || '/' || :ano
-            """), {'mes': mes, 'ano': ano}).fetchone()
+                WHERE ano_mes = :periodo OR ano_mes = :periodo_int
+                   OR previsao_parto LIKE '%/' || :mes || '/' || :ano
+            """), {'periodo': periodo_str, 'periodo_int': periodo_int, 'mes': mes, 'ano': ano}).fetchone()
             tot = r[0] if r else 0
             dt = r[1] if r and r[1] else None
             resultado['rel09'] = {'importado': tot > 0, 'total_registros': tot, 'data_importacao': dt}
@@ -288,11 +289,12 @@ def obter_status_importacao_dtic(periodo):
             r = db.session.execute(text("""
                 SELECT COUNT(*) as total, MAX(data_extracao) as dt
                 FROM 'REL-134'
-                WHERE data_extracao LIKE :ano || '-' || :mes || '-%'
+                WHERE ano_mes = :periodo OR ano_mes = :periodo_int
+                   OR data_extracao LIKE :ano || '-' || :mes || '-%'
                    OR (length(data_extracao)=10 AND substr(data_extracao, 7, 4) || substr(data_extracao, 4, 2) = :periodo)
                    OR (ano = :ano AND (mes = :mes OR mes = :mes_sem_zero))
                    OR (data_atividade LIKE '%/' || :mes || '/' || :ano)
-            """), {'periodo': periodo_str, 'ano': ano, 'mes': mes, 'mes_sem_zero': mes_sem_zero}).fetchone()
+            """), {'periodo': periodo_str, 'periodo_int': periodo_int, 'ano': ano, 'mes': mes, 'mes_sem_zero': mes_sem_zero}).fetchone()
             tot = r[0] if r else 0
             dt = r[1] if r and r[1] else None
             resultado['rel17'] = {'importado': tot > 0, 'total_registros': tot, 'data_importacao': dt}
@@ -317,9 +319,10 @@ def obter_status_importacao_dtic(periodo):
             r = db.session.execute(text("""
                 SELECT COUNT(*) as total, MAX(data_extracao) as dt
                 FROM 'REL-16'
-                WHERE data_extracao LIKE :ano || '-' || :mes || '-%'
+                WHERE ano_mes = :periodo OR ano_mes = :periodo_int
+                   OR data_extracao LIKE :ano || '-' || :mes || '-%'
                    OR (length(data_extracao)=10 AND substr(data_extracao, 7, 4) || substr(data_extracao, 4, 2) = :periodo)
-            """), {'periodo': periodo_str, 'ano': ano, 'mes': mes}).fetchone()
+            """), {'periodo': periodo_str, 'periodo_int': periodo_int, 'ano': ano, 'mes': mes}).fetchone()
             tot = r[0] if r else 0
             dt = r[1] if r and r[1] else None
             resultado['rel16'] = {'importado': tot > 0, 'total_registros': tot, 'data_importacao': dt}

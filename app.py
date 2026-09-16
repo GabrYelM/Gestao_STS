@@ -835,25 +835,22 @@ def download_excel(indice, periodo):
         elif indice == '10':
             df = prod.gera_relatorio_10(periodo)
         elif indice == '11':
-            df = prod.gera_relatorio_11(periodo)
+            output = prod.exportar_excel_relatorio_11(periodo)
+            return send_file(output, download_name=f"Relatorio_11_Fila_de_Espera_FE02_{periodo}.xlsx", as_attachment=True)
         elif indice == '12':
             output = prod.exportar_excel_relatorio_12_oficial(periodo)
             return send_file(output, download_name=f"Relatorio_12_MMH_PICS_Penha_{periodo}.xlsx", as_attachment=True)
         elif indice == '13':
-            df = prod.gera_relatorio_13(periodo)
+            output = prod.exportar_excel_relatorio_13(periodo)
+            return send_file(output, download_name=f"Relatorio_13_Perda_Primaria_VG02_{periodo}.xlsx", as_attachment=True)
         elif indice == '14':
-            df = prod.gera_relatorio_14(periodo)
+            output = prod.exportar_excel_relatorio_14(periodo)
+            return send_file(output, download_name=f"Relatorio_14_Absenteismo_AG04_{periodo}.xlsx", as_attachment=True)
         elif indice == '15':
-            df = prod.gera_relatorio_15(periodo)
+            output = prod.exportar_excel_relatorio_15(periodo)
+            return send_file(output, download_name=f"Relatorio_15_Acompanhamento_Cadastro_ESF_{periodo}.xlsx", as_attachment=True)
         elif indice == '16':
-            pivot_ativo, pivot_inativo = prod.gera_relatorio_16(periodo)
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                if pivot_ativo is not None and not pivot_ativo.empty:
-                    pivot_ativo.to_excel(writer, index=False, sheet_name='Ativos - Por Tipo')
-                if pivot_inativo is not None and not pivot_inativo.empty:
-                    pivot_inativo.to_excel(writer, index=False, sheet_name='Inativos - Por Motivo')
-            output.seek(0)
+            output = prod.exportar_excel_relatorio_16(periodo)
             return send_file(output, download_name=f"Relatorio_16_AMG_{periodo}.xlsx", as_attachment=True)
         elif indice == '17':
             df = prod.gera_relatorio_17(periodo)
@@ -1026,29 +1023,29 @@ def producao():
             elif indice == '15':
                 df = prod.gera_relatorio_15(periodo)
             elif indice == '16':
-                df_ativo, df_inativo = prod.gera_relatorio_16(periodo)
-                json_dados_ativo = None
-                json_colunas_ativo = None
-                json_dados_inativo = None
-                json_colunas_inativo = None
+                df_ativos, df_inativos = prod.gera_relatorio_16(periodo)
+                json_dados_ativos = None
+                json_colunas_ativos = None
+                json_dados_inativos = None
+                json_colunas_inativos = None
                 
-                if df_ativo is not None and not df_ativo.empty:
-                    colunas_ativo = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_ativo.columns]
-                    json_colunas_ativo = json.dumps(colunas_ativo)
-                    json_dados_ativo = json.dumps(df_ativo.fillna("").to_dict(orient="records"))
+                if df_ativos is not None and not df_ativos.empty:
+                    colunas_ativos = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_ativos.columns]
+                    json_colunas_ativos = json.dumps(colunas_ativos)
+                    json_dados_ativos = json.dumps(df_ativos.fillna("").to_dict(orient="records"))
                     
-                if df_inativo is not None and not df_inativo.empty:
-                    colunas_inativo = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_inativo.columns]
-                    json_colunas_inativo = json.dumps(colunas_inativo)
-                    json_dados_inativo = json.dumps(df_inativo.fillna("").to_dict(orient="records"))
+                if df_inativos is not None and not df_inativos.empty:
+                    colunas_inativos = [{"data": str(col).replace(".", "\\."), "title": str(col)} for col in df_inativos.columns]
+                    json_colunas_inativos = json.dumps(colunas_inativos)
+                    json_dados_inativos = json.dumps(df_inativos.fillna("").to_dict(orient="records"))
                 
                 return render_template(
                     "producao.html",
                     tabela_html=tabela_html,
-                    json_dados_ativo=json_dados_ativo,
-                    json_colunas_ativo=json_colunas_ativo,
-                    json_dados_inativo=json_dados_inativo,
-                    json_colunas_inativo=json_colunas_inativo,
+                    json_dados_ativos=json_dados_ativos,
+                    json_colunas_ativos=json_colunas_ativos,
+                    json_dados_inativos=json_dados_inativos,
+                    json_colunas_inativos=json_colunas_inativos,
                     relatorio_selecionado=indice,
                     periodo_selecionado=periodo,
                     periodos_disponiveis=periodos_disponiveis,
@@ -1118,27 +1115,6 @@ def producao():
         fonte_dados=fonte_dados,
         data_geracao=data_geracao
     )
-
-from flask import send_file
-
-@app.route("/download_excel/<relatorio_id>/<periodo>", endpoint="download_excel_com_periodo")
-@app.route("/download_excel/<relatorio_id>", endpoint="download_excel_sem_periodo")
-def download_excel_relatorio(relatorio_id, periodo=None):
-    if relatorio_id == '08':
-        output = prod.exportar_excel_relatorio_08(periodo)
-        filename = f"Relatorio_08_Pre_Natal_{periodo or 'geral'}.xlsx"
-    elif relatorio_id == '09':
-        output = prod.exportar_excel_relatorio_09(periodo)
-        filename = f"Relatorio_09_Consulta_Odontologica_{periodo or 'geral'}.xlsx"
-    elif relatorio_id == '10':
-        output = prod.exportar_excel_relatorio_10(periodo)
-        filename = f"Relatorio_10_Papanicolau_{periodo or 'geral'}.xlsx"
-    else:
-        return "Relatório não suportado para download direto", 404
-        
-    if not output:
-        return "Nenhum dado encontrado", 404
-    return send_file(output, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 import zipfile
 import os

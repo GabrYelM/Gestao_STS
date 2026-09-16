@@ -68,6 +68,19 @@
 #tabela-dinamica th.sorting_desc {
     padding-right: 28px !important;
 }
+
+#tabela-inativos thead th:not(:first-child):not(:last-child) {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+    min-width: 38px;
+    max-width: 50px;
+    height: 250px;
+    vertical-align: bottom !important;
+    text-align: left;
+    padding: 12px 4px 10px 4px !important;
+    line-height: 1.1 !important;
+}
 .dataTables_scrollHeadInner, .dataTables_scrollHeadInner table {
     width: 100% !important;
 }
@@ -344,26 +357,26 @@ div.dt-button-collection button.dt-button:hover {
         <script id="dados-raas-acoes-json" type="application/json">{{ json_dados_acoes | safe }}</script>
         <script id="colunas-raas-acoes-json" type="application/json">{{ json_colunas_acoes | safe }}</script>
 
-    {% elif relatorio_selecionado == '16' and json_dados_ativo %}
-        <!-- Seletor Dinâmico de Visualização para Relatório 16 -->
+    {% elif relatorio_selecionado == '16' and json_dados_ativos %}
+        <!-- Seletor Dinâmico de Visualização para Relatório 16 (SIGA AMG) -->
         <div class="card shadow-sm p-3 mb-4 bg-light border">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
                 <div>
-                    <h5 class="mb-1 text-primary"><i class="bi bi-person-lines-fill me-2"></i>16. TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG</h5>
+                    <h5 class="mb-1 text-primary"><i class="bi bi-person-lines-fill me-2"></i>16. TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG (SIGA - AMG)</h5>
                     <div class="text-muted small mt-1">
                         <span class="me-3"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> {{ fonte_dados }}</span>
                         <span><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> {{ data_geracao }}</span>
                     </div>
                 </div>
                 <div class="btn-group" role="group" aria-label="Visualização AMG">
-                    <input type="radio" class="btn-check" name="amg_view" id="view_ativos" autocomplete="off" checked onclick="alternarVisaoAMG('ativos')">
-                    <label class="btn btn-outline-success px-4 py-2 fw-bold" for="view_ativos">
-                        <i class="bi bi-person-check-fill me-1"></i> Ativo - Por Tipo
+                    <input type="radio" class="btn-check" name="amg_view" id="view_amg_ativos" autocomplete="off" checked onclick="alternarVisaoAMG('ativos')">
+                    <label class="btn btn-outline-primary px-3 py-2 fw-bold" for="view_amg_ativos">
+                        <i class="bi bi-check-circle-fill me-1"></i> 1. Pacientes Ativos (Por Tipo de Diabetes)
                     </label>
 
-                    <input type="radio" class="btn-check" name="amg_view" id="view_inativos" autocomplete="off" onclick="alternarVisaoAMG('inativos')">
-                    <label class="btn btn-outline-danger px-4 py-2 fw-bold" for="view_inativos">
-                        <i class="bi bi-person-x-fill me-1"></i> Inativos - Por Motivo de Inativação
+                    <input type="radio" class="btn-check" name="amg_view" id="view_amg_inativos" autocomplete="off" onclick="alternarVisaoAMG('inativos')">
+                    <label class="btn btn-outline-danger px-3 py-2 fw-bold" for="view_amg_inativos">
+                        <i class="bi bi-x-circle-fill me-1"></i> 2. Pacientes Inativos (Por Motivo de Inativação)
                     </label>
                 </div>
             </div>
@@ -371,30 +384,28 @@ div.dt-button-collection button.dt-button:hover {
 
         <div class="row g-4 mb-4">
             <!-- Tabela 1: Pacientes Ativos -->
-            <div class="col-12" id="container-ativos">
-                <div class="card shadow-sm p-3 border-success border-top border-3">
-                    <h4 class="text-success mb-3"><i class="bi bi-person-check-fill me-2"></i>Status: ATIVO (Por Tipo de Diabetes)</h4>
+            <div class="col-12" id="container-amg-ativos">
+                <div class="card shadow-sm p-3 border-primary border-top border-3">
+                    <h4 class="text-primary mb-3"><i class="bi bi-check-circle-fill me-2"></i>Pacientes Ativos por Tipo de Diabetes</h4>
                     <table id="tabela-ativos" class="table table-sm table-bordered w-100 small">
-                        <!-- Cabeçalho injetado via DataTables -->
                     </table>
                 </div>
             </div>
             
             <!-- Tabela 2: Pacientes Inativos -->
-            <div class="col-12 d-none" id="container-inativos">
+            <div class="col-12 d-none" id="container-amg-inativos">
                 <div class="card shadow-sm p-3 border-danger border-top border-3">
-                    <h4 class="text-danger mb-3"><i class="bi bi-person-x-fill me-2"></i>Status: INATIVO (Por Motivo de Inativação)</h4>
+                    <h4 class="text-danger mb-3"><i class="bi bi-x-circle-fill me-2"></i>Pacientes Inativos por Motivo de Inativação</h4>
                     <table id="tabela-inativos" class="table table-sm table-bordered w-100 small">
-                        <!-- Cabeçalho injetado via DataTables -->
                     </table>
                 </div>
             </div>
         </div>
         
-        <script id="dados-ativos-json" type="application/json">{{ json_dados_ativo | safe }}</script>
-        <script id="colunas-ativos-json" type="application/json">{{ json_colunas_ativo | safe }}</script>
-        <script id="dados-inativos-json" type="application/json">{{ json_dados_inativo | safe }}</script>
-        <script id="colunas-inativos-json" type="application/json">{{ json_colunas_inativo | safe }}</script>
+        <script id="dados-ativos-json" type="application/json">{{ json_dados_ativos | safe }}</script>
+        <script id="colunas-ativos-json" type="application/json">{{ json_colunas_ativos | safe }}</script>
+        <script id="dados-inativos-json" type="application/json">{{ json_dados_inativos | safe }}</script>
+        <script id="colunas-inativos-json" type="application/json">{{ json_colunas_inativos | safe }}</script>
     {% elif json_dados %}
     {% if relatorio_selecionado == '15' %}
     <div class="card shadow-sm p-3 mb-3">
@@ -480,6 +491,16 @@ div.dt-button-collection button.dt-button:hover {
                     <i class="bi bi-person-heart me-2"></i>09. Planilha de Consulta Odontológica da Gestante
                 {% elif relatorio_selecionado == '10' %}
                     <i class="bi bi-gender-female me-2"></i>10. Alcance de Meta de Coleta de Papanicolau na Faixa Etária de 25 a 64 Anos
+                {% elif relatorio_selecionado == '11' %}
+                    <i class="bi bi-card-checklist me-2"></i>11. Planilha de Inclusões e Saídas da Fila de Espera
+                {% elif relatorio_selecionado == '12' %}
+                    <i class="bi bi-capsule me-2"></i>12. MMH - PICS Penha (Solicitação Mensal de Insumos Especiais - Auriculoterapia)
+                {% elif relatorio_selecionado == '13' %}
+                    <i class="bi bi-calendar-x me-2"></i>13. Relatório de Perda Primária por Estabelecimento e Especialidade (VG-02)
+                {% elif relatorio_selecionado == '14' %}
+                    <i class="bi bi-person-x me-2"></i>14. Relatório de Absenteísmo por Estabelecimento e Especialidade (AG-04)
+                {% elif relatorio_selecionado == '15' %}
+                    <i class="bi bi-people me-2"></i>15. Relatório de Acompanhamento de Cadastro Individual ESF (REL-135)
                 {% else %}
                     Resultado:
                 {% endif %}
@@ -2063,6 +2084,7 @@ div.dt-button-collection button.dt-button:hover {
         padding: 6px 8px !important;
         border: 1px solid #b6d4fe !important;
     }
+</style>
 {% endif %}
  
 {% if relatorio_selecionado == '09' %}
@@ -2133,40 +2155,1247 @@ div.dt-button-collection button.dt-button:hover {
     }
 </style>
 {% endif %}
+
+{% if relatorio_selecionado == '10' %}
+<style>
+    /* Padronização Oficial do Relatório 10 (Papanicolau 25-64 anos) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* Primeira coluna: Mês/Ano */
+    #tabela-dinamica thead th:first-child {
+        vertical-align: middle !important;
+        text-align: center !important;
+        padding: 8px 12px !important;
+        min-width: 130px !important;
+        max-width: 145px !important;
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        font-weight: 700 !important;
+        color: #212529 !important;
+    }
+    #tabela-dinamica thead th:first-child .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100% !important;
+        height: 100% !important;
+        gap: 8px !important;
+    }
+    #tabela-dinamica thead th:first-child .header-text {
+        font-size: 1.02rem !important;
+        font-weight: 700 !important;
+        color: #212529 !important;
+        text-align: center !important;
+    }
+    #tabela-dinamica tbody td:first-child {
+        text-align: center !important;
+        font-weight: 600 !important;
+        font-size: 1.0rem !important;
+        padding: 6px 10px !important;
+        white-space: nowrap !important;
+        border: 1px solid #dee2e6 !important;
+        background-color: #ffffff !important;
+    }
+
+    /* Colunas de Unidades na Vertical (col 2 até penúltima) */
+    #tabela-dinamica thead th:nth-child(n+2):not(:last-child) {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 8px 2px 5px 2px !important;
+        height: 235px !important;
+        min-width: 48px !important;
+        max-width: 54px !important;
+        width: 48px !important;
+        box-sizing: border-box !important;
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+2):not(:last-child) .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+2):not(:last-child) .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.84rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 3px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+2):not(:last-child) .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+        font-size: 0.84rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 1px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+2):not(:last-child) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+    #tabela-dinamica tbody td:nth-child(n+2):not(:last-child) {
+        text-align: right !important;
+        font-size: 0.85rem !important;
+        min-width: 48px !important;
+        max-width: 54px !important;
+        width: 48px !important;
+        padding: 4px 6px !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna Total Geral (última coluna) na Vertical */
+    #tabela-dinamica thead th:last-child {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 8px 2px 5px 2px !important;
+        height: 235px !important;
+        min-width: 50px !important;
+        max-width: 56px !important;
+        width: 50px !important;
+        box-sizing: border-box !important;
+        background-color: #f1f5f9 !important;
+        border: 1px solid #dee2e6 !important;
+        border-left: 2px solid #adb5bd !important;
+        border-bottom: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th:last-child .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th:last-child .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.86rem !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.2px !important;
+        color: #0d6efd !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 3px !important;
+    }
+    #tabela-dinamica thead th:last-child .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #0d6efd !important;
+        font-size: 0.84rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 1px !important;
+    }
+    #tabela-dinamica tbody td:last-child {
+        min-width: 50px !important;
+        max-width: 56px !important;
+        width: 50px !important;
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        border-left: 2px solid #adb5bd !important;
+        color: #0d6efd !important;
+        font-weight: 700 !important;
+        text-align: right !important;
+        font-size: 0.86rem !important;
+        padding: 4px 6px !important;
+        white-space: nowrap !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        text-align: right !important;
+        padding: 6px 6px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+    }
+    #tabela-dinamica tfoot th:first-child {
+        text-align: center !important;
+        font-weight: 700 !important;
+        font-size: 1.0rem !important;
+        padding: 6px 10px !important;
+    }
+    #tabela-dinamica tfoot th:last-child {
+        border-left: 2px solid #0d6efd !important;
+        color: #0d6efd !important;
+        font-weight: 700 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '11' %}
+<style>
+    /* Padronização Oficial do Relatório 11 (Fila de Espera - FE-02) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
+    }
+
+    /* Coluna 1: Código CNES */
+    #tabela-dinamica thead th:nth-child(1) {
+        text-align: center !important;
+        width: 105px !important;
+        min-width: 100px !important;
+    }
+    #tabela-dinamica thead th:nth-child(1) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(1) {
+        text-align: center !important;
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: Estabelecimento Solicitante */
+    #tabela-dinamica thead th:nth-child(2) {
+        text-align: left !important;
+        min-width: 260px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(2) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 3: Especialidade (Centralizada) */
+    #tabela-dinamica thead th:nth-child(3) {
+        text-align: center !important;
+        min-width: 190px !important;
+    }
+    #tabela-dinamica thead th:nth-child(3) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(3) {
+        text-align: center !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 4: Procedimento */
+    #tabela-dinamica thead th:nth-child(4) {
+        text-align: left !important;
+        min-width: 250px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(4) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 5: Total de Inclusões */
+    #tabela-dinamica thead th:nth-child(5) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 130px !important;
+    }
+    #tabela-dinamica thead th:nth-child(5) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(5) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 6: Saiu da Espera */
+    #tabela-dinamica thead th:nth-child(6) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 130px !important;
+    }
+    #tabela-dinamica thead th:nth-child(6) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(6) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 10px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1),
+    #tabela-dinamica tfoot th:nth-child(3) {
+        text-align: center !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(5),
+    #tabela-dinamica tfoot th:nth-child(6) {
+        text-align: right !important;
+        font-weight: 700 !important;
+    }
+</style>
+{% endif %}
  
 {% if relatorio_selecionado == '12' %}
 <style>
-    /* Permite quebra de linha nos cabeçalhos longos de insumos */
-    #tabela-dinamica th {
-        white-space: normal !important;
-        word-wrap: break-word;
-        word-break: normal;
-        overflow-wrap: break-word;
+    /* Padronização Oficial do Relatório 12 (MMH - PICS Penha) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
         vertical-align: middle !important;
-        text-align: center;
-        font-size: 0.85rem;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
     }
-    #tabela-dinamica th:first-child {
-        text-align: left;
-        min-width: 250px !important;
-        max-width: 320px !important;
-    }
-    #tabela-dinamica td:first-child {
+
+    /* Coluna 1: SUPERVISÃO PENHA - Unidades de Saúde */
+    #tabela-dinamica thead th:nth-child(1) {
         text-align: left !important;
-        font-weight: 500;
+        min-width: 320px !important;
     }
-    #tabela-dinamica td {
-        text-align: center;
+    #tabela-dinamica thead th:nth-child(1) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
     }
-    #tabela-dinamica tbody tr:last-child,
-    #tabela-dinamica tbody tr:has(td:first-child:contains('TOTAL')) {
-        font-weight: bold !important;
-        background-color: #f1f5f9 !important;
+    #tabela-dinamica tbody td:nth-child(1) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 6px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: Nº procedimentos */
+    #tabela-dinamica thead th:nth-child(2) {
+        text-align: right !important;
+        width: 170px !important;
+        min-width: 150px !important;
+    }
+    #tabela-dinamica thead th:nth-child(2) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(2) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 6px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 3: Total de pontos */
+    #tabela-dinamica thead th:nth-child(3) {
+        text-align: right !important;
+        width: 170px !important;
+        min-width: 150px !important;
+    }
+    #tabela-dinamica thead th:nth-child(3) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(3) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 6px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 4: Placa adesiva com semente vacaria para auriculoterapia - 70 pontos */
+    #tabela-dinamica thead th:nth-child(4) {
+        text-align: right !important;
+        width: 250px !important;
+        min-width: 230px !important;
+        white-space: normal !important;
+    }
+    #tabela-dinamica thead th:nth-child(4) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(4) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 6px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
         border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
     }
-    #tabela-dinamica tbody tr:last-child td,
-    #tabela-dinamica tbody tr:has(td:first-child:contains('TOTAL')) td {
-        font-weight: bold !important;
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 10px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2),
+    #tabela-dinamica tfoot th:nth-child(3),
+    #tabela-dinamica tfoot th:nth-child(4) {
+        text-align: right !important;
+        font-weight: 700 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '13' %}
+<style>
+    /* Padronização Oficial do Relatório 13 (Perda Primária - VG-02) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
+    }
+
+    /* Coluna 1: Tipo de Agenda */
+    #tabela-dinamica thead th:nth-child(1) {
+        text-align: center !important;
+        width: 130px !important;
+        min-width: 120px !important;
+    }
+    #tabela-dinamica thead th:nth-child(1) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(1) {
+        text-align: center !important;
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: Estabelecimento */
+    #tabela-dinamica thead th:nth-child(2) {
+        text-align: left !important;
+        min-width: 260px !important;
+    }
+    #tabela-dinamica thead th:nth-child(2) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(2) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 3: Especialidade */
+    #tabela-dinamica thead th:nth-child(3) {
+        text-align: left !important;
+        min-width: 200px !important;
+    }
+    #tabela-dinamica thead th:nth-child(3) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(3) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 4: Procedimento */
+    #tabela-dinamica thead th:nth-child(4) {
+        text-align: left !important;
+        min-width: 250px !important;
+    }
+    #tabela-dinamica thead th:nth-child(4) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(4) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 5: Tipo de Atendimento */
+    #tabela-dinamica thead th:nth-child(5) {
+        text-align: left !important;
+        width: 170px !important;
+        min-width: 150px !important;
+    }
+    #tabela-dinamica thead th:nth-child(5) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(5) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 6: Vagas Livres */
+    #tabela-dinamica thead th:nth-child(6) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 130px !important;
+    }
+    #tabela-dinamica thead th:nth-child(6) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(6) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 7: Vagas Ocupadas */
+    #tabela-dinamica thead th:nth-child(7) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 130px !important;
+    }
+    #tabela-dinamica thead th:nth-child(7) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(7) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 8: Total de Vagas */
+    #tabela-dinamica thead th:nth-child(8) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 130px !important;
+    }
+    #tabela-dinamica thead th:nth-child(8) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(8) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 9: % Perda Primária */
+    #tabela-dinamica thead th:nth-child(9) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 130px !important;
+    }
+    #tabela-dinamica thead th:nth-child(9) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(9) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 10px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        text-align: center !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(6),
+    #tabela-dinamica tfoot th:nth-child(7),
+    #tabela-dinamica tfoot th:nth-child(8),
+    #tabela-dinamica tfoot th:nth-child(9) {
+        text-align: right !important;
+        font-weight: 700 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '14' %}
+<style>
+    /* Padronização Oficial do Relatório 14 (Absenteísmo - AG-04) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
+    }
+
+    /* Coluna 1: Tipo de Agenda */
+    #tabela-dinamica thead th:nth-child(1) {
+        text-align: center !important;
+        width: 130px !important;
+        min-width: 120px !important;
+    }
+    #tabela-dinamica thead th:nth-child(1) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(1) {
+        text-align: center !important;
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: Tipo de Entidade */
+    #tabela-dinamica thead th:nth-child(2) {
+        text-align: left !important;
+        width: 180px !important;
+        min-width: 160px !important;
+    }
+    #tabela-dinamica thead th:nth-child(2) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(2) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 3: Estabelecimento */
+    #tabela-dinamica thead th:nth-child(3) {
+        text-align: left !important;
+        min-width: 260px !important;
+    }
+    #tabela-dinamica thead th:nth-child(3) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(3) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 4: Especialidade */
+    #tabela-dinamica thead th:nth-child(4) {
+        text-align: left !important;
+        min-width: 200px !important;
+    }
+    #tabela-dinamica thead th:nth-child(4) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(4) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 5: Procedimento */
+    #tabela-dinamica thead th:nth-child(5) {
+        text-align: left !important;
+        min-width: 250px !important;
+    }
+    #tabela-dinamica thead th:nth-child(5) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(5) {
+        text-align: left !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Colunas 6 em diante: Agendado, Atendido, Não Atendido, Presente, TOTAL, % Absenteísmo (Cabeçalhos na Vertical) */
+    #tabela-dinamica thead th:nth-child(n+6) {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 6px 2px 4px 2px !important;
+        height: 110px !important;
+        min-width: 48px !important;
+        max-width: 65px !important;
+        width: 54px !important;
+        box-sizing: border-box !important;
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.84rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 3px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+6) .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    #tabela-dinamica tbody td:nth-child(n+6) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 10px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        text-align: center !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(6),
+    #tabela-dinamica tfoot th:nth-child(7),
+    #tabela-dinamica tfoot th:nth-child(8),
+    #tabela-dinamica tfoot th:nth-child(9),
+    #tabela-dinamica tfoot th:nth-child(10),
+    #tabela-dinamica tfoot th:nth-child(11) {
+        text-align: right !important;
+        font-weight: 700 !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '15' %}
+<style>
+    /* Padronização Oficial do Relatório 15 (Acompanhamento de Cadastro Individual ESF - REL-135) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
+    }
+
+    /* Coluna 1: CNES */
+    #tabela-dinamica thead th:nth-child(1) {
+        text-align: center !important;
+        width: 105px !important;
+        min-width: 95px !important;
+    }
+    #tabela-dinamica thead th:nth-child(1) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(1) {
+        text-align: center !important;
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 2: UNIDADE */
+    #tabela-dinamica thead th:nth-child(2) {
+        text-align: left !important;
+        min-width: 280px !important;
+    }
+    #tabela-dinamica thead th:nth-child(2) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(2) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 3: COD_INE */
+    #tabela-dinamica thead th:nth-child(3) {
+        text-align: center !important;
+        width: 115px !important;
+        min-width: 105px !important;
+    }
+    #tabela-dinamica thead th:nth-child(3) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(3) {
+        text-align: center !important;
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Coluna 4: SIGLA */
+    #tabela-dinamica thead th:nth-child(4) {
+        text-align: center !important;
+        width: 100px !important;
+        min-width: 90px !important;
+    }
+    #tabela-dinamica thead th:nth-child(4) .header-excel-container {
+        justify-content: center !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(4) {
+        text-align: center !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 8px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Colunas 5 em diante (Períodos / Quadrimestres na Vertical) */
+    #tabela-dinamica thead th:nth-child(n+5) {
+        vertical-align: bottom !important;
+        text-align: center !important;
+        padding: 6px 2px 4px 2px !important;
+        height: 110px !important;
+        min-width: 46px !important;
+        max-width: 58px !important;
+        width: 48px !important;
+        box-sizing: border-box !important;
+        background-color: #f8f9fa !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+5) .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+5) .header-text {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: nowrap !important;
+        text-align: left !important;
+        font-size: 0.84rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin-top: auto !important;
+        margin-bottom: 3px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+5) .btn-excel-filter {
+        margin-top: auto !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 1px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+5) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+    #tabela-dinamica tbody td:nth-child(n+5) {
+        text-align: center !important;
+        font-size: 0.86rem !important;
+        min-width: 46px !important;
+        max-width: 58px !important;
+        width: 48px !important;
+        padding: 5px 4px !important;
+        white-space: nowrap !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 10px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        text-align: center !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(3),
+    #tabela-dinamica tfoot th:nth-child(4) {
+        text-align: center !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(n+5) {
+        text-align: center !important;
+        font-weight: 700 !important;
+        min-width: 46px !important;
+        max-width: 58px !important;
+        width: 48px !important;
+        padding: 6px 4px !important;
+    }
+</style>
+{% endif %}
+
+{% if relatorio_selecionado == '16' %}
+<style>
+    /* Padronização Oficial do Relatório 16 (SIGA AMG - Total de Pacientes Cadastrados) */
+    #tabela-ativos, #tabela-inativos {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-ativos thead th:before,
+    #tabela-ativos thead th:after,
+    #tabela-inativos thead th:before,
+    #tabela-inativos thead th:after {
+        display: none !important;
+    }
+
+    #tabela-ativos thead th,
+    #tabela-inativos thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
+    }
+
+    /* Coluna 1: ESTABELECIMENTO */
+    #tabela-ativos thead th:nth-child(1),
+    #tabela-inativos thead th:nth-child(1) {
+        text-align: left !important;
+        min-width: 280px !important;
+    }
+    #tabela-ativos thead th:nth-child(1) .header-excel-container,
+    #tabela-inativos thead th:nth-child(1) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-ativos tbody td:nth-child(1),
+    #tabela-inativos tbody td:nth-child(1) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Padronização Oficial do Relatório 16 (SIGA AMG - Pacientes Ativos por Tipo de Diabetes) */
+    #tabela-dinamica {
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    #tabela-dinamica thead th {
+        background-color: #f8f9fa !important;
+        color: #212529 !important;
+        font-weight: 600 !important;
+        border: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+        vertical-align: middle !important;
+        padding: 8px 10px !important;
+        font-size: 0.86rem !important;
+    }
+
+    /* Coluna 1: ESTABELECIMENTO */
+    #tabela-dinamica thead th:nth-child(1) {
+        text-align: left !important;
+        min-width: 280px !important;
+    }
+    #tabela-dinamica thead th:nth-child(1) .header-excel-container {
+        justify-content: flex-start !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(1) {
+        text-align: left !important;
+        font-weight: 500 !important;
+        font-size: 0.85rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Colunas 2, 3, 4, 5: GESTACIONAL, TIPO I, TIPO II, Total Geral */
+    #tabela-dinamica thead th:nth-child(n+2) {
+        text-align: right !important;
+        width: 140px !important;
+        min-width: 120px !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+2) .header-excel-container {
+        justify-content: flex-end !important;
+        gap: 6px !important;
+    }
+    #tabela-dinamica tbody td:nth-child(n+2) {
+        text-align: right !important;
+        font-weight: 600 !important;
+        font-size: 0.86rem !important;
+        padding: 5px 10px !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* Linha de Totais no Rodapé */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.88rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 10px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(n+2) {
+        text-align: right !important;
+        font-weight: 700 !important;
     }
 </style>
 {% endif %}
@@ -2393,6 +3622,40 @@ div.dt-button-collection button.dt-button:hover {
             var tableCols = JSON.parse(colunasEl.textContent || '[]');
             var relIndice = "{{ relatorio_selecionado }}";
 
+            // Registra ordenação cronológica personalizada para 'Mês/Ano' (ex: "Janeiro/2025", "Agosto/2025", "08/2025")
+            if ($.fn.dataTable && $.fn.dataTable.ext && $.fn.dataTable.ext.type) {
+                var mapaMesesPt = {
+                    'janeiro': '01', 'jan': '01', '01': '01', '1': '01',
+                    'fevereiro': '02', 'fev': '02', '02': '02', '2': '02',
+                    'março': '03', 'marco': '03', 'mar': '03', '03': '03', '3': '03',
+                    'abril': '04', 'abr': '04', '04': '04', '4': '04',
+                    'maio': '05', 'mai': '05', '05': '05', '5': '05',
+                    'junho': '06', 'jun': '06', '06': '06', '6': '06',
+                    'julho': '07', 'jul': '07', '07': '07', '7': '07',
+                    'agosto': '08', 'ago': '08', '08': '08', '8': '08',
+                    'setembro': '09', 'set': '09', '09': '09', '9': '09',
+                    'outubro': '10', 'out': '10', '10': '10',
+                    'novembro': '11', 'nov': '11', '11': '11',
+                    'dezembro': '12', 'dez': '12', '12': '12'
+                };
+                $.fn.dataTable.ext.type.order['mes-ano-pre'] = function (d) {
+                    if (!d) return 0;
+                    var text = (typeof d === 'string') ? d.replace(/<[^>]*>/g, '').trim() : String(d).trim();
+                    var partes = text.split('/');
+                    if (partes.length === 2) {
+                        var m = partes[0].trim().toLowerCase();
+                        var a = partes[1].trim();
+                        var numMes = mapaMesesPt[m] || '00';
+                        return parseInt(a + numMes, 10) || 0;
+                    }
+                    return 0;
+                };
+            }
+
+            if (relIndice === '10' && tableCols.length > 0) {
+                tableCols[0].type = 'mes-ano';
+            }
+
             // Se for Relatório 02 (BPA), divide o cabeçalho das unidades em 2 células:
             // Célula 1 (superior): CNES + Tipo da Unidade
             // Célula 2 (inferior): Nome Curto da Unidade na vertical + Filtro
@@ -2588,7 +3851,7 @@ div.dt-button-collection button.dt-button:hover {
                 $('#tabela-dinamica').append(tfootHtml09);
             }
 
-            // Estatísticas e interpolação de cores para Escala Tricolor (Relatório 08)
+            // Estatísticas e interpolação de cores para Escala Tricolor (Relatório 08 e 13)
             var statsCols08 = {};
             if (relIndice === '08') {
                 function calcularPercentil(arr, p) {
@@ -2622,6 +3885,66 @@ div.dt-button-collection button.dt-button:hover {
                 }
             }
 
+            var statsCols13 = {};
+            if (relIndice === '13') {
+                function calcularPercentil13(arr, p) {
+                    if (!arr.length) return 0;
+                    var sorted = arr.slice().sort(function(a, b) { return a - b; });
+                    var pos = (sorted.length - 1) * p;
+                    var base = Math.floor(pos);
+                    var rest = pos - base;
+                    if (sorted[base + 1] !== undefined) {
+                        return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+                    } else {
+                        return sorted[base];
+                    }
+                }
+
+                var cName13 = '% Perda Primária';
+                var vals13 = [];
+                for (var dIdx = 0; dIdx < tableData.length; dIdx++) {
+                    var num = parseFloat(tableData[dIdx][cName13]);
+                    if (!isNaN(num)) vals13.push(num);
+                }
+                if (vals13.length > 0) {
+                    statsCols13[cName13] = {
+                        min: Math.min.apply(null, vals13),
+                        p50: calcularPercentil13(vals13, 0.5),
+                        max: Math.max.apply(null, vals13)
+                    };
+                }
+            }
+
+            var statsCols14 = {};
+            if (relIndice === '14') {
+                function calcularPercentil14(arr, p) {
+                    if (!arr.length) return 0;
+                    var sorted = arr.slice().sort(function(a, b) { return a - b; });
+                    var pos = (sorted.length - 1) * p;
+                    var base = Math.floor(pos);
+                    var rest = pos - base;
+                    if (sorted[base + 1] !== undefined) {
+                        return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+                    } else {
+                        return sorted[base];
+                    }
+                }
+
+                var cName14 = '% Absenteísmo';
+                var vals14 = [];
+                for (var dIdx = 0; dIdx < tableData.length; dIdx++) {
+                    var num = parseFloat(tableData[dIdx][cName14]);
+                    if (!isNaN(num)) vals14.push(num);
+                }
+                if (vals14.length > 0) {
+                    statsCols14[cName14] = {
+                        min: Math.min.apply(null, vals14),
+                        p50: calcularPercentil14(vals14, 0.5),
+                        max: Math.max.apply(null, vals14)
+                    };
+                }
+            }
+
             function calcularCorEscalaTricolor(val, minVal, p50Val, maxVal) {
                 if (val === null || val === undefined || isNaN(val)) return '';
                 if (maxVal === minVal) return 'rgb(255, 255, 255)';
@@ -2643,6 +3966,27 @@ div.dt-button-collection button.dt-button:hover {
                 return 'rgb(' + r + ', ' + g + ', ' + b + ')';
             }
 
+            function calcularCorEscalaTricolorInvertida(val, minVal, p50Val, maxVal) {
+                if (val === null || val === undefined || isNaN(val)) return '';
+                if (maxVal === minVal) return 'rgb(255, 255, 255)';
+
+                var r, g, b;
+                if (val <= p50Val) {
+                    // Interpola entre Min (#5A8AC6 -> 90, 138, 198) e P50 (#FFFFFF -> 255, 255, 255)
+                    var t = (p50Val > minVal) ? Math.max(0, Math.min(1, (val - minVal) / (p50Val - minVal))) : 1;
+                    r = Math.round(90 + (255 - 90) * t);
+                    g = Math.round(138 + (255 - 138) * t);
+                    b = Math.round(198 + (255 - 198) * t);
+                } else {
+                    // Interpola entre P50 (#FFFFFF -> 255, 255, 255) e Max (#F8696B -> 248, 105, 107)
+                    var t = (maxVal > p50Val) ? Math.max(0, Math.min(1, (val - p50Val) / (maxVal - p50Val))) : 0;
+                    r = Math.round(255 + (248 - 255) * t);
+                    g = Math.round(255 + (105 - 255) * t);
+                    b = Math.round(255 + (107 - 255) * t);
+                }
+                return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+            }
+
             // Se existir linha de TOTAL nos dados (outros relatórios), extrai para o rodapé (tfoot)
             var totalRow = null;
             var filteredTableData = [];
@@ -2655,24 +3999,33 @@ div.dt-button-collection button.dt-button:hover {
                     filteredTableData.push(r);
                 }
             }
-            if (totalRow && relIndice !== '02' && relIndice !== '03' && relIndice !== '04' && relIndice !== '08' && relIndice !== '10') {
+            if (totalRow) {
                 tableData = filteredTableData;
-                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.92rem; border-top: 2px solid #0d6efd;">';
-                for (var j = 0; j < tableCols.length; j++) {
-                    var colKey = tableCols[j].data;
-                    var colVal = totalRow[colKey] !== undefined ? totalRow[colKey] : '';
-                    var alignClass = (j === 0) ? 'text-start' : 'text-center';
-                    tfootHtml += '<th class="' + alignClass + '" style="padding: 8px 10px;">' + colVal + '</th>';
+                if (relIndice !== '02' && relIndice !== '03' && relIndice !== '04' && relIndice !== '08' && relIndice !== '09' && relIndice !== '10' && relIndice !== '11' && relIndice !== '12' && relIndice !== '13' && relIndice !== '14' && relIndice !== '15') {
+                    var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.92rem; border-top: 2px solid #0d6efd;">';
+                    for (var j = 0; j < tableCols.length; j++) {
+                        var colKey = tableCols[j].data;
+                        var colVal = totalRow[colKey] !== undefined ? totalRow[colKey] : '';
+                        var alignClass = (j === 0) ? 'text-start' : 'text-center';
+                        tfootHtml += '<th class="' + alignClass + '" style="padding: 8px 10px;">' + colVal + '</th>';
+                    }
+                    tfootHtml += '</tr></tfoot>';
+                    $('#tabela-dinamica').append(tfootHtml);
                 }
-                tfootHtml += '</tr></tfoot>';
-                $('#tabela-dinamica').append(tfootHtml);
             }
 
-            if ((relIndice === '08' || relIndice === '09' || relIndice === '10') && $('#tabela-dinamica tfoot').length === 0) {
-                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.85rem; border-top: 2px solid #0d6efd;">';
+            if ((relIndice === '08' || relIndice === '09' || relIndice === '10' || relIndice === '11' || relIndice === '12' || relIndice === '13' || relIndice === '14' || relIndice === '15' || relIndice === '16') && $('#tabela-dinamica tfoot').length === 0) {
+                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="font-size: 0.88rem; border-top: 2px solid #0d6efd;">';
                 for (var j = 0; j < tableCols.length; j++) {
                     var alignClass = (j === 0) ? 'text-start' : 'text-end';
-                    tfootHtml += '<th class="' + alignClass + '" style="padding: 6px 8px;"></th>';
+                    if (relIndice === '11') {
+                        alignClass = (j === 0 || j === 2) ? 'text-center' : (j >= 4 ? 'text-end' : 'text-start');
+                    } else if (relIndice === '13' || relIndice === '14') {
+                        alignClass = (j === 0) ? 'text-center' : (j >= 5 ? 'text-end' : 'text-start');
+                    } else if (relIndice === '15') {
+                        alignClass = (j === 1) ? 'text-start' : 'text-center';
+                    }
+                    tfootHtml += '<th class="' + alignClass + '" style="padding: 6px 10px;"></th>';
                 }
                 tfootHtml += '</tr></tfoot>';
                 $('#tabela-dinamica').append(tfootHtml);
@@ -2779,6 +4132,138 @@ div.dt-button-collection button.dt-button:hover {
                                 $(this.footer()).text(colTot.toLocaleString('pt-BR'));
                             }
                         });
+                    } else if (relIndice === '11') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        var totAtivos = api.column(4, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totSaiu = api.column(5, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+
+                        $(api.column(0).footer()).text('TOTAL');
+                        $(api.column(1).footer()).text('Total Geral STS Penha');
+                        $(api.column(2).footer()).text('');
+                        $(api.column(3).footer()).text('');
+                        $(api.column(4).footer()).text(totAtivos.toLocaleString('pt-BR'));
+                        $(api.column(5).footer()).text(totSaiu.toLocaleString('pt-BR'));
+                    } else if (relIndice === '12') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        var totProc = api.column(1, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totPontos = api.column(2, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totPlacas = totPontos > 0 ? (totPontos / 70.0) : 0;
+
+                        $(api.column(0).footer()).text('TOTAL');
+                        $(api.column(1).footer()).text(totProc.toLocaleString('pt-BR'));
+                        $(api.column(2).footer()).text(totPontos.toLocaleString('pt-BR'));
+                        $(api.column(3).footer()).text(totPlacas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 6 }));
+                    } else if (relIndice === '13') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        var totLivres = api.column(5, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totOcupadas = api.column(6, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totVagas = api.column(7, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var percPerda = totVagas > 0 ? (totLivres / totVagas) * 100 : 0;
+
+                        $(api.column(0).footer()).text('TOTAL');
+                        $(api.column(1).footer()).text('Total Geral STS Penha');
+                        $(api.column(2).footer()).text('');
+                        $(api.column(3).footer()).text('');
+                        $(api.column(4).footer()).text('');
+                        $(api.column(5).footer()).text(totLivres.toLocaleString('pt-BR'));
+                        $(api.column(6).footer()).text(totOcupadas.toLocaleString('pt-BR'));
+                        $(api.column(7).footer()).text(totVagas.toLocaleString('pt-BR'));
+                        $(api.column(8).footer()).text(percPerda.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '%');
+                    } else if (relIndice === '14') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        var totAgendado = api.column(5, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totAtendido = api.column(6, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totNaoAtendido = api.column(7, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totPresente = api.column(8, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var totTotal = api.column(9, { search: 'applied' }).data().reduce(function(a, b) { return intVal(a) + intVal(b); }, 0);
+                        var percAbs = totTotal > 0 ? (totNaoAtendido / totTotal) * 100 : 0;
+
+                        $(api.column(0).footer()).text('TOTAL');
+                        $(api.column(1).footer()).text('Total Geral STS Penha');
+                        $(api.column(2).footer()).text('');
+                        $(api.column(3).footer()).text('');
+                        $(api.column(4).footer()).text('');
+                        $(api.column(5).footer()).text(totAgendado.toLocaleString('pt-BR'));
+                        $(api.column(6).footer()).text(totAtendido.toLocaleString('pt-BR'));
+                        $(api.column(7).footer()).text(totNaoAtendido.toLocaleString('pt-BR'));
+                        $(api.column(8).footer()).text(totPresente.toLocaleString('pt-BR'));
+                        $(api.column(9).footer()).text(totTotal.toLocaleString('pt-BR'));
+                        $(api.column(10).footer()).text(percAbs.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '%');
+                    } else if (relIndice === '15') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+
+                        $(api.column(0).footer()).text('TOTAL');
+                        $(api.column(1).footer()).text('Total Geral STS Penha');
+                        $(api.column(2).footer()).text('Equipes: ' + api.rows({ search: 'applied' }).count());
+                        $(api.column(3).footer()).text('');
+
+                        for (var c = 4; c < tableCols.length; c++) {
+                            var colTot = api.column(c, { search: 'applied' }).data().reduce(function(a, b) {
+                                return intVal(a) + intVal(b);
+                            }, 0);
+                            $(api.column(c).footer()).text(colTot.toLocaleString('pt-BR'));
+                        }
+                    } else if (relIndice === '16') {
+                        var api = this.api();
+                        var intVal = function(i) {
+                            if (typeof i === 'number') return i;
+                            if (typeof i === 'string') {
+                                var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                                return isNaN(n) ? 0 : n;
+                            }
+                            return 0;
+                        };
+                        $(api.column(0).footer()).text('TOTAL GERAL');
+                        for (var c = 1; c < tableCols.length; c++) {
+                            var colTot = api.column(c, { search: 'applied' }).data().reduce(function(a, b) {
+                                return intVal(a) + intVal(b);
+                            }, 0);
+                            $(api.column(c).footer()).text(colTot.toLocaleString('pt-BR'));
+                        }
                     }
                 },
                 rowCallback: function(row, data) {
@@ -2831,6 +4316,85 @@ div.dt-button-collection button.dt-button:hover {
                                 cellInt.addClass('text-end');
                             }
                         }
+                    } else if (relIndice === '11') {
+                        for (var ic = 4; ic <= 5; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                                cellInt.addClass('text-end');
+                            }
+                        }
+                    } else if (relIndice === '12') {
+                        var cellProc = $('td', row).eq(1);
+                        var numProc = parseInt(cellProc.text().replace(/\D/g, ''), 10);
+                        if (!isNaN(numProc)) {
+                            cellProc.text(numProc.toLocaleString('pt-BR'));
+                            cellProc.addClass('text-end');
+                        }
+                        var cellPontos = $('td', row).eq(2);
+                        var numPontos = parseInt(cellPontos.text().replace(/\D/g, ''), 10);
+                        if (!isNaN(numPontos)) {
+                            cellPontos.text(numPontos.toLocaleString('pt-BR'));
+                            cellPontos.addClass('text-end');
+                        }
+                        var cellPlacas = $('td', row).eq(3);
+                        var colPlacasKey = 'Placa adesiva com semente vacaria para auriculoterapia - 70 pontos';
+                        var rawPlacas = parseFloat(data[colPlacasKey]);
+                        if (!isNaN(rawPlacas)) {
+                            cellPlacas.text(rawPlacas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 6 }));
+                            cellPlacas.addClass('text-end');
+                        }
+                    } else if (relIndice === '13') {
+                        for (var ic = 5; ic <= 7; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                                cellInt.addClass('text-end');
+                            }
+                        }
+                        var cellPerc = $('td', row).eq(8);
+                        var rawVal = parseFloat(cellPerc.text().replace(',', '.'));
+                        if (!isNaN(rawVal)) {
+                            var st = statsCols13['% Perda Primária'];
+                            if (st) {
+                                var bgCor = calcularCorEscalaTricolorInvertida(rawVal, st.min, st.p50, st.max);
+                                cellPerc.css({
+                                    'background-color': bgCor,
+                                    'font-weight': '700',
+                                    'color': '#1e293b'
+                                });
+                                cellPerc.addClass('cell-perc');
+                            }
+                            cellPerc.text(rawVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '%');
+                            cellPerc.addClass('text-end');
+                        }
+                    } else if (relIndice === '14') {
+                        for (var ic = 5; ic <= 9; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                                cellInt.addClass('text-end');
+                            }
+                        }
+                        var cellPerc = $('td', row).eq(10);
+                        var rawVal = parseFloat(cellPerc.text().replace(',', '.'));
+                        if (!isNaN(rawVal)) {
+                            var st = statsCols14['% Absenteísmo'];
+                            if (st) {
+                                var bgCor = calcularCorEscalaTricolorInvertida(rawVal, st.min, st.p50, st.max);
+                                cellPerc.css({
+                                    'background-color': bgCor,
+                                    'font-weight': '700',
+                                    'color': '#1e293b'
+                                });
+                                cellPerc.addClass('cell-perc');
+                            }
+                            cellPerc.text(rawVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + '%');
+                            cellPerc.addClass('text-end');
+                        }
                     } else if (relIndice === '15') {
                         var sigla = data['SIGLA'];
                         var limite = 0;
@@ -2838,13 +4402,15 @@ div.dt-button-collection button.dt-button:hover {
                         else if (sigla === 'EAP30H' || sigla === 'eAP-30h' || sigla === 'eAP 30h') limite = 3000;
                         else if (sigla === 'ESF' || sigla === 'eSF') limite = 4000;
                         else if (sigla === 'ECR' || sigla === 'eCR') limite = 600;
-                        if (limite > 0) {
-                            $('td', row).each(function(colIndex) {
-                                if (colIndex >= 4) {
-                                    var val = parseFloat($(this).text().replace(/[^0-9.-]+/g, ""));
-                                    if (!isNaN(val) && val > 0) {
+                        
+                        $('td', row).each(function(colIndex) {
+                            if (colIndex >= 4) {
+                                var val = parseFloat($(this).text().replace(/[^0-9.-]+/g, ""));
+                                if (!isNaN(val) && val > 0) {
+                                    $(this).text(Math.round(val).toLocaleString('pt-BR'));
+                                    $(this).css({'font-weight': 'bold', 'text-align': 'center'});
+                                    if (limite > 0) {
                                         var perc = val / limite;
-                                        $(this).css({'font-weight': 'bold', 'text-align': 'center'});
                                         if (perc < 0.40) {
                                             $(this).css({'color': '#d9534f', 'border': '2px solid #d9534f'});
                                         } else if (perc >= 0.40 && perc < 0.70) {
@@ -2863,8 +4429,20 @@ div.dt-button-collection button.dt-button:hover {
                                             }
                                         }
                                     }
+                                } else if (!isNaN(val) && val === 0) {
+                                    $(this).text('0');
+                                    $(this).css({'text-align': 'center'});
                                 }
-                            });
+                            }
+                        });
+                    } else if (relIndice === '16') {
+                        for (var ic = 1; ic < tableCols.length; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var num = parseInt(cellInt.text().replace(/\D/g, ''), 10);
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                                cellInt.addClass('text-end');
+                            }
                         }
                     }
                 },
@@ -2888,7 +4466,7 @@ div.dt-button-collection button.dt-button:hover {
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
                         className: 'btn btn-success',
                         action: function(e, dt, button, config) {
-                            if (relIndice === '08' || relIndice === '09' || relIndice === '12') {
+                            if (relIndice === '08' || relIndice === '09' || relIndice === '11' || relIndice === '12' || relIndice === '13' || relIndice === '14' || relIndice === '15' || relIndice === '16') {
                                 var selectPeriodo = document.querySelector('select[name=periodo]');
                                 var per = (selectPeriodo && selectPeriodo.value) ? selectPeriodo.value : '{{ periodo_selecionado }}';
                                 window.location.href = '/download_excel/' + relIndice + '/' + per;
@@ -3718,6 +5296,16 @@ div.dt-button-collection button.dt-button:hover {
             var tData = JSON.parse(dadosJson || '[]');
             var tCols = JSON.parse(colunasJson || '[]');
             
+            if ($(tabelaId + ' tfoot').length === 0 && tCols.length > 0) {
+                var tfootHtml = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">' +
+                    '<th class="text-start">TOTAL GERAL</th>';
+                for (var i = 1; i < tCols.length; i++) {
+                    tfootHtml += '<th class="text-end"></th>';
+                }
+                tfootHtml += '</tr></tfoot>';
+                $(tabelaId).append(tfootHtml);
+            }
+
             $(tabelaId).DataTable({
                 data: tData,
                 columns: tCols,
@@ -3732,6 +5320,40 @@ div.dt-button-collection button.dt-button:hover {
                 dom: '<"row mb-3 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>>' +
                      '<"table-responsive"t>' +
                      '<"row mt-3"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>',
+                footerCallback: function(row, data, start, end, display) {
+                    var api = this.api();
+                    var intVal = function(i) {
+                        if (typeof i === 'number') return i;
+                        if (typeof i === 'string') {
+                            var n = parseFloat(i.replace(/[^\d.-]/g, ''));
+                            return isNaN(n) ? 0 : n;
+                        }
+                        return 0;
+                    };
+
+                    api.columns().every(function(colIdx) {
+                        if (colIdx === 0) {
+                            $(this.footer()).text('TOTAL GERAL');
+                        } else {
+                            var total = api.column(colIdx, { search: 'applied' }).data().reduce(function(a, b) {
+                                return intVal(a) + intVal(b);
+                            }, 0);
+                            $(this.footer()).text(total.toLocaleString('pt-BR'));
+                        }
+                    });
+                },
+                rowCallback: function(row, data, displayNum, displayIndex) {
+                    for (var c = 1; c < tCols.length; c++) {
+                        var colName = tCols[c].data;
+                        var val = data[colName];
+                        var num = parseInt(val, 10);
+                        var cell = $('td:eq(' + c + ')', row);
+                        cell.addClass('text-end');
+                        if (!isNaN(num)) {
+                            cell.text(num.toLocaleString('pt-BR'));
+                        }
+                    }
+                },
                 buttons: [
                     {
                         extend: 'colvis',
@@ -3740,17 +5362,11 @@ div.dt-button-collection button.dt-button:hover {
                         postfixButtons: ['colvisRestore']
                     },
                     {
-                        extend: 'excelHtml5',
-                        title: nomeExportacao,
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
                         className: 'btn btn-success',
-                        exportOptions: {
-                            modifier: { search: 'applied' },
-                            format: {
-                                header: function(data, columnIdx, node) {
-                                    return $(node).find('.header-text').text().trim() || $(node).text().trim();
-                                }
-                            }
+                        action: function(e, dt, node, config) {
+                            var periodoSelect = $('select[name=periodo]').val() || 'geral';
+                            window.location.href = '/download_excel/16/' + periodoSelect;
                         }
                     }
                 ],
@@ -3769,14 +5385,14 @@ div.dt-button-collection button.dt-button:hover {
 
         window.alternarVisaoAMG = function(tipo) {
             if (tipo === 'ativos') {
-                $('#container-ativos').removeClass('d-none');
-                $('#container-inativos').addClass('d-none');
+                $('#container-amg-ativos').removeClass('d-none');
+                $('#container-amg-inativos').addClass('d-none');
                 if ($.fn.DataTable.isDataTable('#tabela-ativos')) {
                     $('#tabela-ativos').DataTable().columns.adjust().draw();
                 }
             } else {
-                $('#container-ativos').addClass('d-none');
-                $('#container-inativos').removeClass('d-none');
+                $('#container-amg-ativos').addClass('d-none');
+                $('#container-amg-inativos').removeClass('d-none');
                 if ($.fn.DataTable.isDataTable('#tabela-inativos')) {
                     $('#tabela-inativos').DataTable().columns.adjust().draw();
                 }

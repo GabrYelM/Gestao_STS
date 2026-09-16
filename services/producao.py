@@ -374,10 +374,17 @@ def gera_relatorio_07(periodo=None):
 def gera_relatorio_08(periodo):
     # precisa do gac02, cg01, cg05, cg06
     with app.app_context():
+        if not periodo:
+            # Fallback para competência mais recente disponível
+            df_check = pd.read_sql("SELECT MAX(ano_mes_extracao) as max_p FROM 'CG-01'", con=db.engine)
+            if not df_check.empty and df_check['max_p'].iloc[0]:
+                periodo = str(df_check['max_p'].iloc[0])
+            else:
+                periodo = '202608'
 
-        ano = int(periodo[:4])
-        mes = int(periodo[4:])
-        mes_gac = f"{periodo[:4]}-{periodo[4:]}"
+        ano = int(str(periodo)[:4])
+        mes = int(str(periodo)[4:])
+        mes_gac = f"{str(periodo)[:4]}-{str(periodo)[4:]}"
 
         query_gac02 = f"""SELECT * FROM 'GAC-02'
         WHERE data_extracao = (
@@ -390,7 +397,7 @@ def gera_relatorio_08(periodo):
 
         df_gac02 = pd.read_sql(query_gac02, con=db.engine)
         if not df_gac02.empty:
-            df_gac02['cnes'] = df_gac02['cnes'].astype(str).str.replace('.', '')
+            df_gac02['cnes'] = df_gac02['cnes'].astype(str).str.replace('.', '').str.strip()
             
         query_cg01 = f"""SELECT * FROM 'CG-01'
         WHERE ano_mes_extracao = {periodo} AND estabelecimento NOT IN ('SAE DST/AIDS PENHA')
@@ -407,16 +414,16 @@ def gera_relatorio_08(periodo):
         """
 
         df_cg01 = pd.read_sql(query_cg01, con=db.engine)
-        df_cg01['cnes'] = df_cg01['cnes'].astype(str).str.replace('.', '')
+        df_cg01['cnes'] = df_cg01['cnes'].astype(str).str.replace('.', '').str.strip()
 
         df_cg05 = pd.read_sql(query_cg05, con=db.engine)
-        df_cg05['cnes'] = df_cg05['cnes'].astype(str).str.replace('.', '')
+        df_cg05['cnes'] = df_cg05['cnes'].astype(str).str.replace('.', '').str.strip()
 
         df_cg05_quant = pd.read_sql(query_cg05_quant, con=db.engine)
-        df_cg05_quant['cnes'] = df_cg05_quant['cnes'].astype(str).str.replace('.', '')
+        df_cg05_quant['cnes'] = df_cg05_quant['cnes'].astype(str).str.replace('.', '').str.strip()
 
         df_cg06 = pd.read_sql(query_cg06, con=db.engine)
-        df_cg06['cnes'] = df_cg06['cnes'].astype(str).str.replace('.', '')
+        df_cg06['cnes'] = df_cg06['cnes'].astype(str).str.replace('.', '').str.strip()
         colunas_exames = ['glicemia', 'hiv', 'hbsag', 'urina', 'vdrl']
         for col in colunas_exames:
             df_cg06[col] = pd.to_numeric(df_cg06[col], errors='coerce')
@@ -429,24 +436,30 @@ def gera_relatorio_08(periodo):
             (df_cg06['vdrl'] >= 3)
         ]
 
-        bases_para_concat = []
-        if not df_gac02.empty:
-            bases_para_concat.append(df_gac02[['estabelecimento', 'cnes']])
-        if not df_cg01.empty:
-            bases_para_concat.append(df_cg01[['estabelecimento', 'cnes']])
-        if not df_cg05_quant.empty:
-            bases_para_concat.append(df_cg05_quant[['estabelecimento', 'cnes']])
-        if not df_cg06.empty:
-            bases_para_concat.append(df_cg06[['estabelecimento', 'cnes']])
-            
-        if bases_para_concat:
-            df_base = pd.concat(bases_para_concat).drop_duplicates()
-        else:
-            df_base = pd.DataFrame(columns=['estabelecimento', 'cnes'])
+        # Mapeamento mestre de CNES por estabelecimento
+        mapa_cnes = {}
+        for sub_df in [df_cg01, df_cg05_quant, df_cg06, df_gac02]:
+            if not sub_df.empty:
+                for _, r in sub_df[['estabelecimento', 'cnes']].drop_duplicates().iterrows():
+                    est = str(r['estabelecimento']).strip()
+                    cn = str(r['cnes']).strip()
+                    if cn and cn != '0' and cn != 'nan' and est not in mapa_cnes:
+                        mapa_cnes[est] = cn
+
+        all_estabs = set()
+        for sub_df in [df_gac02, df_cg01, df_cg05_quant, df_cg06]:
+            if not sub_df.empty:
+                all_estabs.update(sub_df['estabelecimento'].dropna().unique())
+
+        if not all_estabs:
+            return pd.DataFrame()
+
+        df_base = pd.DataFrame({'estabelecimento': sorted(list(all_estabs))})
+        df_base['cnes'] = df_base['estabelecimento'].map(mapa_cnes).fillna('0')
 
         gestantes_ativas = pd.pivot_table(
             df_gac02,
-            index = ['estabelecimento', 'cnes'],
+            index = ['estabelecimento'],
             values = 'qtde_consultas',
             aggfunc = 'count'
         ).reset_index()
@@ -462,7 +475,7 @@ def gera_relatorio_08(periodo):
         ]
         gestantes_data_parto = pd.pivot_table(
             df_cg05_quant,
-            index = ['estabelecimento', 'cnes'],
+            index = ['estabelecimento'],
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
@@ -476,7 +489,7 @@ def gera_relatorio_08(periodo):
 
         consultas_maior = pd.pivot_table(
             df_cg01,
-            index = ['estabelecimento', 'cnes'],
+            index = ['estabelecimento'],
             values = 'atendimentos_maior_igual_9',
             aggfunc = 'sum'
         ).reset_index()
@@ -487,7 +500,7 @@ def gera_relatorio_08(periodo):
 
         dias_120 = pd.pivot_table(
             df_cg05,
-            index = ['estabelecimento', 'cnes'],
+            index = ['estabelecimento'],
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
@@ -498,7 +511,7 @@ def gera_relatorio_08(periodo):
 
         exames = pd.pivot_table(
             df_cg06,
-            index = ['estabelecimento', 'cnes'],
+            index = ['estabelecimento'],
             values = 'pessoa',
             aggfunc = 'count'
         ).reset_index()
@@ -507,11 +520,11 @@ def gera_relatorio_08(periodo):
         else:
             exames['exames_realizados'] = 0
 
-        df_final = pd.merge(df_base, gestantes_ativas, on=['cnes', 'estabelecimento'], how='left')
-        df_final = pd.merge(df_final, gestantes_data_parto, on=['cnes', 'estabelecimento'], how='left')
-        df_final = pd.merge(df_final, consultas_maior, on=['cnes', 'estabelecimento'], how='left')
-        df_final = pd.merge(df_final, dias_120, on=['cnes', 'estabelecimento'], how='left')
-        df_final = pd.merge(df_final, exames, on=['cnes', 'estabelecimento'], how='left')
+        df_final = pd.merge(df_base, gestantes_ativas, on='estabelecimento', how='left')
+        df_final = pd.merge(df_final, gestantes_data_parto, on='estabelecimento', how='left')
+        df_final = pd.merge(df_final, consultas_maior, on='estabelecimento', how='left')
+        df_final = pd.merge(df_final, dias_120, on='estabelecimento', how='left')
+        df_final = pd.merge(df_final, exames, on='estabelecimento', how='left')
 
         df_final = df_final.fillna(0)
 
@@ -943,6 +956,10 @@ def gera_relatorio_10(periodo=None):
         if df_rel10.empty:
             return None
 
+        # Remove CNR Cangaiba e eMulti conforme solicitação
+        estab_upper = df_rel10['estabelecimento'].astype(str).str.upper()
+        df_rel10 = df_rel10[~estab_upper.str.contains('CNR CANGAIBA|CNR CANGAÍBA|EMULTI')].copy()
+
         # Formatar Mês/Ano: e.g. "Abril/2023", "Maio/2023", etc.
         df_rel10['Mês/Ano'] = df_rel10['mes'] + '/' + df_rel10['ano'].astype(str)
 
@@ -993,7 +1010,8 @@ def exportar_excel_relatorio_10(periodo=None):
             'align': 'center',
             'valign': 'bottom',
             'border': 1,
-            'bg_color': '#CFE2FF',
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
             'rotation': 90,
             'font_name': 'Calibri',
             'font_size': 10
@@ -1003,16 +1021,29 @@ def exportar_excel_relatorio_10(periodo=None):
             'align': 'center',
             'valign': 'vcenter',
             'border': 1,
-            'bg_color': '#CFE2FF',
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 12
+        })
+        fmt_header_total = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'bottom',
+            'border': 1,
+            'bg_color': '#F1F5F9',
+            'font_color': '#0D6EFD',
+            'rotation': 90,
             'font_name': 'Calibri',
             'font_size': 10
         })
         fmt_mes_ano = workbook.add_format({
-            'align': 'left',
+            'bold': True,
+            'align': 'center',
             'valign': 'vcenter',
             'border': 1,
             'font_name': 'Calibri',
-            'font_size': 10
+            'font_size': 12
         })
         fmt_int = workbook.add_format({
             'align': 'right',
@@ -1027,6 +1058,8 @@ def exportar_excel_relatorio_10(periodo=None):
             'align': 'right',
             'valign': 'vcenter',
             'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#0D6EFD',
             'num_format': '#,##0',
             'font_name': 'Calibri',
             'font_size': 10
@@ -1043,7 +1076,7 @@ def exportar_excel_relatorio_10(periodo=None):
             worksheet.set_column(c_idx, c_idx, 5.5)
 
         tot_col_idx = len(unit_cols) + 1
-        worksheet.write(0, tot_col_idx, 'Total Geral', fmt_header)
+        worksheet.write(0, tot_col_idx, 'Total Geral', fmt_header_total)
         worksheet.set_column(tot_col_idx, tot_col_idx, 12)
 
         # Dados das linhas
@@ -1086,23 +1119,191 @@ def exportar_excel_relatorio_10(periodo=None):
         output.seek(0)
         return output
 
-def gera_relatorio_11(periodo):
+def gera_relatorio_11(periodo=None):
+    """
+    Relatório 11: PLANILHA DE INCLUSÕES E SAÍDAS DA FILA DE ESPERA (FE-02)
+    Gera a listagem consolidada por CNES, Estabelecimento, Especialidade e Procedimento,
+    com a contagem de Pacientes Ativos na fila e Pacientes que Saíram da Espera.
+    """
     with app.app_context():
-    
-        query = f"""SELECT * FROM 'FE-02' 
-        WHERE ano_mes = {periodo}
-        AND sts = 'SUDESTE - STS PENHA'
-        """
+        if periodo:
+            query = f"""
+            SELECT cnes, estabelecimento, nome_especialidade, nome_procedimento, pacientes_ativos, saiu_da_espera 
+            FROM 'FE-02' 
+            WHERE ano_mes = {int(periodo)}
+            AND sts = 'SUDESTE - STS PENHA'
+            """
+        else:
+            query = """
+            SELECT cnes, estabelecimento, nome_especialidade, nome_procedimento, pacientes_ativos, saiu_da_espera 
+            FROM 'FE-02' 
+            WHERE sts = 'SUDESTE - STS PENHA'
+            """
         df_fe02 = pd.read_sql(query, con=db.engine)
+        if df_fe02.empty:
+            return None
 
-        df_final = pd.pivot_table(
-            df_fe02,
-            index = ['cnes', 'estabelecimento', 'nome_especialidade', 'nome_procedimento'],
-            values = ['saiu_da_espera', 'pacientes_ativos'],
-            aggfunc='sum'
-        )
-        #print(df_final)
+        df_fe02['pacientes_ativos'] = pd.to_numeric(df_fe02['pacientes_ativos'], errors='coerce').fillna(0).astype(int)
+        df_fe02['saiu_da_espera'] = pd.to_numeric(df_fe02['saiu_da_espera'], errors='coerce').fillna(0).astype(int)
+
+        df_final = df_fe02.groupby(
+            ['cnes', 'estabelecimento', 'nome_especialidade', 'nome_procedimento'],
+            as_index=False
+        )[['pacientes_ativos', 'saiu_da_espera']].sum()
+
+        df_final = df_final.rename(columns={
+            'cnes': 'Código CNES',
+            'estabelecimento': 'Estabelecimento Solicitante',
+            'nome_especialidade': 'Especialidade',
+            'nome_procedimento': 'Procedimento',
+            'pacientes_ativos': 'Total de Inclusões',
+            'saiu_da_espera': 'Saiu da Espera'
+        })
+        
+        # Ordenação alfabética padronizada
+        df_final = df_final.sort_values(by=['Estabelecimento Solicitante', 'Especialidade', 'Procedimento']).reset_index(drop=True)
         return df_final
+
+def exportar_excel_relatorio_11(periodo=None):
+    """
+    Gera a planilha Excel oficial formatada do Relatório 11 (Fila de Espera - FE-02)
+    com cabeçalho #F8F9FA, fórmulas de soma nativas do Excel e rodapé #CFE2FF.
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df = gera_relatorio_11(periodo)
+        if df is None or df.empty:
+            return None
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Planilha1')
+
+        fmt_header = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_left = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_num = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_cnes = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_text = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_num = workbook.add_format({
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_total_label = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_center = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_num = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+
+        # Cabeçalho
+        worksheet.set_row(0, 26)
+        worksheet.write(0, 0, 'Código CNES', fmt_header)
+        worksheet.write(0, 1, 'Estabelecimento Solicitante', fmt_header_left)
+        worksheet.write(0, 2, 'Especialidade', fmt_header)
+        worksheet.write(0, 3, 'Procedimento', fmt_header_left)
+        worksheet.write(0, 4, 'Total de Inclusões', fmt_header_num)
+        worksheet.write(0, 5, 'Saiu da Espera', fmt_header_num)
+
+        worksheet.set_column(0, 0, 14)
+        worksheet.set_column(1, 1, 45)
+        worksheet.set_column(2, 2, 35)
+        worksheet.set_column(3, 3, 50)
+        worksheet.set_column(4, 4, 18)
+        worksheet.set_column(5, 5, 18)
+
+        # Dados
+        for r_idx, row in df.iterrows():
+            curr_row = 1 + r_idx
+            worksheet.set_row(curr_row, 18)
+            worksheet.write(curr_row, 0, str(row['Código CNES']), fmt_cnes)
+            worksheet.write(curr_row, 1, str(row['Estabelecimento Solicitante']), fmt_text)
+            worksheet.write(curr_row, 2, str(row['Especialidade']), fmt_cnes)
+            worksheet.write(curr_row, 3, str(row['Procedimento']), fmt_text)
+            worksheet.write(curr_row, 4, int(row['Total de Inclusões']), fmt_num)
+            worksheet.write(curr_row, 5, int(row['Saiu da Espera']), fmt_num)
+
+        # Rodapé Total
+        total_row = 1 + len(df)
+        worksheet.set_row(total_row, 22)
+        worksheet.write(total_row, 0, 'TOTAL', fmt_total_center)
+        worksheet.write(total_row, 1, 'Total Geral STS Penha', fmt_total_label)
+        worksheet.write(total_row, 2, '', fmt_total_label)
+        worksheet.write(total_row, 3, '', fmt_total_label)
+        worksheet.write_formula(total_row, 4, f'=SUM(E2:E{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 5, f'=SUM(F2:F{total_row})', fmt_total_num)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 UNIDADES_OFICIAIS_REL12 = [
     "AMA/UBS ENGENHEIRO GOULART- DR JOSE PIRES",
@@ -1559,36 +1760,530 @@ def exportar_excel_relatorio_12_oficial(periodo):
         return output
 
 def gera_relatorio_13(periodo):
+    """
+    Relatório 13: RELATÓRIO DE PERDA PRIMÁRIA POR ESTABELECIMENTO E ESPECIALIDADE (VG-02)
+    Gera a listagem consolidada por Tipo de Agenda, Estabelecimento, Especialidade,
+    Procedimento e Tipo de Atendimento, com a contagem de Vagas Livres e Vagas Ocupadas.
+    """
     with app.app_context():
-    
-        query = f"""SELECT * FROM 'VG-02' WHERE ano_mes = {periodo}"""
+        query = f"SELECT * FROM 'VG-02' WHERE ano_mes = {int(periodo)}"
         df_vg02 = pd.read_sql(query, con=db.engine)
+        if df_vg02.empty:
+            return None
 
-        df_final = pd.pivot_table(
+        pivot = pd.pivot_table(
             df_vg02,
-            columns = 'situacao_vaga',
-            index = ['tipo_agenda', 'estabelecimento', 'nome_especialidade', 'procedimento', 'tipo_atendimento_agenda'],
-            values = 'qtde_vaga_ofertada',
-            aggfunc='sum'
+            columns='situacao_vaga',
+            index=['tipo_agenda', 'estabelecimento', 'nome_especialidade', 'procedimento', 'tipo_atendimento_agenda'],
+            values='qtde_vaga_ofertada',
+            aggfunc='sum',
+            fill_value=0
         )
-        #print(df_final)
-        return df_final
+        
+        # Garante a existência das colunas Livre e Ocupada
+        if 'Livre' not in pivot.columns:
+            pivot['Livre'] = 0
+        if 'Ocupada' not in pivot.columns:
+            pivot['Ocupada'] = 0
+
+        pivot.columns.name = None
+        df_res = pivot.reset_index()
+
+        rename_cols = {
+            'tipo_agenda': 'Tipo de Agenda',
+            'estabelecimento': 'Estabelecimento',
+            'nome_especialidade': 'Especialidade',
+            'procedimento': 'Procedimento',
+            'tipo_atendimento_agenda': 'Tipo de Atendimento',
+            'Livre': 'Vagas Livres',
+            'Ocupada': 'Vagas Ocupadas'
+        }
+        df_res = df_res.rename(columns=rename_cols)
+
+        df_res['Vagas Livres'] = pd.to_numeric(df_res['Vagas Livres'], errors='coerce').fillna(0).astype(int)
+        df_res['Vagas Ocupadas'] = pd.to_numeric(df_res['Vagas Ocupadas'], errors='coerce').fillna(0).astype(int)
+
+        df_res['Total de Vagas'] = df_res['Vagas Livres'] + df_res['Vagas Ocupadas']
+        df_res['% Perda Primária'] = np.where(
+            df_res['Total de Vagas'] > 0,
+            ((df_res['Vagas Livres'] / df_res['Total de Vagas']) * 100).round(2),
+            0.0
+        )
+
+        # Ordenação padronizada
+        df_res = df_res.sort_values(
+            by=['Estabelecimento', 'Especialidade', 'Procedimento', 'Tipo de Agenda', 'Tipo de Atendimento']
+        ).reset_index(drop=True)
+
+        return df_res
+
+def exportar_excel_relatorio_13(periodo):
+    """
+    Gera a planilha Excel formatada do Relatório 13 (Perda Primária - VG-02)
+    com cabeçalho #F8F9FA, fórmulas nativas do Excel e rodapé #CFE2FF.
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df = gera_relatorio_13(periodo)
+        if df is None or df.empty:
+            return None
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Planilha1')
+
+        fmt_header = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_left = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_num = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_center = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_text = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_num = workbook.add_format({
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_perc = workbook.add_format({
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '0.0%',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_total_label = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_center = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_num = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_perc = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'num_format': '0.0%',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+
+        # Cabeçalho
+        worksheet.set_row(0, 26)
+        worksheet.write(0, 0, 'Tipo de Agenda', fmt_header)
+        worksheet.write(0, 1, 'Estabelecimento', fmt_header_left)
+        worksheet.write(0, 2, 'Especialidade', fmt_header_left)
+        worksheet.write(0, 3, 'Procedimento', fmt_header_left)
+        worksheet.write(0, 4, 'Tipo de Atendimento', fmt_header_left)
+        worksheet.write(0, 5, 'Vagas Livres', fmt_header_num)
+        worksheet.write(0, 6, 'Vagas Ocupadas', fmt_header_num)
+        worksheet.write(0, 7, 'Total de Vagas', fmt_header_num)
+        worksheet.write(0, 8, '% Perda Primária', fmt_header_num)
+
+        worksheet.set_column(0, 0, 16)
+        worksheet.set_column(1, 1, 45)
+        worksheet.set_column(2, 2, 35)
+        worksheet.set_column(3, 3, 50)
+        worksheet.set_column(4, 4, 22)
+        worksheet.set_column(5, 5, 18)
+        worksheet.set_column(6, 6, 18)
+        worksheet.set_column(7, 7, 18)
+        worksheet.set_column(8, 8, 18)
+
+        # Dados
+        for r_idx, row in df.iterrows():
+            curr_row = 1 + r_idx
+            worksheet.set_row(curr_row, 18)
+            worksheet.write(curr_row, 0, str(row['Tipo de Agenda']), fmt_center)
+            worksheet.write(curr_row, 1, str(row['Estabelecimento']), fmt_text)
+            worksheet.write(curr_row, 2, str(row['Especialidade']), fmt_text)
+            worksheet.write(curr_row, 3, str(row['Procedimento']), fmt_text)
+            worksheet.write(curr_row, 4, str(row['Tipo de Atendimento']), fmt_text)
+            worksheet.write(curr_row, 5, int(row['Vagas Livres']), fmt_num)
+            worksheet.write(curr_row, 6, int(row['Vagas Ocupadas']), fmt_num)
+            tot_vagas_val = int(row['Total de Vagas'])
+            worksheet.write_formula(curr_row, 7, f'=F{curr_row+1}+G{curr_row+1}', fmt_num, tot_vagas_val)
+            perc_val = (float(row['% Perda Primária']) / 100.0) if tot_vagas_val > 0 else 0.0
+            worksheet.write_formula(curr_row, 8, f'=IFERROR(F{curr_row+1}/H{curr_row+1}, 0)', fmt_perc, perc_val)
+
+        # Rodapé Total
+        total_row = 1 + len(df)
+        worksheet.set_row(total_row, 22)
+        worksheet.write(total_row, 0, 'TOTAL', fmt_total_center)
+        worksheet.write(total_row, 1, 'Total Geral STS Penha', fmt_total_label)
+        worksheet.write(total_row, 2, '', fmt_total_label)
+        worksheet.write(total_row, 3, '', fmt_total_label)
+        worksheet.write(total_row, 4, '', fmt_total_label)
+        worksheet.write_formula(total_row, 5, f'=SUM(F2:F{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 6, f'=SUM(G2:G{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 7, f'=SUM(H2:H{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 8, f'=IFERROR(F{total_row+1}/H{total_row+1}, 0)', fmt_total_perc)
+
+        # Regra de Formatação Condicional Tricolor (Mínimo Azul -> Ponto Médio Branco -> Máximo Vermelho)
+        if len(df) > 0:
+            regra_tricolor = {
+                'type': '3_color_scale',
+                'min_color': '#5A8AC6',
+                'mid_color': '#FFFFFF',
+                'max_color': '#F8696B',
+                'min_type': 'min',
+                'mid_type': 'percentile',
+                'mid_value': 50,
+                'max_type': 'max'
+            }
+            worksheet.conditional_format(f'I2:I{total_row}', regra_tricolor)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_14(periodo):
+    """
+    Relatório 14: RELATÓRIO DE ABSENTEÍSMO POR ESTABELECIMENTO E ESPECIALIDADE (AG-04)
+    Gera a listagem consolidada por Tipo de Agenda, Tipo de Entidade, Estabelecimento,
+    Especialidade e Procedimento, com a contagem de Agendado, Atendido, Não Atendido e Presente.
+    """
     with app.app_context():
-    
-        query = f"""SELECT * FROM 'AG-04' WHERE ano_mes = {periodo}"""
-        df_vg02 = pd.read_sql(query, con=db.engine)
+        query = f"SELECT * FROM 'AG-04' WHERE ano_mes = {int(periodo)}"
+        df_ag04 = pd.read_sql(query, con=db.engine)
+        if df_ag04.empty:
+            return None
 
-        df_final = pd.pivot_table(
-            df_vg02,
-            columns = 'situacao_agendamento',
-            index = ['tipo_agenda', 'tipo_entidade', 'estabelecimento', 'especialidade', 'procedimento'],
-            values = 'quantidade_agendamento',
-            aggfunc='sum'
+        # Normaliza textos com encoding/acentos
+        df_ag04['situacao_agendamento'] = df_ag04['situacao_agendamento'].astype(str).str.strip().replace({
+            'N\ufffdo Atendido': 'Não Atendido',
+            'N?o Atendido': 'Não Atendido'
+        })
+        df_ag04['tipo_entidade'] = df_ag04['tipo_entidade'].astype(str).str.strip().replace({
+            'Profissional Sa\ufffde': 'Profissional Saúde',
+            'Profissional Sa?de': 'Profissional Saúde'
+        })
+        df_ag04['quantidade_agendamento'] = pd.to_numeric(df_ag04['quantidade_agendamento'], errors='coerce').fillna(0).astype(int)
+
+        pivot = pd.pivot_table(
+            df_ag04,
+            columns='situacao_agendamento',
+            index=['tipo_agenda', 'tipo_entidade', 'estabelecimento', 'especialidade', 'procedimento'],
+            values='quantidade_agendamento',
+            aggfunc='sum',
+            fill_value=0
         )
-        #print(df_final)
-        return df_final
+
+        # Garante as 4 colunas padrão
+        for col in ['Agendado', 'Atendido', 'Não Atendido', 'Presente']:
+            if col not in pivot.columns:
+                pivot[col] = 0
+
+        cols_order = ['Agendado', 'Atendido', 'Não Atendido', 'Presente']
+        pivot = pivot[cols_order]
+
+        pivot.columns.name = None
+        df_res = pivot.reset_index()
+
+        rename_cols = {
+            'tipo_agenda': 'Tipo de Agenda',
+            'tipo_entidade': 'Tipo de Entidade',
+            'estabelecimento': 'Estabelecimento',
+            'especialidade': 'Especialidade',
+            'procedimento': 'Procedimento',
+            'Agendado': 'Agendado',
+            'Atendido': 'Atendido',
+            'Não Atendido': 'Não Atendido',
+            'Presente': 'Presente'
+        }
+        df_res = df_res.rename(columns=rename_cols)
+
+        for col in ['Agendado', 'Atendido', 'Não Atendido', 'Presente']:
+            df_res[col] = pd.to_numeric(df_res[col], errors='coerce').fillna(0).astype(int)
+
+        df_res['TOTAL'] = df_res['Agendado'] + df_res['Atendido'] + df_res['Não Atendido'] + df_res['Presente']
+        df_res['% Absenteísmo'] = np.where(
+            df_res['TOTAL'] > 0,
+            ((df_res['Não Atendido'] / df_res['TOTAL']) * 100).round(2),
+            0.0
+        )
+
+        # Ordenação padronizada
+        df_res = df_res.sort_values(
+            by=['Estabelecimento', 'Especialidade', 'Procedimento', 'Tipo de Agenda', 'Tipo de Entidade']
+        ).reset_index(drop=True)
+
+        return df_res
+
+def exportar_excel_relatorio_14(periodo):
+    """
+    Gera a planilha Excel formatada do Relatório 14 (Absenteísmo - AG-04)
+    com cabeçalho #F8F9FA, fórmulas nativas do Excel, formatação condicional tricolor e rodapé #CFE2FF.
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df = gera_relatorio_14(periodo)
+        if df is None or df.empty:
+            return None
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Planilha1')
+
+        fmt_header = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_left = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_num = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_vertical = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'bottom',
+            'rotation': 90,
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_center = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_text = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_num = workbook.add_format({
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_perc = workbook.add_format({
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '0.0%',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_total_label = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_center = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_num = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_perc = workbook.add_format({
+            'bold': True,
+            'align': 'right',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'num_format': '0.0%',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+
+        # Cabeçalho
+        worksheet.set_row(0, 85)
+        worksheet.write(0, 0, 'Tipo de Agenda', fmt_header)
+        worksheet.write(0, 1, 'Tipo de Entidade', fmt_header_left)
+        worksheet.write(0, 2, 'Estabelecimento', fmt_header_left)
+        worksheet.write(0, 3, 'Especialidade', fmt_header_left)
+        worksheet.write(0, 4, 'Procedimento', fmt_header_left)
+        worksheet.write(0, 5, 'Agendado', fmt_header_vertical)
+        worksheet.write(0, 6, 'Atendido', fmt_header_vertical)
+        worksheet.write(0, 7, 'Não Atendido', fmt_header_vertical)
+        worksheet.write(0, 8, 'Presente', fmt_header_vertical)
+        worksheet.write(0, 9, 'TOTAL', fmt_header_vertical)
+        worksheet.write(0, 10, '% ABSENTEÍSMO', fmt_header_vertical)
+
+        worksheet.set_column(0, 0, 16)
+        worksheet.set_column(1, 1, 22)
+        worksheet.set_column(2, 2, 45)
+        worksheet.set_column(3, 3, 35)
+        worksheet.set_column(4, 4, 50)
+        worksheet.set_column(5, 5, 11)
+        worksheet.set_column(6, 6, 11)
+        worksheet.set_column(7, 7, 13)
+        worksheet.set_column(8, 8, 11)
+        worksheet.set_column(9, 9, 11)
+        worksheet.set_column(10, 10, 14)
+
+        # Dados
+        for r_idx, row in df.iterrows():
+            curr_row = 1 + r_idx
+            worksheet.set_row(curr_row, 18)
+            worksheet.write(curr_row, 0, str(row['Tipo de Agenda']), fmt_center)
+            worksheet.write(curr_row, 1, str(row['Tipo de Entidade']), fmt_text)
+            worksheet.write(curr_row, 2, str(row['Estabelecimento']), fmt_text)
+            worksheet.write(curr_row, 3, str(row['Especialidade']), fmt_text)
+            worksheet.write(curr_row, 4, str(row['Procedimento']), fmt_text)
+            worksheet.write(curr_row, 5, int(row['Agendado']), fmt_num)
+            worksheet.write(curr_row, 6, int(row['Atendido']), fmt_num)
+            worksheet.write(curr_row, 7, int(row['Não Atendido']), fmt_num)
+            worksheet.write(curr_row, 8, int(row['Presente']), fmt_num)
+            tot_val = int(row['TOTAL'])
+            worksheet.write_formula(curr_row, 9, f'=SUM(F{curr_row+1}:I{curr_row+1})', fmt_num, tot_val)
+            perc_val = (float(row['% Absenteísmo']) / 100.0) if tot_val > 0 else 0.0
+            worksheet.write_formula(curr_row, 10, f'=IFERROR(H{curr_row+1}/J{curr_row+1}, 0)', fmt_perc, perc_val)
+
+        # Rodapé Total
+        total_row = 1 + len(df)
+        worksheet.set_row(total_row, 22)
+        worksheet.write(total_row, 0, 'TOTAL', fmt_total_center)
+        worksheet.write(total_row, 1, 'Total Geral STS Penha', fmt_total_label)
+        worksheet.write(total_row, 2, '', fmt_total_label)
+        worksheet.write(total_row, 3, '', fmt_total_label)
+        worksheet.write(total_row, 4, '', fmt_total_label)
+        worksheet.write_formula(total_row, 5, f'=SUM(F2:F{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 6, f'=SUM(G2:G{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 7, f'=SUM(H2:H{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 8, f'=SUM(I2:I{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 9, f'=SUM(J2:J{total_row})', fmt_total_num)
+        worksheet.write_formula(total_row, 10, f'=IFERROR(H{total_row+1}/J{total_row+1}, 0)', fmt_total_perc)
+
+        # Regra de Formatação Condicional Tricolor (Mínimo Azul -> Ponto Médio Branco -> Máximo Vermelho)
+        if len(df) > 0:
+            regra_tricolor = {
+                'type': '3_color_scale',
+                'min_color': '#5A8AC6',
+                'mid_color': '#FFFFFF',
+                'max_color': '#F8696B',
+                'min_type': 'min',
+                'mid_type': 'percentile',
+                'mid_value': 50,
+                'max_type': 'max'
+            }
+            worksheet.conditional_format(f'K2:K{total_row}', regra_tricolor)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_15(periodo):
     with app.app_context():
@@ -1661,63 +2356,483 @@ def gera_relatorio_15(periodo):
         
         # 4. Formatações Finais
         df_pivot = df_pivot.rename(columns={'unidade': 'UNIDADE', 'cnes': 'CNES', 'cod_ine': 'COD_INE', 'sigla': 'SIGLA'})
+        df_pivot.columns.name = None
 
-        
-        # Opcional: ordenar colunas (Unidade, INE, seguido por meses e quadrimestres em ordem temporal)
-        # O pivot_table já as colocou ordenadas alfabeticamente/cronologicamente (202601 vem antes de 202602 etc)
-        # Ao renomear, a ordem original das colunas foi preservada pelo Pandas!
+        # Ordenação consistente por UNIDADE, SIGLA e COD_INE
+        df_pivot = df_pivot.sort_values(by=['UNIDADE', 'SIGLA', 'COD_INE']).reset_index(drop=True)
         
         return df_pivot
+
+def exportar_excel_relatorio_15(periodo):
+    """
+    Gera a planilha Excel formatada do Relatório 15 (Acompanhamento de Cadastro Individual ESF - REL-135)
+    com cabeçalho #F8F9FA, formatações de regras da Portaria SAPS/MS nº 161, fórmulas nativas do Excel e rodapé #CFE2FF.
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df = gera_relatorio_15(periodo)
+        if df is None or df.empty:
+            return None
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Planilha1')
+
+        # Formatos de cabeçalho
+        fmt_header_center = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_header_left = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#F8F9FA',
+            'font_color': '#212529',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+
+        # Formatos de dados base
+        fmt_center = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        fmt_text = workbook.add_format({
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+
+        # Formatos numéricos padrão e com regras de portaria
+        fmt_num_default = workbook.add_format({
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        # < 40% (Vermelho)
+        fmt_num_red = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 2,
+            'border_color': '#D9534F',
+            'font_color': '#D9534F',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        # 40% a 70% (Laranja/Amarelo)
+        fmt_num_orange = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 2,
+            'border_color': '#F0AD4E',
+            'font_color': '#D97706',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        # 70% a 100% (Verde)
+        fmt_num_green = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 2,
+            'border_color': '#198754',
+            'font_color': '#198754',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        # > 100% dentro do limite (Azul)
+        fmt_num_blue = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 2,
+            'border_color': '#0D6EFD',
+            'font_color': '#0D6EFD',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+        # Acima do Limite (Fundo Laranja, Texto Branco)
+        fmt_num_acima = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 2,
+            'border_color': '#F0AD4E',
+            'bg_color': '#F0AD4E',
+            'font_color': '#FFFFFF',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 10
+        })
+
+        # Formatos de Rodapé Total
+        fmt_total_center = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_left = workbook.add_format({
+            'bold': True,
+            'align': 'left',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+        fmt_total_num = workbook.add_format({
+            'bold': True,
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1,
+            'bg_color': '#CFE2FF',
+            'font_color': '#084298',
+            'num_format': '#,##0',
+            'font_name': 'Calibri',
+            'font_size': 11
+        })
+
+        cols = list(df.columns)
+        num_cols = len(cols)
+
+        # Cabeçalho
+        worksheet.set_row(0, 26)
+        worksheet.write(0, 0, 'CNES', fmt_header_center)
+        worksheet.write(0, 1, 'UNIDADE', fmt_header_left)
+        worksheet.write(0, 2, 'COD_INE', fmt_header_center)
+        worksheet.write(0, 3, 'SIGLA', fmt_header_center)
+        for c in range(4, num_cols):
+            worksheet.write(0, c, str(cols[c]), fmt_header_center)
+
+        # Largura das colunas
+        worksheet.set_column(0, 0, 12)
+        worksheet.set_column(1, 1, 45)
+        worksheet.set_column(2, 2, 14)
+        worksheet.set_column(3, 3, 12)
+        for c in range(4, num_cols):
+            worksheet.set_column(c, c, 14)
+
+        # Escrita dos dados
+        for r_idx, row in df.iterrows():
+            curr_row = 1 + r_idx
+            worksheet.set_row(curr_row, 18)
+            worksheet.write(curr_row, 0, str(row['CNES']), fmt_center)
+            worksheet.write(curr_row, 1, str(row['UNIDADE']), fmt_text)
+            worksheet.write(curr_row, 2, str(row['COD_INE']), fmt_center)
+            
+            sigla = str(row['SIGLA']).strip()
+            worksheet.write(curr_row, 3, sigla, fmt_center)
+
+            limite = 0
+            if sigla in ['EAP20H', 'eAP-20h', 'eAP 20h']:
+                limite = 2000
+            elif sigla in ['EAP30H', 'eAP-30h', 'eAP 30h']:
+                limite = 3000
+            elif sigla in ['ESF', 'eSF']:
+                limite = 4000
+            elif sigla in ['ECR', 'eCR']:
+                limite = 600
+
+            for c in range(4, num_cols):
+                val = row[cols[c]]
+                try:
+                    val_num = float(val)
+                except (ValueError, TypeError):
+                    val_num = 0.0
+
+                fmt_aplicar = fmt_num_default
+                if limite > 0 and val_num > 0:
+                    perc = val_num / limite
+                    if perc < 0.40:
+                        fmt_aplicar = fmt_num_red
+                    elif perc < 0.70:
+                        fmt_aplicar = fmt_num_orange
+                    elif perc <= 1.00:
+                        fmt_aplicar = fmt_num_green
+                    else:
+                        is_acima = False
+                        if sigla in ['EAP20H', 'eAP-20h', 'eAP 20h'] and val_num > 2250:
+                            is_acima = True
+                        elif sigla in ['EAP30H', 'eAP-30h', 'eAP 30h'] and val_num > 3375:
+                            is_acima = True
+                        elif sigla in ['ESF', 'eSF'] and val_num > 4500:
+                            is_acima = True
+                        fmt_aplicar = fmt_num_acima if is_acima else fmt_num_blue
+
+                worksheet.write(curr_row, c, int(val_num), fmt_aplicar)
+
+        # Rodapé Total
+        total_row = 1 + len(df)
+        worksheet.set_row(total_row, 22)
+        worksheet.write(total_row, 0, 'TOTAL', fmt_total_center)
+        worksheet.write(total_row, 1, 'Total Geral STS Penha', fmt_total_left)
+        worksheet.write(total_row, 2, f'Equipes: {len(df)}', fmt_total_center)
+        worksheet.write(total_row, 3, '', fmt_total_center)
+
+        for c in range(4, num_cols):
+            col_letter = xlsxwriter.utility.xl_col_to_name(c)
+            worksheet.write_formula(total_row, c, f'=SUM({col_letter}2:{col_letter}{total_row})', fmt_total_num)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_16(periodo=None):
     """
     Relatório 16: TOTAL DE PACIENTES CADASTRADOS NO PROGRAMA AMG (SIGA - AMG)
-    Gera duas tabelas dinâmicas:
-      1. Pacientes com STATUS_ATUAL = 'ATIVO'
-      2. Pacientes com STATUS_ATUAL = 'INATIVO'
+    Retorna dois DataFrames:
+      1. df_ativos: Pacientes ativos por tipo de diabetes (GESTACIONAL, TIPO I, TIPO II)
+      2. df_inativos: Pacientes inativos por motivo de inativação
+    Desconsidera estabelecimentos com 'EMULTI' ou 'INATIVO' no nome.
     """
     with app.app_context():
-        query = 'SELECT * FROM "REL-16"'
+        if periodo and len(str(periodo)) == 6:
+            ano = str(periodo)[:4]
+            mes = str(periodo)[4:6]
+            query = f"SELECT * FROM 'REL-16' WHERE ano_mes = '{periodo}' OR ano_mes = {int(periodo)} OR data_extracao LIKE '{ano}-{mes}-%'"
+        else:
+            query = "SELECT * FROM 'REL-16'"
+            
         try:
             df = pd.read_sql(query, con=db.engine)
+            if df.empty and periodo:
+                df = pd.read_sql("SELECT * FROM 'REL-16'", con=db.engine)
         except Exception:
             return None, None
         
         if df.empty:
             return None, None
 
-        df_ativo = df[df['status_atual'].astype(str).str.upper() == 'ATIVO']
-        df_inativo = df[df['status_atual'].astype(str).str.upper() == 'INATIVO']
+        # 1. Filtro de estabelecimentos: remover unidades que contenham EMULTI ou INATIVO no nome
+        mask_remover = df['estabelecimento'].astype(str).str.upper().str.contains('EMULTI|INATIVO')
+        df_filtrado = df[~mask_remover].copy()
 
-        pivot_ativo = pd.pivot_table(
-            df_ativo,
-            index='estabelecimento',
-            columns='diabetes_mellitus',
-            values='nome_paciente',
-            aggfunc='count',
-            fill_value=0
-        )
-        if hasattr(pivot_ativo.columns, 'names'):
-            pivot_ativo.columns.names = [None] * len(pivot_ativo.columns.names)
+        # Normalização dos motivos de inativação
+        def limpar_motivo(motivo_str):
+            m = str(motivo_str).strip()
+            if 'ABANDONO' in m: return 'ABANDONO'
+            if 'CADASTRO EQUIVOCADO' in m: return 'CADASTRO EQUIVOCADO'
+            if 'GESTANTE' in m: return 'GESTANTE'
+            if 'DECURSO DE TEMPO' in m: return 'INATIVADO POR DECURSO DE TEMPO'
+            if 'MUDAN' in m or 'MUNIC' in m: return 'MUDANÇA DE MUNICÍPIO'
+            if 'OUTROS' in m: return 'OUTROS MOTIVOS'
+            if 'SUSPENS' in m or 'INSULINA' in m: return 'SUSPENSÃO DA PRESCRIÇÃO DE INSULINA'
+            if 'TRANSFER' in m: return 'TRANSFERÊNCIA DE UNIDADE'
+            if 'BITO' in m: return 'ÓBITO'
+            return m
+
+        if 'motivo_ultimo_status' in df_filtrado.columns:
+            df_filtrado['motivo_limpo'] = df_filtrado['motivo_ultimo_status'].apply(limpar_motivo)
         else:
+            df_filtrado['motivo_limpo'] = ''
+
+        # --- TABELA 1: ATIVOS ---
+        df_ativo = df_filtrado[df_filtrado['status_atual'].astype(str).str.upper() == 'ATIVO'].copy()
+        if not df_ativo.empty:
+            pivot_ativo = pd.pivot_table(
+                df_ativo,
+                index='estabelecimento',
+                columns='diabetes_mellitus',
+                values='nome_paciente',
+                aggfunc='count',
+                fill_value=0
+            )
             pivot_ativo.columns.name = None
-        pivot_ativo = pivot_ativo.reset_index()
-
-        pivot_inativo = pd.pivot_table(
-            df_inativo,
-            index='estabelecimento',
-            columns='motivo_ultimo_status',
-            values='nome_paciente',
-            aggfunc='count',
-            fill_value=0
-        )
-        if hasattr(pivot_inativo.columns, 'names'):
-            pivot_inativo.columns.names = [None] * len(pivot_inativo.columns.names)
+            pivot_ativo = pivot_ativo.reset_index()
+            pivot_ativo = pivot_ativo.rename(columns={'estabelecimento': 'ESTABELECIMENTO'})
+            
+            for col in ['GESTACIONAL', 'TIPO I', 'TIPO II']:
+                if col not in pivot_ativo.columns:
+                    pivot_ativo[col] = 0
+                    
+            cols_order_a = ['ESTABELECIMENTO', 'GESTACIONAL', 'TIPO I', 'TIPO II']
+            pivot_ativo = pivot_ativo[cols_order_a]
+            
+            num_cols_a = ['GESTACIONAL', 'TIPO I', 'TIPO II']
+            for c in num_cols_a:
+                pivot_ativo[c] = pd.to_numeric(pivot_ativo[c], errors='coerce').fillna(0).astype(int)
+                
+            pivot_ativo['Total Geral'] = pivot_ativo[num_cols_a].sum(axis=1)
+            pivot_ativo = pivot_ativo.sort_values(by='ESTABELECIMENTO').reset_index(drop=True)
         else:
+            pivot_ativo = pd.DataFrame(columns=['ESTABELECIMENTO', 'GESTACIONAL', 'TIPO I', 'TIPO II', 'Total Geral'])
+
+        # --- TABELA 2: INATIVOS ---
+        df_inativo = df_filtrado[df_filtrado['status_atual'].astype(str).str.upper() == 'INATIVO'].copy()
+        if not df_inativo.empty:
+            pivot_inativo = pd.pivot_table(
+                df_inativo,
+                index='estabelecimento',
+                columns='motivo_limpo',
+                values='nome_paciente',
+                aggfunc='count',
+                fill_value=0
+            )
             pivot_inativo.columns.name = None
-        pivot_inativo = pivot_inativo.reset_index()
+            pivot_inativo = pivot_inativo.reset_index()
+            pivot_inativo = pivot_inativo.rename(columns={'estabelecimento': 'ESTABELECIMENTO'})
+            
+            motivos_esperados = [
+                'ABANDONO', 'CADASTRO EQUIVOCADO', 'GESTANTE', 'INATIVADO POR DECURSO DE TEMPO',
+                'MUDANÇA DE MUNICÍPIO', 'OUTROS MOTIVOS', 'SUSPENSÃO DA PRESCRIÇÃO DE INSULINA',
+                'TRANSFERÊNCIA DE UNIDADE', 'ÓBITO'
+            ]
+            for m in motivos_esperados:
+                if m not in pivot_inativo.columns:
+                    pivot_inativo[m] = 0
+                    
+            cols_order_i = ['ESTABELECIMENTO'] + motivos_esperados
+            pivot_inativo = pivot_inativo[cols_order_i]
+            
+            for c in motivos_esperados:
+                pivot_inativo[c] = pd.to_numeric(pivot_inativo[c], errors='coerce').fillna(0).astype(int)
+                
+            pivot_inativo['Total Geral'] = pivot_inativo[motivos_esperados].sum(axis=1)
+            pivot_inativo = pivot_inativo.sort_values(by='ESTABELECIMENTO').reset_index(drop=True)
+        else:
+            pivot_inativo = pd.DataFrame(columns=['ESTABELECIMENTO', 'ABANDONO', 'CADASTRO EQUIVOCADO', 'GESTANTE', 'INATIVADO POR DECURSO DE TEMPO', 'MUDANÇA DE MUNICÍPIO', 'OUTROS MOTIVOS', 'SUSPENSÃO DA PRESCRIÇÃO DE INSULINA', 'TRANSFERÊNCIA DE UNIDADE', 'ÓBITO', 'Total Geral'])
 
         return pivot_ativo, pivot_inativo
+
+def exportar_excel_relatorio_16(periodo=None):
+    """
+    Gera a planilha Excel com 2 abas do Relatório 16 (SIGA AMG):
+      - Aba 1: Ativos - Tipo de Diabetes
+      - Aba 2: Inativos - Motivo Inativação
+    """
+    with app.app_context():
+        import io
+        import xlsxwriter
+        df_ativos, df_inativos = gera_relatorio_16(periodo)
+        if df_ativos is None and df_inativos is None:
+            return None
+
+        output = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+
+        fmt_header_left = workbook.add_format({
+            'bold': True, 'align': 'left', 'valign': 'vcenter',
+            'border': 1, 'bg_color': '#F8F9FA', 'font_color': '#212529',
+            'font_name': 'Calibri', 'font_size': 11
+        })
+        fmt_header_num = workbook.add_format({
+            'bold': True, 'align': 'right', 'valign': 'vcenter',
+            'border': 1, 'bg_color': '#F8F9FA', 'font_color': '#212529',
+            'font_name': 'Calibri', 'font_size': 11
+        })
+        fmt_text = workbook.add_format({
+            'align': 'left', 'valign': 'vcenter', 'border': 1,
+            'font_name': 'Calibri', 'font_size': 10
+        })
+        fmt_num = workbook.add_format({
+            'align': 'right', 'valign': 'vcenter', 'border': 1,
+            'num_format': '#,##0', 'font_name': 'Calibri', 'font_size': 10
+        })
+        fmt_total_label = workbook.add_format({
+            'bold': True, 'align': 'left', 'valign': 'vcenter',
+            'border': 1, 'bg_color': '#CFE2FF', 'font_color': '#084298',
+            'font_name': 'Calibri', 'font_size': 11
+        })
+        fmt_total_num = workbook.add_format({
+            'bold': True, 'align': 'right', 'valign': 'vcenter',
+            'border': 1, 'bg_color': '#CFE2FF', 'font_color': '#084298',
+            'num_format': '#,##0', 'font_name': 'Calibri', 'font_size': 11
+        })
+
+        # --- ABA 1: ATIVOS ---
+        if df_ativos is not None and not df_ativos.empty:
+            ws1 = workbook.add_worksheet('Ativos - Tipo de Diabetes')
+            cols1 = list(df_ativos.columns)
+            num_cols1 = len(cols1)
+
+            ws1.set_row(0, 26)
+            ws1.write(0, 0, 'ESTABELECIMENTO', fmt_header_left)
+            for c in range(1, num_cols1):
+                ws1.write(0, c, str(cols1[c]), fmt_header_num)
+
+            ws1.set_column(0, 0, 50)
+            for c in range(1, num_cols1):
+                ws1.set_column(c, c, 16)
+
+            for r_idx, row in df_ativos.iterrows():
+                curr_row = 1 + r_idx
+                ws1.set_row(curr_row, 18)
+                ws1.write(curr_row, 0, str(row['ESTABELECIMENTO']), fmt_text)
+                for c in range(1, num_cols1 - 1):
+                    ws1.write(curr_row, c, int(row[cols1[c]]), fmt_num)
+                last_data_col1 = xlsxwriter.utility.xl_col_to_name(num_cols1 - 2)
+                ws1.write_formula(curr_row, num_cols1 - 1, f'=SUM(B{curr_row+1}:{last_data_col1}{curr_row+1})', fmt_num, int(row['Total Geral']))
+
+            total_row1 = 1 + len(df_ativos)
+            ws1.set_row(total_row1, 22)
+            ws1.write(total_row1, 0, 'TOTAL GERAL', fmt_total_label)
+            for c in range(1, num_cols1):
+                col_let1 = xlsxwriter.utility.xl_col_to_name(c)
+                ws1.write_formula(total_row1, c, f'=SUM({col_let1}2:{col_let1}{total_row1})', fmt_total_num)
+
+        # --- ABA 2: INATIVOS ---
+        if df_inativos is not None and not df_inativos.empty:
+            ws2 = workbook.add_worksheet('Inativos - Motivo Inativação')
+            cols2 = list(df_inativos.columns)
+            num_cols2 = len(cols2)
+
+            ws2.set_row(0, 26)
+            ws2.write(0, 0, 'ESTABELECIMENTO', fmt_header_left)
+            for c in range(1, num_cols2):
+                ws2.write(0, c, str(cols2[c]), fmt_header_num)
+
+            ws2.set_column(0, 0, 50)
+            for c in range(1, num_cols2):
+                ws2.set_column(c, c, 18)
+
+            for r_idx, row in df_inativos.iterrows():
+                curr_row = 1 + r_idx
+                ws2.set_row(curr_row, 18)
+                ws2.write(curr_row, 0, str(row['ESTABELECIMENTO']), fmt_text)
+                for c in range(1, num_cols2 - 1):
+                    ws2.write(curr_row, c, int(row[cols2[c]]), fmt_num)
+                last_data_col2 = xlsxwriter.utility.xl_col_to_name(num_cols2 - 2)
+                ws2.write_formula(curr_row, num_cols2 - 1, f'=SUM(B{curr_row+1}:{last_data_col2}{curr_row+1})', fmt_num, int(row['Total Geral']))
+
+            total_row2 = 1 + len(df_inativos)
+            ws2.set_row(total_row2, 22)
+            ws2.write(total_row2, 0, 'TOTAL GERAL', fmt_total_label)
+            for c in range(1, num_cols2):
+                col_let2 = xlsxwriter.utility.xl_col_to_name(c)
+                ws2.write_formula(total_row2, c, f'=SUM({col_let2}2:{col_let2}{total_row2})', fmt_total_num)
+
+        workbook.close()
+        output.seek(0)
+        return output
 
 def gera_relatorio_17(periodo):
     with app.app_context():

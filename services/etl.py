@@ -572,8 +572,7 @@ def processa_rel114(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import timedelta
-    # Calcula ano e mês do período informado ou do mês passado
+    from datetime import datetime, timedelta
     if periodo:
         ano_alvo = str(periodo)[:4]
         mes_alvo = str(periodo)[4:6]
@@ -583,10 +582,14 @@ def processa_rel114(caminho, periodo=None):
         ano_alvo = mes_passado_obj.strftime('%Y')
         mes_alvo = mes_passado_obj.strftime('%m')
 
+    agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    df_limpo['data_extracao'] = agora_str
+    df_limpo['ano_mes'] = f"{ano_alvo}{mes_alvo}"
+
     with app.app_context():
         try:
             # Remove apenas as linhas onde a previsão de parto seja do mês alvo
-            db.session.execute(text(f"DELETE FROM 'REL-114' WHERE previsao_parto LIKE '%/{mes_alvo}/{ano_alvo}'"))
+            db.session.execute(text(f"DELETE FROM 'REL-114' WHERE previsao_parto LIKE '%/{mes_alvo}/{ano_alvo}' OR ano_mes = '{ano_alvo}{mes_alvo}'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
@@ -617,8 +620,7 @@ def processa_rel134(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import timedelta
-    import calendar
+    from datetime import datetime, timedelta
 
     if periodo:
         ano_alvo = str(periodo)[:4]
@@ -629,15 +631,15 @@ def processa_rel134(caminho, periodo=None):
         ano_alvo = mes_passado_obj.strftime('%Y')
         mes_alvo = mes_passado_obj.strftime('%m')
 
-    ultimo_dia = calendar.monthrange(int(ano_alvo), int(mes_alvo))[1]
-    data_ref = f"{ano_alvo}-{mes_alvo}-{str(ultimo_dia).zfill(2)}"
-    df_limpo['data_extracao'] = data_ref
+    agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    df_limpo['data_extracao'] = agora_str
+    df_limpo['ano_mes'] = f"{ano_alvo}{mes_alvo}"
 
     comp_alvo = f"{ano_alvo}{mes_alvo}"
 
     with app.app_context():
         try:
-            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
+            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp_alvo}' OR data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
@@ -676,8 +678,7 @@ def processa_rel16(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import timedelta
-    import calendar
+    from datetime import datetime, timedelta
 
     if periodo:
         ano_alvo = str(periodo)[:4]
@@ -688,15 +689,15 @@ def processa_rel16(caminho, periodo=None):
         ano_alvo = mes_passado_obj.strftime('%Y')
         mes_alvo = mes_passado_obj.strftime('%m')
 
-    ultimo_dia = calendar.monthrange(int(ano_alvo), int(mes_alvo))[1]
-    data_ref = f"{ano_alvo}-{mes_alvo}-{str(ultimo_dia).zfill(2)}"
-    df_limpo['data_extracao'] = data_ref
+    agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    df_limpo['data_extracao'] = agora_str
+    df_limpo['ano_mes'] = f"{ano_alvo}{mes_alvo}"
 
     comp_alvo = f"{ano_alvo}{mes_alvo}"
 
     with app.app_context():
         try:
-            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
+            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE ano_mes = '{comp_alvo}' OR data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
