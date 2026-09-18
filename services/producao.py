@@ -3159,6 +3159,21 @@ MAPA_RELATORIOS_INFO = {
     }
 }
 
+def _formatar_data_raw(raw_dt):
+    if not raw_dt:
+        return None
+    raw_str = str(raw_dt).strip()
+    if len(raw_str) == 10 and '-' in raw_str:
+        partes = raw_str.split('-')
+        return f"{partes[2]}/{partes[1]}/{partes[0]}"
+    elif len(raw_str) >= 16 and '-' in raw_str:
+        try:
+            dt_obj = datetime.strptime(raw_str[:16], '%Y-%m-%d %H:%M')
+            return dt_obj.strftime('%d/%m/%Y %H:%M')
+        except Exception:
+            return raw_str
+    return raw_str
+
 def obter_metadados_relatorio(indice, periodo=None):
     info = MAPA_RELATORIOS_INFO.get(str(indice), {
         'fonte': 'Sistema Municipal de Saúde',
@@ -3168,6 +3183,7 @@ def obter_metadados_relatorio(indice, periodo=None):
     
     fonte = info['fonte']
     data_geracao = None
+    fontes_detalhadas = []
     
     # 1. Tenta buscar a data específica da competência selecionada no banco de dados
     if info.get('tabela'):
@@ -3199,20 +3215,46 @@ def obter_metadados_relatorio(indice, periodo=None):
                     
                     res = pd.read_sql(query, con=db.engine)
                     if not res.empty and res.iloc[0]['dt']:
-                        raw_dt = str(res.iloc[0]['dt']).strip()
-                        if len(raw_dt) == 10 and '-' in raw_dt:
-                            partes = raw_dt.split('-')
-                            data_geracao = f"{partes[2]}/{partes[1]}/{partes[0]}"
-                        elif len(raw_dt) >= 16 and '-' in raw_dt:
-                            try:
-                                dt_obj = datetime.strptime(raw_dt[:16], '%Y-%m-%d %H:%M')
-                                data_geracao = dt_obj.strftime('%d/%m/%Y %H:%M')
-                            except Exception:
-                                data_geracao = raw_dt
-                        else:
-                            data_geracao = raw_dt
+                        data_geracao = _formatar_data_raw(res.iloc[0]['dt'])
         except Exception:
             pass
+
+    # 1.1. Para o Relatório 08, coleta a data de extração específica de cada um dos 4 sub-relatórios
+    if str(indice) == '08':
+        sub_relatorios_08 = [
+            {'codigo': 'GAC-02', 'nome': 'Gestantes Ativas', 'tabela': 'GAC-02', 'tipo': 'gac', 'arquivo': 'GAC02.csv'},
+            {'codigo': 'CG-01', 'nome': 'Gestantes 7+ Consultas', 'tabela': 'CG-01', 'tipo': 'ano_mes', 'arquivo': 'CG-01.csv'},
+            {'codigo': 'CG-05', 'nome': 'Total de Consultas PN', 'tabela': 'CG-05', 'tipo': 'ano_mes', 'arquivo': 'CG-05.csv'},
+            {'codigo': 'CG-06', 'nome': 'Exames de Pré-Natal', 'tabela': 'CG-06', 'tipo': 'ano_mes', 'arquivo': 'CG-06.csv'},
+        ]
+        with app.app_context():
+            for item in sub_relatorios_08:
+                dt_item = None
+                try:
+                    query_sub = f"SELECT MAX(data_extracao) as dt FROM '{item['tabela']}'"
+                    if periodo:
+                        if item['tipo'] == 'gac':
+                            mes_gac = f"{str(periodo)[:4]}-{str(periodo)[4:]}"
+                            query_sub += f" WHERE data_extracao LIKE '{mes_gac}-%'"
+                        else:
+                            query_sub += f" WHERE ano_mes_extracao = {int(periodo)}"
+                    res_sub = pd.read_sql(query_sub, con=db.engine)
+                    if not res_sub.empty and res_sub.iloc[0]['dt']:
+                        dt_item = _formatar_data_raw(res_sub.iloc[0]['dt'])
+                except Exception:
+                    pass
+
+                if not dt_item and item.get('arquivo'):
+                    caminho_arq = os.path.join(os.getcwd(), 'ARQUIVOS ORIGINAIS', item['arquivo'])
+                    if os.path.exists(caminho_arq):
+                        mtime = os.path.getmtime(caminho_arq)
+                        dt_item = datetime.fromtimestamp(mtime).strftime('%d/%m/%Y %H:%M')
+
+                fontes_detalhadas.append({
+                    'codigo': item['codigo'],
+                    'nome': item['nome'],
+                    'data_extracao': dt_item if dt_item else 'Pendente'
+                })
             
     # 2. Se não encontrou no banco para aquela competência, busca a data de modificação do arquivo
     if not data_geracao and info.get('arquivos'):
@@ -3229,5 +3271,6 @@ def obter_metadados_relatorio(indice, periodo=None):
         
     return {
         'fonte': fonte,
-        'data_geracao': data_geracao
+        'data_geracao': data_geracao,
+        'fontes_detalhadas': fontes_detalhadas
     }

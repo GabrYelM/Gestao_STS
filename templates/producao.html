@@ -505,13 +505,32 @@ div.dt-button-collection button.dt-button:hover {
                     Resultado:
                 {% endif %}
             </h4>
-                {% if fonte_dados %}
-                <div class="text-muted small d-flex align-items-center flex-wrap gap-2">
-                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> <span id="texto-fonte-dados">{{ fonte_dados }}</span></span>
-                    <span class="badge bg-light text-dark border px-2 py-1"><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> <span id="texto-data-geracao">{{ data_geracao }}</span></span>
+
+            <!-- Lado Direito: Informações de Extração e Fontes em Pilha (Stack) -->
+            <div class="d-flex flex-column align-items-end gap-1 text-end" id="container-bloco-metadados">
+                <!-- Se houver fontes detalhadas (ex: Relatório 08), exibe a pilha detalhada substituindo as informações simples -->
+                <div id="container-fontes-detalhadas" class="d-flex flex-column align-items-end gap-1 {% if not fontes_detalhadas %}d-none{% endif %}">
+                    {% if fontes_detalhadas %}
+                        {% for fd in fontes_detalhadas %}
+                            <span class="badge bg-light text-dark border px-2 py-1 shadow-sm small" style="font-size: 0.78rem;">
+                                <i class="bi bi-file-earmark-text me-1 text-primary"></i><strong>{{ fd.codigo }}</strong> ({{ fd.nome }}): 
+                                <span class="{% if fd.data_extracao == 'Pendente' or fd.data_extracao == 'Não extraído' %}text-danger{% else %}text-success{% endif %} fw-bold">{{ fd.data_extracao }}</span>
+                            </span>
+                        {% endfor %}
+                    {% endif %}
                 </div>
-                {% endif %}
+
+                <!-- Bloco padrão de Fonte e Data (para relatórios simples sem sub-fontes) -->
+                <div id="container-fonte-padrao" class="d-flex flex-column align-items-end gap-1 {% if fontes_detalhadas %}d-none{% endif %}">
+                    {% if fonte_dados %}
+                        <span class="badge bg-light text-dark border px-2 py-1 small" style="font-size: 0.78rem;"><i class="bi bi-database me-1 text-primary"></i><strong>Fonte:</strong> <span id="texto-fonte-dados">{{ fonte_dados }}</span></span>
+                    {% endif %}
+                    {% if data_geracao %}
+                        <span class="badge bg-light text-dark border px-2 py-1 small" style="font-size: 0.78rem;"><i class="bi bi-calendar-check me-1 text-success"></i><strong>Dados gerados/extraídos em:</strong> <span id="texto-data-geracao">{{ data_geracao }}</span></span>
+                    {% endif %}
+                </div>
             </div>
+        </div>
             <div class="table-responsive">
                 <table id="tabela-dinamica" class="table table-sm table-bordered w-100 small">
                     <!-- O cabeçalho será injetado pelo DataTables via JSON -->
@@ -3598,6 +3617,28 @@ div.dt-button-collection button.dt-button:hover {
                     var txtData = document.getElementById('texto-data-geracao');
                     if (txtData && res.data_geracao) {
                         txtData.textContent = res.data_geracao;
+                    }
+
+                    var containerFontes = document.getElementById('container-fontes-detalhadas');
+                    var containerPadrao = document.getElementById('container-fonte-padrao');
+                    if (containerFontes && containerPadrao) {
+                        if (res.fontes_detalhadas && res.fontes_detalhadas.length > 0) {
+                            var htmlFontes = '';
+                            res.fontes_detalhadas.forEach(function(fd) {
+                                var corClasse = (fd.data_extracao === 'Pendente' || fd.data_extracao === 'Não extraído') ? 'text-danger' : 'text-success';
+                                htmlFontes += '<span class="badge bg-light text-dark border px-2 py-1 shadow-sm small" style="font-size: 0.78rem;">' +
+                                    '<i class="bi bi-file-earmark-text me-1 text-primary"></i><strong>' + fd.codigo + '</strong> (' + fd.nome + '): ' +
+                                    '<span class="' + corClasse + ' fw-bold">' + fd.data_extracao + '</span>' +
+                                    '</span>';
+                            });
+                            containerFontes.innerHTML = htmlFontes;
+                            containerFontes.classList.remove('d-none');
+                            containerPadrao.classList.add('d-none');
+                        } else {
+                            containerFontes.innerHTML = '';
+                            containerFontes.classList.add('d-none');
+                            containerPadrao.classList.remove('d-none');
+                        }
                     }
                 } else {
                     document.getElementById('form-producao').submit();

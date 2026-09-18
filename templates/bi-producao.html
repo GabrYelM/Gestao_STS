@@ -19,6 +19,7 @@
                                 <option value="CARGA_COMPLETA_BI_PM">Carga completa BI e PM</option>
                                 <option value="CARGA_COMPLETA_BI" selected>Carga completa BI</option>
                                 <option value="CARGA_COMPLETA_PM">Carga completa PM</option>
+                                <option value="RELATORIO_08">Relatório 08 - Acompanhamento de Gestantes (GAC02, CG01, CG05, CG06)</option>
                             </optgroup>
                             <optgroup label="Relatórios Individuais do BI (SIGA Saúde)">
                                 <option value="AT02">AT-02 Quantidade de Pacientes e Procedimentos por Estabelecimento por mês</option>
@@ -201,6 +202,10 @@
                                     <td>Snapshot instantâneo das gestantes ativas no território</td>
                                 </tr>
                                 <tr>
+                                    <td class="fw-bold">Relatório 08 (Gestantes)</td>
+                                    <td>Extrai conjuntamente GAC02 (Snapshot), CG01, CG05 e CG06</td>
+                                </tr>
+                                <tr>
                                     <td class="fw-bold">Painel de Monitoramento</td>
                                     <td>Série histórica contínua de 12 meses (faróis de metas)</td>
                                 </tr>
@@ -318,6 +323,7 @@
 
     const isOnlyPM = (val) => ['CARGA_COMPLETA_PM', 'PM_TODOS', 'REL06', 'REL07'].includes(val);
     const isGac02 = (val) => val === 'GAC02';
+    const isRelatorio08 = (val) => val === 'RELATORIO_08';
     const isCargaCompletaGeral = (val) => val === 'CARGA_COMPLETA_BI_PM';
 
     function setBotaoTexto(html) {
@@ -369,6 +375,16 @@
             textoAlertaSemDatas.innerHTML = '<strong>Painel de Monitoramento (CEInfo):</strong> A extração busca automaticamente toda a série histórica dos últimos 12 meses e os sinais mensais da Região Penha, dispensando a seleção de competência.';
             alertaSemDatas.classList.remove('d-none');
             setBotaoTexto('<i class="bi bi-speedometer2 me-1"></i> Coletar Dados do Painel');
+        } else if (isRelatorio08(val)) {
+            // Relatório 08 - Gestantes (GAC02, CG01, CG05, CG06)
+            containerDatas.style.display = 'block';
+            if (containerCredenciaisBi) containerCredenciaisBi.style.display = 'block';
+            if (containerCredenciaisPm) containerCredenciaisPm.style.display = 'none';
+
+            alertaSemDatas.className = 'alert alert-info py-2 small mb-4 border-0 shadow-sm';
+            textoAlertaSemDatas.innerHTML = '<strong>Relatório 08 - Acompanhamento de Gestantes:</strong> O robô extrairá automaticamente os 4 arquivos do BI necessários para compor o Relatório 08: <strong>GAC02</strong> (Snapshot de Gestantes Ativas), <strong>CG01</strong> (Gestantes 7+ consultas), <strong>CG05</strong> (Total de Consultas PN) e <strong>CG06</strong> (Exames de Pré-Natal) para o período selecionado.';
+            alertaSemDatas.classList.remove('d-none');
+            setBotaoTexto('<i class="bi bi-play-circle me-1"></i> Extrair Arquivos do Relatório 08');
         } else {
             // Relatórios do BI (Carga Completa BI ou relatórios pontuais): pede apenas credenciais do BI
             if (containerCredenciaisBi) containerCredenciaisBi.style.display = 'block';

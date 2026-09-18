@@ -198,6 +198,8 @@ MAPA_NOMES_RELATORIOS = {
     'CG06': 'CG06 - Lista nominal de gestantes com exames realizados',
     'REL06': 'Painel de monitoramento PENHA',
     'REL07': 'Painel de monitoramento por estabelecimento',
+    'RELATORIO_08': 'Relatório 08 - Gestantes (GAC02, CG01, CG05, CG06)',
+    'CARGA_RELATORIO_08': 'Relatório 08 - Gestantes (GAC02, CG01, CG05, CG06)',
     'CARGA_COMPLETA_PM': 'Carga completa PM',
     'PM_TODOS': 'Carga completa PM',
     'CARGA_COMPLETA_BI': 'Carga completa BI',
@@ -233,6 +235,9 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
 
     if relatorio_escolhido in ["TODOS", "CARGA_COMPLETA_BI", "CARGA_COMPLETA_BI_PM"]:
         itens_selecionados = list(todas_funcoes.items())
+    elif relatorio_escolhido in ["RELATORIO_08", "CARGA_RELATORIO_08", "REL_08"]:
+        funcoes_08 = ['GAC02', 'CG01', 'CG05', 'CG06']
+        itens_selecionados = [(k, todas_funcoes[k]) for k in funcoes_08 if k in todas_funcoes]
     else:
         func = todas_funcoes.get(relatorio_escolhido)
         itens_selecionados = [(relatorio_escolhido, func)] if func else []
@@ -900,6 +905,7 @@ def producao():
 
     fonte_dados = None
     data_geracao = None
+    fontes_detalhadas = []
 
     if request.method == "POST":
         # 1. Pega as opções que o usuário digitou/escolheu na tela
@@ -913,6 +919,7 @@ def producao():
             meta = prod.obter_metadados_relatorio(indice, periodo)
             fonte_dados = meta.get('fonte')
             data_geracao = meta.get('data_geracao')
+            fontes_detalhadas = meta.get('fontes_detalhadas', [])
 
         # 2. Um "if" simples para decidir qual função rodar
         try:
@@ -954,7 +961,8 @@ def producao():
                     periodos_disponiveis=periodos_disponiveis,
                     json_competencias_por_relatorio=json.dumps(mapa_competencias),
                     fonte_dados=fonte_dados,
-                    data_geracao=data_geracao
+                    data_geracao=data_geracao,
+                    fontes_detalhadas=fontes_detalhadas
                 )
             elif indice == '02':
                 df = prod.gera_relatorio_02(periodo)
@@ -1096,6 +1104,7 @@ def producao():
                 "pop_fem_25_64": mapa_pop_fem,
                 "fonte_dados": fonte_dados,
                 "data_geracao": data_geracao,
+                "fontes_detalhadas": fontes_detalhadas,
                 "relatorio_selecionado": indice,
                 "periodo_selecionado": periodo
             })
@@ -1113,7 +1122,8 @@ def producao():
         periodos_disponiveis=periodos_disponiveis,
         json_competencias_por_relatorio=json.dumps(mapa_competencias),
         fonte_dados=fonte_dados,
-        data_geracao=data_geracao
+        data_geracao=data_geracao,
+        fontes_detalhadas=fontes_detalhadas
     )
 
 import zipfile
