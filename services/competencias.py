@@ -20,22 +20,32 @@ MAPA_RELATORIO_TABELAS = {
     '06': [],
     '07': [],
     '08': [('GAC-02', 'data_extracao'), ('GAC-02', 'competencia')],
-    '09': [('REL-114', 'previsao_parto'), ('REL-114', 'ano_mes'), ('REL-114', 'data_extracao')],
+    '09': [('REL-114', 'ano_mes')],
     '10': [('REL-10', 'ano_mes'), ('AT-03', 'ano')],
     '11': [('FE-02', 'ano_mes')],
     '12': [('AT-02', 'ano_mes')],
     '13': [('AG-04', 'ano_mes')],
     '14': [('VG-02', 'ano_mes')],
     '15': [('REL-135', 'ano_mes_competencia')],
-    '16': [('REL-16', 'ano_mes'), ('REL-16', 'data_extracao')],
-    '17': [('REL-134', 'ano_mes'), ('REL-134', 'data_extracao')]
+    '16': [('REL-16', 'ano_mes')],
+    '17': [('REL-134', 'ano_mes')]
 }
 
-def formatar_descricao_competencia(competencia):
+def formatar_descricao_competencia(competencia, relatorio_id=None):
     comp_str = str(competencia).strip().replace('-', '').replace('/', '')
     if len(comp_str) == 6 and comp_str.isdigit():
         ano = comp_str[:4]
         mes = comp_str[4:6]
+        
+        # Formatação quadrimestral específica para o Relatório 15 (REL-135)
+        if relatorio_id is not None and str(relatorio_id).zfill(2) == '15':
+            if mes == '04':
+                return f"Q1/{ano}"
+            elif mes == '08':
+                return f"Q2/{ano}"
+            elif mes == '12':
+                return f"Q3/{ano}"
+                
         return f"{mes}/{ano}"
     return comp_str
 
@@ -80,8 +90,8 @@ def registrar_competencia(relatorio_id, competencia):
     if not norm_comp:
         return False
     
-    desc = formatar_descricao_competencia(norm_comp)
     rel_id = str(relatorio_id).zfill(2)
+    desc = formatar_descricao_competencia(norm_comp, relatorio_id=rel_id)
     try:
         with _get_app_context():
             sql = text("""
@@ -106,7 +116,7 @@ def registrar_competencias_lote(relatorio_id, lista_competencias):
     for comp in lista_competencias:
         norm_comp = normalizar_competencia(comp)
         if norm_comp:
-            desc = formatar_descricao_competencia(norm_comp)
+            desc = formatar_descricao_competencia(norm_comp, relatorio_id=rel_id)
             registros.append({'rel_id': rel_id, 'comp': norm_comp, 'desc': desc})
     
     if registros:
@@ -124,7 +134,7 @@ def registrar_competencias_lote(relatorio_id, lista_competencias):
 def sincronizar_todas_competencias():
     """
     Varre as tabelas do banco de dados para sincronizar a tabela relatorio_competencias.
-    Pode ser executada na inicialização ou após processos de carga em lote.
+    Garante que competências obsoletas/removidas sejam expurgadas do catálogo indexado.
     """
     with _get_app_context():
         db.create_all()
@@ -132,13 +142,29 @@ def sincronizar_todas_competencias():
             periodos = set()
             for tab, col in configs:
                 try:
-                    df = pd.read_sql(f'SELECT DISTINCT "{col}" as c FROM "{tab}" WHERE "{col}" IS NOT NULL', con=db.engine)
+                    if rel_id == '17' and tab == 'REL-134':
+                        df = pd.read_sql(f'SELECT DISTINCT "{col}" as c FROM "{tab}" WHERE "{col}" IS NOT NULL AND inep IS NOT NULL AND inep NOT IN (\'-\', \'\', \'NONE\', \'NAN\')', con=db.engine)
+                    else:
+                        df = pd.read_sql(f'SELECT DISTINCT "{col}" as c FROM "{tab}" WHERE "{col}" IS NOT NULL', con=db.engine)
                     for v in df['c'].dropna():
                         norm = normalizar_competencia(v)
                         if norm:
                             periodos.add(norm)
                 except Exception:
                     pass
+
+            # Limpa competências obsoletas deste relatório na tabela indexada
+            try:
+                if periodos:
+                    comps_sql = ",".join(f"'{p}'" for p in periodos)
+                    db.session.execute(text(f"DELETE FROM relatorio_competencias WHERE relatorio_id = :rel_id AND competencia NOT IN ({comps_sql})"), {'rel_id': rel_id})
+                else:
+                    db.session.execute(text("DELETE FROM relatorio_competencias WHERE relatorio_id = :rel_id"), {'rel_id': rel_id})
+                db.session.commit()
+            except Exception as e:
+                print(f"Erro ao limpar competencias obsoletas de {rel_id}: {e}")
+                db.session.rollback()
+
             if periodos:
                 registrar_competencias_lote(rel_id, periodos)
 
@@ -276,8 +302,7 @@ def obter_status_importacao_dtic(periodo):
                 SELECT COUNT(*) as total, MAX(data_extracao) as dt
                 FROM 'REL-114'
                 WHERE ano_mes = :periodo OR ano_mes = :periodo_int
-                   OR previsao_parto LIKE '%/' || :mes || '/' || :ano
-            """), {'periodo': periodo_str, 'periodo_int': periodo_int, 'mes': mes, 'ano': ano}).fetchone()
+            """), {'periodo': periodo_str, 'periodo_int': periodo_int}).fetchone()
             tot = r[0] if r else 0
             dt = r[1] if r and r[1] else None
             resultado['rel09'] = {'importado': tot > 0, 'total_registros': tot, 'data_importacao': dt}
@@ -290,11 +315,7 @@ def obter_status_importacao_dtic(periodo):
                 SELECT COUNT(*) as total, MAX(data_extracao) as dt
                 FROM 'REL-134'
                 WHERE ano_mes = :periodo OR ano_mes = :periodo_int
-                   OR data_extracao LIKE :ano || '-' || :mes || '-%'
-                   OR (length(data_extracao)=10 AND substr(data_extracao, 7, 4) || substr(data_extracao, 4, 2) = :periodo)
-                   OR (ano = :ano AND (mes = :mes OR mes = :mes_sem_zero))
-                   OR (data_atividade LIKE '%/' || :mes || '/' || :ano)
-            """), {'periodo': periodo_str, 'periodo_int': periodo_int, 'ano': ano, 'mes': mes, 'mes_sem_zero': mes_sem_zero}).fetchone()
+            """), {'periodo': periodo_str, 'periodo_int': periodo_int}).fetchone()
             tot = r[0] if r else 0
             dt = r[1] if r and r[1] else None
             resultado['rel17'] = {'importado': tot > 0, 'total_registros': tot, 'data_importacao': dt}
@@ -320,9 +341,7 @@ def obter_status_importacao_dtic(periodo):
                 SELECT COUNT(*) as total, MAX(data_extracao) as dt
                 FROM 'REL-16'
                 WHERE ano_mes = :periodo OR ano_mes = :periodo_int
-                   OR data_extracao LIKE :ano || '-' || :mes || '-%'
-                   OR (length(data_extracao)=10 AND substr(data_extracao, 7, 4) || substr(data_extracao, 4, 2) = :periodo)
-            """), {'periodo': periodo_str, 'periodo_int': periodo_int, 'ano': ano, 'mes': mes}).fetchone()
+            """), {'periodo': periodo_str, 'periodo_int': periodo_int}).fetchone()
             tot = r[0] if r else 0
             dt = r[1] if r and r[1] else None
             resultado['rel16'] = {'importado': tot > 0, 'total_registros': tot, 'data_importacao': dt}

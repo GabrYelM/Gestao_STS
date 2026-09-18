@@ -387,14 +387,13 @@ def processa_cg01(caminho, periodo=None):
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     
-    if periodo:
-        df_limpo['ano_mes_extracao'] = periodo
+    if not periodo:
+        periodo = datetime.now().strftime('%Y%m')
+
+    df_limpo['ano_mes_extracao'] = int(periodo)
 
     with app.app_context():
-        if periodo:
-            db.session.execute(text(f"DELETE FROM 'CG-01' WHERE ano_mes_extracao = {periodo}"))
-        else:
-            db.session.execute(text("DELETE FROM 'CG-01'"))
+        db.session.execute(text(f"DELETE FROM 'CG-01' WHERE ano_mes_extracao = {periodo}"))
         db.session.commit()
         df_limpo.to_sql(name='CG-01', con=db.engine, if_exists='append', index=False)
 
@@ -423,14 +422,13 @@ def processa_cg05(caminho, periodo=None):
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
-    if periodo:
-        df_limpo['ano_mes_extracao'] = periodo
+    if not periodo:
+        periodo = datetime.now().strftime('%Y%m')
+
+    df_limpo['ano_mes_extracao'] = int(periodo)
 
     with app.app_context():
-        if periodo:
-            db.session.execute(text(f"DELETE FROM 'CG-05' WHERE ano_mes_extracao = {periodo}"))
-        else:
-            db.session.execute(text("DELETE FROM 'CG-05'"))
+        db.session.execute(text(f"DELETE FROM 'CG-05' WHERE ano_mes_extracao = {periodo}"))
         db.session.commit()
         df_limpo.to_sql(name='CG-05', con=db.engine, if_exists='append', index=False)
 
@@ -463,14 +461,13 @@ def processa_cg06(caminho, periodo=None):
     df_limpo = df[col].copy()
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
-    if periodo:
-        df_limpo['ano_mes_extracao'] = periodo
+    if not periodo:
+        periodo = datetime.now().strftime('%Y%m')
+
+    df_limpo['ano_mes_extracao'] = int(periodo)
 
     with app.app_context():
-        if periodo:
-            db.session.execute(text(f"DELETE FROM 'CG-06' WHERE ano_mes_extracao = {periodo}"))
-        else:
-            db.session.execute(text("DELETE FROM 'CG-06'"))
+        db.session.execute(text(f"DELETE FROM 'CG-06' WHERE ano_mes_extracao = {periodo}"))
         db.session.commit()
         df_limpo.to_sql(name='CG-06', con=db.engine, if_exists='append', index=False)
 
@@ -524,8 +521,11 @@ def processa_gac02(caminho, periodo=None):
         ano_str = str(periodo)[:4]
         mes_str = str(periodo)[4:6]
         ultimo_dia = calendar.monthrange(int(ano_str), int(mes_str))[1]
-        data_referencia = data_exec_encontrada or f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
         mes_filtro = f"{ano_str}-{mes_str}"
+        if data_exec_encontrada and data_exec_encontrada.startswith(mes_filtro):
+            data_referencia = data_exec_encontrada
+        else:
+            data_referencia = f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
     elif data_exec_encontrada:
         data_referencia = data_exec_encontrada
         mes_filtro = data_exec_encontrada[:7]
@@ -572,34 +572,53 @@ def processa_rel114(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import datetime, timedelta
-    if periodo:
-        ano_alvo = str(periodo)[:4]
-        mes_alvo = str(periodo)[4:6]
-    else:
-        primeiro_dia = datetime.today().replace(day=1)
-        mes_passado_obj = primeiro_dia - timedelta(days=1)
-        ano_alvo = mes_passado_obj.strftime('%Y')
-        mes_alvo = mes_passado_obj.strftime('%m')
+    # Determina ano_mes a partir de previsao_parto (DD/MM/YYYY)
+    if 'previsao_parto' in df_limpo.columns:
+        dt_parto = pd.to_datetime(df_limpo['previsao_parto'], format='%d/%m/%Y', errors='coerce')
+        df_limpo['ano_mes'] = dt_parto.dt.strftime('%Y%m')
+
+    # Remove registros sem data de previsão de parto válida
+    df_limpo = df_limpo[df_limpo['ano_mes'].notna() & (df_limpo['ano_mes'].astype(str).str.len() == 6)]
+
+    if df_limpo.empty:
+        print("Aviso: Nenhuma gestante com data de previsão de parto válida encontrada no arquivo REL-114.")
+        return False
 
     agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
     df_limpo['data_extracao'] = agora_str
-    df_limpo['ano_mes'] = f"{ano_alvo}{mes_alvo}"
 
     with app.app_context():
-        try:
-            # Remove apenas as linhas onde a previsão de parto seja do mês alvo
-            db.session.execute(text(f"DELETE FROM 'REL-114' WHERE previsao_parto LIKE '%/{mes_alvo}/{ano_alvo}' OR ano_mes = '{ano_alvo}{mes_alvo}'"))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            
-        # Filtra o dataframe para subir estritamente as previsões de parto do mês alvo
-        df_limpo = df_limpo[df_limpo['previsao_parto'].str.endswith(f"/{mes_alvo}/{ano_alvo}", na=False)]
-        
-        df_limpo.to_sql(name='REL-114', con=db.engine, if_exists='append', index=False)
-        registrar_competencia('09', f"{ano_alvo}{mes_alvo}")
-    print('REL-114 carregado com sucesso!')
+        if periodo:
+            comp_alvo = str(periodo).strip()
+            ano_c = comp_alvo[:4]
+            mes_c = comp_alvo[4:6]
+            df_salvar = df_limpo[df_limpo['ano_mes'].astype(str) == comp_alvo].copy()
+            if df_salvar.empty:
+                print(f"Aviso: Nenhuma gestante com previsão de parto encontrada para a competência {comp_alvo}.")
+                return False
+            try:
+                db.session.execute(text(f"DELETE FROM 'REL-114' WHERE ano_mes = '{comp_alvo}' OR previsao_parto LIKE '%/{mes_c}/{ano_c}'"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            df_salvar.to_sql(name='REL-114', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('09', comp_alvo)
+            print(f'REL-114 carregado com sucesso para a competência {comp_alvo}! ({len(df_salvar)} registros)')
+        else:
+            competencias_encontradas = df_limpo['ano_mes'].astype(str).unique().tolist()
+            for comp in competencias_encontradas:
+                ano_c = str(comp)[:4]
+                mes_c = str(comp)[4:6]
+                try:
+                    db.session.execute(text(f"DELETE FROM 'REL-114' WHERE ano_mes = '{comp}' OR previsao_parto LIKE '%/{mes_c}/{ano_c}'"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            df_limpo.to_sql(name='REL-114', con=db.engine, if_exists='append', index=False)
+            registrar_competencias_lote('09', competencias_encontradas)
+            print(f'REL-114 carregado com sucesso para as competências: {competencias_encontradas}! ({len(df_limpo)} registros)')
+
+    return True
 
 def processa_rel134(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
@@ -620,32 +639,57 @@ def processa_rel134(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import datetime, timedelta
+    # 1. Determina o ano_mes a partir de data_atividade ou ano/mes real de cada registro
+    if 'data_atividade' in df_limpo.columns:
+        dt_series = pd.to_datetime(df_limpo['data_atividade'], format='%d/%m/%Y', errors='coerce')
+        df_limpo['ano_mes'] = dt_series.dt.strftime('%Y%m')
+    
+    # Preenche eventuais nulos a partir das colunas ano e mes
+    if 'ano' in df_limpo.columns and 'mes' in df_limpo.columns:
+        ano_mes_fallback = df_limpo['ano'].astype(str).str.strip().str.zfill(4) + df_limpo['mes'].astype(str).str.strip().str.zfill(2)
+        if 'ano_mes' not in df_limpo.columns:
+            df_limpo['ano_mes'] = ano_mes_fallback
+        else:
+            df_limpo['ano_mes'] = df_limpo['ano_mes'].fillna(ano_mes_fallback)
 
-    if periodo:
-        ano_alvo = str(periodo)[:4]
-        mes_alvo = str(periodo)[4:6]
-    else:
-        primeiro_dia = datetime.today().replace(day=1)
-        mes_passado_obj = primeiro_dia - timedelta(days=1)
-        ano_alvo = mes_passado_obj.strftime('%Y')
-        mes_alvo = mes_passado_obj.strftime('%m')
+    # Remove registros sem ano_mes válido
+    df_limpo = df_limpo[df_limpo['ano_mes'].notna() & (df_limpo['ano_mes'].astype(str).str.len() == 6)]
+
+    if df_limpo.empty:
+        print("Aviso: Nenhuma data de atividade válida encontrada no arquivo REL-134.")
+        return False
 
     agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
     df_limpo['data_extracao'] = agora_str
-    df_limpo['ano_mes'] = f"{ano_alvo}{mes_alvo}"
-
-    comp_alvo = f"{ano_alvo}{mes_alvo}"
 
     with app.app_context():
-        try:
-            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp_alvo}' OR data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-        df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
-        registrar_competencia('17', comp_alvo)
-    print(f'REL-134 carregado com sucesso para a competência {comp_alvo}!')
+        if periodo:
+            comp_alvo = str(periodo).strip()
+            df_salvar = df_limpo[df_limpo['ano_mes'].astype(str) == comp_alvo].copy()
+            if df_salvar.empty:
+                print(f"Aviso: Nenhuma atividade encontrada no arquivo para a competência {comp_alvo}.")
+                return False
+            try:
+                db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp_alvo}'"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            df_salvar.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
+            registrar_competencia('17', comp_alvo)
+            print(f'REL-134 carregado com sucesso para a competência {comp_alvo}! ({len(df_salvar)} registros)')
+        else:
+            competencias_encontradas = df_limpo['ano_mes'].astype(str).unique().tolist()
+            for comp in competencias_encontradas:
+                try:
+                    db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp}'"))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
+            registrar_competencias_lote('17', competencias_encontradas)
+            print(f'REL-134 carregado com sucesso para as competências: {competencias_encontradas}! ({len(df_limpo)} registros)')
+
+    return True
 
 def processa_rel16(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
@@ -678,32 +722,42 @@ def processa_rel16(caminho, periodo=None):
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     if periodo:
-        ano_alvo = str(periodo)[:4]
-        mes_alvo = str(periodo)[4:6]
+        comp_alvo = str(periodo).strip()
     else:
-        primeiro_dia = datetime.today().replace(day=1)
-        mes_passado_obj = primeiro_dia - timedelta(days=1)
-        ano_alvo = mes_passado_obj.strftime('%Y')
-        mes_alvo = mes_passado_obj.strftime('%m')
+        # Detecta competência a partir da data de inclusão mais recente ou última atualização
+        comp_alvo = None
+        if 'data_inclusao' in df_limpo.columns:
+            dt_inc = pd.to_datetime(df_limpo['data_inclusao'].astype(str).str[:10], format='%d/%m/%Y', errors='coerce')
+            max_inc = dt_inc.max()
+            if pd.notna(max_inc):
+                comp_alvo = max_inc.strftime('%Y%m')
+        
+        if not comp_alvo and 'data_ultima_atualizacao' in df_limpo.columns:
+            dt_att = pd.to_datetime(df_limpo['data_ultima_atualizacao'].astype(str).str[:10], format='%d/%m/%Y', errors='coerce')
+            max_att = dt_att.max()
+            if pd.notna(max_att):
+                comp_alvo = max_att.strftime('%Y%m')
+
+        if not comp_alvo:
+            comp_alvo = datetime.now().strftime('%Y%m')
 
     agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
     df_limpo['data_extracao'] = agora_str
-    df_limpo['ano_mes'] = f"{ano_alvo}{mes_alvo}"
-
-    comp_alvo = f"{ano_alvo}{mes_alvo}"
+    df_limpo['ano_mes'] = comp_alvo
 
     with app.app_context():
         try:
-            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE ano_mes = '{comp_alvo}' OR data_extracao LIKE '{ano_alvo}-{mes_alvo}-%'"))
+            db.session.execute(text(f"DELETE FROM 'REL-16' WHERE ano_mes = '{comp_alvo}'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
         df_limpo.to_sql(name='REL-16', con=db.engine, if_exists='append', index=False)
         registrar_competencia('16', comp_alvo)
-    print(f'REL-16 (SIGA - AMG) carregado com sucesso para a competência {comp_alvo}!')
+    print(f'REL-16 (SIGA - AMG) carregado com sucesso para a competência {comp_alvo}! ({len(df_limpo)} registros)')
+    return True
 
 def processa_rel135(caminho, periodo=None):
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
@@ -726,44 +780,59 @@ def processa_rel135(caminho, periodo=None):
     df_limpo = df_limpo[df_limpo['cod_ine'] != '-']
     df_limpo = df_limpo[df_limpo['cod_ine'] != '']
 
-    from datetime import datetime, timedelta
-    
-    # Descobre o mês passado
-    hoje_obj = datetime.today()
-    primeiro_dia_mes_atual = hoje_obj.replace(day=1)
-    ultimo_dia_mes_passado = primeiro_dia_mes_atual - timedelta(days=1)
-    
-    ano_alvo = ultimo_dia_mes_passado.strftime('%Y')
-    mes_alvo = ultimo_dia_mes_passado.strftime('%m')
-    ano_mes_competencia = f"{ano_alvo}{mes_alvo}"
-    
-    # 2. Filtra DATA_CADASTRO (Remove dias após o fim da competência)
-    # Primeiro transforma a coluna em data real (ignorando erros caso tenha sujeira)
+    # 2. Converte DATA_CADASTRO para data real
     df_limpo['data_cadastro_dt'] = pd.to_datetime(df_limpo['data_cadastro'], format='%d/%m/%Y', errors='coerce')
-    
-    # Filtra mantendo apenas as datas menores ou iguais ao último dia do mês passado
-    df_limpo = df_limpo[df_limpo['data_cadastro_dt'] <= ultimo_dia_mes_passado]
-    
-    # 3. Agrupa por UNIDADE, CNES e COD_INE, fazendo a contagem do NOME_CIDADAO
-    df_resumo = df_limpo.groupby(['unidade', 'cnes', 'cod_ine']).agg(
+    df_limpo = df_limpo[df_limpo['data_cadastro_dt'].notna()]
+
+    if df_limpo.empty:
+        print("Aviso: Nenhum cadastro com data válida encontrado no arquivo REL-135.")
+        return False
+
+    max_data_cad = df_limpo['data_cadastro_dt'].max()
+
+    from datetime import datetime
+    import calendar
+
+    if periodo:
+        comp_alvo = str(periodo).strip()
+        ano_alvo = int(comp_alvo[:4])
+        mes_alvo = int(comp_alvo[4:6])
+        
+        primeiro_dia_mes = datetime(ano_alvo, mes_alvo, 1)
+        _, ultimo_dia_num = calendar.monthrange(ano_alvo, mes_alvo)
+        ultimo_dia_mes = datetime(ano_alvo, mes_alvo, ultimo_dia_num, 23, 59, 59)
+
+        # Se a data máxima do arquivo for anterior ao início do mês alvo, o arquivo não alcança esta competência
+        if max_data_cad < primeiro_dia_mes:
+            print(f"Aviso: O arquivo não contém dados para a competência {comp_alvo} (último cadastro registrado: {max_data_cad.strftime('%d/%m/%Y')}).")
+            return False
+
+        # Filtra cadastros acumulados até o fim do mês da competência alvo
+        df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= ultimo_dia_mes]
+    else:
+        # Sem período explícito, define a competência pelo mês do cadastro mais recente
+        comp_alvo = max_data_cad.strftime('%Y%m')
+        df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= max_data_cad]
+
+    # 3. Agrupa por UNIDADE, CNES e COD_INE fazendo a contagem do NOME_CIDADAO
+    df_resumo = df_filtrado.groupby(['unidade', 'cnes', 'cod_ine']).agg(
         total_cadastros=('nome_cidadao', 'count')
     ).reset_index()
     
-    # Adiciona a coluna do período e data de extração
-    df_resumo['ano_mes_competencia'] = ano_mes_competencia
+    df_resumo['ano_mes_competencia'] = comp_alvo
     df_resumo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
         try:
-            # Deleta caso já tenha rodado a extração deste mesmo mês antes
-            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE ano_mes_competencia = '{ano_mes_competencia}'"))
+            db.session.execute(text(f"DELETE FROM 'REL-135' WHERE ano_mes_competencia = '{comp_alvo}'"))
             db.session.commit()
         except Exception:
             db.session.rollback()
             
         df_resumo.to_sql(name='REL-135', con=db.engine, if_exists='append', index=False)
-        registrar_competencia('15', ano_mes_competencia)
-    print('REL-135 carregado e agrupado com sucesso!')
+        registrar_competencia('15', comp_alvo)
+    print(f'REL-135 carregado e agrupado com sucesso para a competência {comp_alvo}! ({len(df_resumo)} equipes)')
+    return True
 
 def processa_painel_monitoramento(html_content, tabela_db='REL-06', default_localidade='STS PENHA'):
     """

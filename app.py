@@ -1129,6 +1129,74 @@ def producao():
 import zipfile
 import os
 
+@app.route("/upload_bi_manual", methods=["POST"])
+@admin_required
+def upload_bi_manual():
+    relatorio = request.form.get("relatorio", "").strip()
+    mes = request.form.get("mes", "Janeiro").strip()
+    ano = request.form.get("ano", "2026").strip()
+    arquivo = request.files.get("arquivo")
+
+    if not arquivo or not arquivo.filename:
+        return jsonify({"status": "error", "mensagem": "Nenhum arquivo foi selecionado para upload."}), 400
+
+    if not relatorio:
+        return jsonify({"status": "error", "mensagem": "Selecione o relatório correspondente para substituição."}), 400
+
+    import services.etl as etl
+    mapa_funcoes_etl = {
+        'GAC02': etl.processa_gac02,
+        'CG01': etl.processa_cg01,
+        'CG05': etl.processa_cg05,
+        'CG06': etl.processa_cg06,
+        'AT02': etl.processa_at02,
+        'AG04': etl.processa_ag04,
+        'AT03': etl.processa_at03,
+        'FE02': etl.processa_fe02,
+        'VG02': etl.processa_vg02,
+        'VG04': etl.processa_vg04,
+    }
+
+    etl_func = mapa_funcoes_etl.get(relatorio)
+    if not etl_func:
+        return jsonify({"status": "error", "mensagem": f"Relatório '{relatorio}' não suportado para upload direto."}), 400
+
+    MAPA_MESES = {
+        "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
+        "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
+        "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
+    }
+    periodo = f"{ano}{MAPA_MESES.get(mes, '01')}"
+
+    pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+    os.makedirs(pasta_destino, exist_ok=True)
+    caminho_temp = os.path.join(pasta_destino, f"upload_manual_{relatorio}_{periodo}_{arquivo.filename}")
+
+    try:
+        arquivo.save(caminho_temp)
+        etl_func(caminho_temp, periodo)
+        try:
+            sincronizar_todas_competencias()
+        except Exception:
+            pass
+        nome_rel = MAPA_NOMES_RELATORIOS.get(relatorio, relatorio)
+        return jsonify({
+            "status": "success",
+            "mensagem": f"Arquivo '{arquivo.filename}' processado com sucesso! Os dados de {mes}/{ano} do relatório {nome_rel} foram substituídos no banco de dados."
+        })
+    except Exception as e:
+        print(f"Erro no upload manual de {relatorio}: {e}")
+        return jsonify({
+            "status": "error",
+            "mensagem": f"Erro ao processar o arquivo: {str(e)}"
+        }), 500
+    finally:
+        if os.path.exists(caminho_temp):
+            try:
+                os.remove(caminho_temp)
+            except Exception:
+                pass
+
 @app.route("/upload_zip", methods=["GET", "POST"])
 @app.route("/upload_dtic", methods=["GET", "POST"])
 @admin_required
@@ -1336,14 +1404,17 @@ def upload_dtic():
                                 # Chama a função de ETL correspondente
                                 from services.etl import processa_rel114, processa_rel134, processa_rel135, processa_rel16
                                 try:
+                                    res_etl = False
                                     if "(rel114)" in tipo_identificado:
-                                        processa_rel114(caminho_final)
+                                        res_etl = processa_rel114(caminho_final)
                                     elif "(rel134)" in tipo_identificado:
-                                        processa_rel134(caminho_final)
+                                        res_etl = processa_rel134(caminho_final)
                                     elif "(rel135)" in tipo_identificado:
-                                        processa_rel135(caminho_final)
+                                        res_etl = processa_rel135(caminho_final)
                                     elif "(rel16)" in tipo_identificado:
-                                        processa_rel16(caminho_final)
+                                        res_etl = processa_rel16(caminho_final)
+                                    if res_etl is not False:
+                                        sucessos += 1
                                 except Exception as e:
                                     print(f"Erro ao processar ETL do {tipo_identificado}: {e}")
                                 

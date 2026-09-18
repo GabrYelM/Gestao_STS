@@ -696,10 +696,10 @@ def gera_relatorio_09(periodo):
     with app.app_context():
 
         if periodo:
-            ano = periodo[:4]
-            mes = periodo[4:]
+            ano = str(periodo)[:4]
+            mes = str(periodo)[4:6]
             query = f"""SELECT * FROM 'REL-114'
-            WHERE previsao_parto LIKE '%/{mes}/{ano}'
+            WHERE (ano_mes = '{periodo}' OR previsao_parto LIKE '%/{mes}/{ano}')
             AND (sts = 'SUDESTE - STS PENHA' OR sts IS NULL)
             AND estab_acolhimento NOT IN ('UBS ENG TRINDADE', 'ENG TRINDADE', 'AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO', 'UBS VILA GUILHERMINA - DR AMERICO RASPA NETO')
         """
@@ -2616,16 +2616,12 @@ def gera_relatorio_16(periodo=None):
     """
     with app.app_context():
         if periodo and len(str(periodo)) == 6:
-            ano = str(periodo)[:4]
-            mes = str(periodo)[4:6]
-            query = f"SELECT * FROM 'REL-16' WHERE ano_mes = '{periodo}' OR ano_mes = {int(periodo)} OR data_extracao LIKE '{ano}-{mes}-%'"
+            query = f"SELECT * FROM 'REL-16' WHERE ano_mes = '{periodo}' OR ano_mes = {int(periodo)}"
         else:
             query = "SELECT * FROM 'REL-16'"
             
         try:
             df = pd.read_sql(query, con=db.engine)
-            if df.empty and periodo:
-                df = pd.read_sql("SELECT * FROM 'REL-16'", con=db.engine)
         except Exception:
             return None, None
         
@@ -2836,7 +2832,10 @@ def exportar_excel_relatorio_16(periodo=None):
 
 def gera_relatorio_17(periodo):
     with app.app_context():
-        query = 'SELECT * FROM "REL-134"'
+        if periodo:
+            query = f'SELECT * FROM "REL-134" WHERE ano_mes = "{periodo}"'
+        else:
+            query = 'SELECT * FROM "REL-134"'
         df = pd.read_sql(query, con=db.engine)
         
         if df.empty:

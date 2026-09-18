@@ -228,6 +228,82 @@
                 </div>
             </div>
         </div>
+        <!-- Card de Upload Manual e Substituição Direta de Arquivo -->
+        <div class="col-12 mt-4">
+            <div class="card shadow-sm border-0 rounded-4 bg-light p-1">
+                <div class="card-header bg-dark text-white rounded-3 d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-arrow-up-fill me-2 text-warning"></i>Upload Manual e Substituição Direta de Relatórios do BI</h5>
+                    <span class="badge bg-warning text-dark"><i class="bi bi-arrow-repeat me-1"></i>Substituição Direta no Banco</span>
+                </div>
+                <div class="card-body p-4 bg-white rounded-bottom-3">
+                    <p class="text-muted small mb-3">
+                        Utilize esta opção caso já possua o arquivo oficial exportado (CSV ou Excel) e precise <strong>substituir/corrigir os dados de uma competência específica no banco de dados</strong> (ex: snapshot do GAC02 ou relatórios mensais) sem precisar rodar o robô novamente.
+                    </p>
+                    <form id="form-upload-bi-manual" enctype="multipart/form-data">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="upload-relatorio" class="form-label fw-bold small">Relatório a Substituir</label>
+                                <select id="upload-relatorio" name="relatorio" class="form-select form-select-sm" required>
+                                    <option value="" selected disabled>Selecione o relatório...</option>
+                                    <optgroup label="Gestantes (Relatório 08)">
+                                        <option value="GAC02">GAC02 - Gestantes ativas (Snapshot)</option>
+                                        <option value="CG01">CG01 - Gestantes com sete ou mais consultas</option>
+                                        <option value="CG05">CG05 - Lista nominal de gestantes com total de consultas de PN</option>
+                                        <option value="CG06">CG06 - Lista nominal de gestantes com exames realizados</option>
+                                    </optgroup>
+                                    <optgroup label="Outros Relatórios do BI">
+                                        <option value="AT02">AT-02 Quantidade de Pacientes e Procedimentos por Estabelecimento</option>
+                                        <option value="AG04">AG-04 Perda Secundária por Executante / Absenteísmo</option>
+                                        <option value="AT03">AT-03 Atendimento por Procedimento segundo Sexo e Faixa Etária</option>
+                                        <option value="FE02">FE-02 Fila de Espera (Fluxo de Entrada/Saída e Ativos)</option>
+                                        <option value="VG02">VG-02 Perda Primária por Procedimento e Especialidade</option>
+                                        <option value="VG04">VG-04 Vagas Ofertadas por Tipo de Atendimento da Agenda</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small">Competência de Destino</label>
+                                <div class="row g-1">
+                                    <div class="col-7">
+                                        <select id="upload-mes" name="mes" class="form-select form-select-sm">
+                                            <option value="Janeiro">Janeiro</option>
+                                            <option value="Fevereiro">Fevereiro</option>
+                                            <option value="Março">Março</option>
+                                            <option value="Abril">Abril</option>
+                                            <option value="Maio">Maio</option>
+                                            <option value="Junho">Junho</option>
+                                            <option value="Julho">Julho</option>
+                                            <option value="Agosto" selected>Agosto</option>
+                                            <option value="Setembro">Setembro</option>
+                                            <option value="Outubro">Outubro</option>
+                                            <option value="Novembro">Novembro</option>
+                                            <option value="Dezembro">Dezembro</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-5">
+                                        <input type="number" id="upload-ano" name="ano" class="form-control form-control-sm" value="2026">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="upload-arquivo" class="form-label fw-bold small">Arquivo (.csv, .xlsx, .xls)</label>
+                                <input type="file" id="upload-arquivo" name="arquivo" class="form-control form-control-sm" accept=".csv, .xlsx, .xls" required>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top flex-wrap gap-2">
+                            <div id="status-upload-manual" class="small text-muted">
+                                <i class="bi bi-info-circle me-1"></i> Os dados anteriores desta competência serão limpos e substituídos pelos dados do arquivo enviado.
+                            </div>
+                            <button type="submit" class="btn btn-warning fw-bold px-4 shadow-sm" id="btn-enviar-upload-manual">
+                                <span id="spinner-upload-manual" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
+                                <i class="bi bi-arrow-repeat me-1"></i> Substituir Dados no Banco
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -253,7 +329,7 @@
                     </li>
                     <li class="nav-item" role="presentation" id="item-tab-falhas">
                         <button class="nav-link rounded-pill px-3 py-1 fw-semibold text-danger" id="tab-falhas" data-bs-toggle="pill" data-bs-target="#content-falhas" type="button" role="tab">
-                            <i class="bi bi-exclamation-triangle-fill text-danger me-1"></i> Falhas / Não Atualizados (<span id="count-falhas">0</span>)
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i> Falhas (<span id="count-falhas">0</span>)
                         </button>
                     </li>
                 </ul>
@@ -261,13 +337,13 @@
                 <div class="tab-content" id="resultadoTabsContent">
                     <!-- Tab Sucessos -->
                     <div class="tab-pane fade show active" id="content-sucessos" role="tabpanel">
-                        <div class="table-responsive border rounded-3" style="max-height: 280px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0 small">
+                        <div class="table-responsive" style="max-height: 280px;">
+                            <table class="table table-sm table-hover align-middle mb-0">
                                 <thead class="table-light sticky-top">
                                     <tr>
                                         <th>Relatório</th>
-                                        <th class="text-center">Competência</th>
-                                        <th>Status</th>
+                                        <th>Competência</th>
+                                        <th>Situação</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-sucessos"></tbody>
@@ -277,13 +353,13 @@
 
                     <!-- Tab Falhas -->
                     <div class="tab-pane fade" id="content-falhas" role="tabpanel">
-                        <div class="table-responsive border rounded-3" style="max-height: 280px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0 small">
+                        <div class="table-responsive" style="max-height: 280px;">
+                            <table class="table table-sm table-hover align-middle mb-0">
                                 <thead class="table-light sticky-top">
                                     <tr>
                                         <th>Relatório</th>
-                                        <th class="text-center">Competência</th>
-                                        <th>Motivo / Erro</th>
+                                        <th>Competência</th>
+                                        <th>Motivo da Falha</th>
                                     </tr>
                                 </thead>
                                 <tbody id="tbody-falhas"></tbody>
@@ -292,11 +368,8 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer border-top-0 pt-0 pb-4 px-4 d-flex justify-content-between">
-                <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Fechar</button>
-                <a href="/producao" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
-                    <i class="bi bi-eye me-1"></i> Ver Relatórios de Produção
-                </a>
+            <div class="modal-footer border-top-0 pt-0">
+                <button type="button" class="btn btn-primary rounded-pill px-4" data-bs-dismiss="modal">Entendido</button>
             </div>
         </div>
     </div>
@@ -305,18 +378,14 @@
 
 {% block scripts %}
 <script>
-    const btnGerar = document.getElementById('btn-gerar');
-    const btnCancelar = document.getElementById('btn-cancelar');
-    const spinnerGerar = document.getElementById('spinner-gerar');
-    const textoBotao = document.getElementById('texto-botao');
-    const mesInicio = document.getElementById('mes-inicio');
-    const anoInicio = document.getElementById('ano-inicio');
-    const mesFim = document.getElementById('mes-fim');
-    const anoFim = document.getElementById('ano-fim');
     const relatorioEscolhido = document.getElementById('relatorio-escolhido');
     const containerDatas = document.getElementById('container-datas');
     const alertaSemDatas = document.getElementById('alerta-sem-datas');
     const textoAlertaSemDatas = document.getElementById('texto-alerta-sem-datas');
+    const btnGerar = document.getElementById('btn-gerar');
+    const btnCancelar = document.getElementById('btn-cancelar');
+    const textoBotao = document.getElementById('texto-botao');
+    const spinnerGerar = document.getElementById('spinner-gerar');
 
     const containerCredenciaisBi = document.getElementById('container-credenciais-bi');
     const containerCredenciaisPm = document.getElementById('container-credenciais-pm');
@@ -475,9 +544,9 @@
             sucessos.forEach(item => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="fw-semibold text-dark"><span class="badge bg-primary-subtle text-primary me-1">${item.codigo || ''}</span> ${item.relatorio || ''}</td>
-                    <td class="text-center font-monospace fw-bold text-secondary">${item.competencia || ''}</td>
-                    <td><span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1"><i class="bi bi-check2 me-1"></i>${item.status || 'Atualizado'}</span></td>
+                    <td class="fw-semibold text-dark">${item.relatorio || item.codigo}</td>
+                    <td><span class="badge bg-light text-dark border">${item.competencia || 'N/A'}</span></td>
+                    <td><span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check2 me-1"></i>${item.status || 'Gravado no Banco'}</span></td>
                 `;
                 tbodySucessos.appendChild(tr);
             });
@@ -485,98 +554,67 @@
 
         tbodyFalhas.innerHTML = '';
         if (erros.length === 0) {
-            tbodyFalhas.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Nenhuma falha registrada.</td></tr>';
+            tbodyFalhas.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-3">Nenhuma falha reportada.</td></tr>';
         } else {
             erros.forEach(item => {
                 const tr = document.createElement('tr');
-                const motivoTexto = typeof item === 'string' ? item : (item.motivo || JSON.stringify(item));
-                const relTexto = typeof item === 'object' && item.relatorio ? item.relatorio : (item.codigo || 'Robô');
-                const compTexto = typeof item === 'object' && item.competencia ? item.competencia : 'N/A';
-                const codTexto = typeof item === 'object' && item.codigo ? item.codigo : '!';
-                
                 tr.innerHTML = `
-                    <td class="fw-semibold text-danger"><span class="badge bg-danger-subtle text-danger me-1">${codTexto}</span> ${relTexto}</td>
-                    <td class="text-center font-monospace text-muted">${compTexto}</td>
-                    <td class="text-danger small font-monospace">${motivoTexto}</td>
+                    <td class="fw-semibold text-danger">${item.relatorio || item.codigo}</td>
+                    <td><span class="badge bg-light text-dark border">${item.competencia || 'N/A'}</span></td>
+                    <td class="small text-danger">${item.motivo || 'Erro desconhecido'}</td>
                 `;
                 tbodyFalhas.appendChild(tr);
             });
         }
 
-        const modalElement = document.getElementById('modalResultadoExtracao');
-        const modalInstance = new bootstrap.Modal(modalElement);
-        modalInstance.show();
+        const modalEl = document.getElementById('modalResultadoExtracao');
+        const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+        modal.show();
     }
 
     if (btnGerar) {
         btnGerar.addEventListener('click', function (e) {
             e.preventDefault();
 
-            const val = relatorioEscolhido ? relatorioEscolhido.value : 'CARGA_COMPLETA_BI';
-            const precisaBi = (val === 'CARGA_COMPLETA_BI_PM') || !isOnlyPM(val);
-            const precisaPm = ['CARGA_COMPLETA_BI_PM', 'CARGA_COMPLETA_PM', 'PM_TODOS', 'REL06', 'REL07'].includes(val);
+            const mes_inicio = document.getElementById('mes-inicio').value;
+            const ano_inicio = document.getElementById('ano-inicio').value;
+            const mes_fim = document.getElementById('mes-fim').value;
+            const ano_fim = document.getElementById('ano-fim').value;
+            const relatorio_escolhido = document.getElementById('relatorio-escolhido').value;
+            const usuario_bi = document.getElementById('usuario-bi').value.trim();
+            const senha_bi = document.getElementById('senha-bi').value.trim();
+            const usuario_pm = document.getElementById('usuario-pm').value.trim();
+            const senha_pm = document.getElementById('senha-pm').value.trim();
 
-            const usuarioBiInput = document.getElementById('usuario-bi');
-            const senhaBiInput = document.getElementById('senha-bi');
-            const usuarioPmInput = document.getElementById('usuario-pm');
-            const senhaPmInput = document.getElementById('senha-pm');
+            const formData = new FormData();
+            formData.append('mes_inicio', mes_inicio);
+            formData.append('ano_inicio', ano_inicio);
+            formData.append('mes_fim', mes_fim);
+            formData.append('ano_fim', ano_fim);
+            formData.append('relatorio_escolhido', relatorio_escolhido);
+            formData.append('usuario_bi', usuario_bi);
+            formData.append('senha_bi', senha_bi);
+            formData.append('usuario_pm', usuario_pm);
+            formData.append('senha_pm', senha_pm);
 
-            const usuarioBi = usuarioBiInput ? usuarioBiInput.value.trim() : '';
-            const senhaBi = senhaBiInput ? senhaBiInput.value.trim() : '';
-            const usuarioPm = usuarioPmInput ? usuarioPmInput.value.trim() : '';
-            const senhaPm = senhaPmInput ? senhaPmInput.value.trim() : '';
-            
-            if (precisaBi && (!usuarioBi || !senhaBi)) {
-                alert("Por favor, preencha o Usuário e a Senha de acesso ao BI (SIGA Saúde)!");
-                if (usuarioBiInput) usuarioBiInput.focus();
-                return;
-            }
-
-            if (precisaPm && (!usuarioPm || !senhaPm)) {
-                alert("Por favor, preencha o Usuário e a Senha do Painel de Monitoramento (CEInfo)!");
-                if (usuarioPmInput) usuarioPmInput.focus();
-                return;
-            }
-
-            setBotaoLoading(true, 'Conectando e Extraindo...');
-
-            const formData = new URLSearchParams();
-            formData.append('mes_inicio', mesInicio ? mesInicio.value : 'Janeiro');
-            formData.append('ano_inicio', anoInicio ? anoInicio.value : '2026');
-            formData.append('mes_fim', mesFim ? mesFim.value : 'Janeiro');
-            formData.append('ano_fim', anoFim ? anoFim.value : '2026');
-            formData.append('relatorio_escolhido', val);
-            formData.append('usuario_bi', usuarioBi);
-            formData.append('senha_bi', senhaBi);
-            formData.append('usuario_pm', usuarioPm);
-            formData.append('senha_pm', senhaPm);
+            setBotaoLoading(true, '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Validando credenciais...');
 
             fetch('/bi_producao', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
-                },
-                body: formData.toString()
+                body: formData
             })
-                .then(async response => {
-                    if (response.status === 400 || response.status === 401) {
-                        const errData = await response.json();
-                        throw new Error(errData.erro || 'Erro na autenticação.');
+                .then(response => response.json().then(data => ({ status: response.status, data: data })))
+                .then(result => {
+                    if (result.status !== 200) {
+                        throw new Error(result.data.erro || 'Falha ao autenticar ou iniciar rotina.');
                     }
-                    return response.json();
-                })
-                .then(data => {
-                    setBotaoLoading(true, 'Extraindo relatórios...');
+
                     const radar = setInterval(() => {
                         fetch('/status_extracao')
                             .then(res => res.json())
                             .then(status => {
-                                if (status.progresso && textoBotao) {
-                                    textoBotao.innerHTML = status.progresso;
-                                }
-                                if (status.cancelando && btnCancelar && !btnCancelar.disabled) {
-                                    btnCancelar.disabled = true;
-                                    btnCancelar.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Interrompendo com segurança...';
+                                if (status.em_andamento) {
+                                    setBotaoLoading(true, '<span class="spinner-border spinner-border-sm me-1" role="status"></span> ' + (status.progresso || 'Executando extração...'));
                                 }
                                 if (status.concluido) {
                                     clearInterval(radar);
@@ -612,6 +650,55 @@
                     console.error("Erro ao solicitar cancelamento:", err);
                 });
             }
+        });
+    }
+
+    // Handler para Upload Manual e Substituição Direta de Arquivos do BI
+    const formUploadManual = document.getElementById('form-upload-bi-manual');
+    const btnUploadManual = document.getElementById('btn-enviar-upload-manual');
+    const spinnerUploadManual = document.getElementById('spinner-upload-manual');
+    const statusUploadManual = document.getElementById('status-upload-manual');
+
+    if (formUploadManual) {
+        formUploadManual.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('upload-arquivo');
+            const relInput = document.getElementById('upload-relatorio');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Por favor, selecione um arquivo para upload.');
+                return;
+            }
+            if (!relInput.value) {
+                alert('Por favor, selecione o relatório correspondente.');
+                return;
+            }
+
+            const formData = new FormData(formUploadManual);
+            btnUploadManual.disabled = true;
+            spinnerUploadManual.classList.remove('d-none');
+            statusUploadManual.innerHTML = '<span class="text-primary"><i class="bi bi-hourglass-split me-1"></i> Processando arquivo e substituindo dados no banco...</span>';
+
+            fetch('/upload_bi_manual', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, data: data })))
+            .then(result => {
+                btnUploadManual.disabled = false;
+                spinnerUploadManual.classList.add('d-none');
+                if (result.ok && result.data.status === 'success') {
+                    statusUploadManual.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> ' + result.data.mensagem + '</span>';
+                    formUploadManual.reset();
+                } else {
+                    const msgErro = (result.data && result.data.mensagem) ? result.data.mensagem : 'Erro ao processar arquivo.';
+                    statusUploadManual.innerHTML = '<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> ' + msgErro + '</span>';
+                }
+            })
+            .catch(err => {
+                btnUploadManual.disabled = false;
+                spinnerUploadManual.classList.add('d-none');
+                statusUploadManual.innerHTML = '<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Falha de comunicação com o servidor: ' + err + '</span>';
+            });
         });
     }
 </script>

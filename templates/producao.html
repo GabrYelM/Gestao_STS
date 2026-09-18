@@ -3515,8 +3515,8 @@ div.dt-button-collection button.dt-button:hover {
         var novoPeriodo = selectPeriodo.value;
         if (!novoPeriodo) return;
 
-        // Para relatórios com tabela única (DataTables), faz atualização fluida via AJAX
-        if ($.fn.DataTable.isDataTable('#tabela-dinamica') && relIndice !== '01' && relIndice !== '05' && relIndice !== '16') {
+        // Atualização fluida via AJAX apenas para relatórios com esquema fixo de colunas e gráficos interativos (09 e 10)
+        if ($.fn.DataTable.isDataTable('#tabela-dinamica') && (relIndice === '09' || relIndice === '10')) {
             var cardGrafico = document.getElementById('card-grafico-09') || document.getElementById('card-grafico-10');
             var cardTabela = document.getElementById('card-tabela-principal');
             if (cardGrafico) cardGrafico.style.opacity = '0.7';
@@ -3655,6 +3655,10 @@ div.dt-button-collection button.dt-button:hover {
     }
 
     $(document).ready(function() {
+        if ($.fn.dataTable && $.fn.dataTable.ext) {
+            $.fn.dataTable.ext.errMode = 'none';
+        }
+
         var dadosEl = document.getElementById('dados-tabela-json');
         var colunasEl = document.getElementById('colunas-tabela-json');
         
