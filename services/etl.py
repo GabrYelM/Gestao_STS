@@ -790,11 +790,11 @@ def processa_rel135(caminho, periodo=None):
 
     max_data_cad = df_limpo['data_cadastro_dt'].max()
 
-    from datetime import datetime
-    import calendar
+    from datetime import datetime, timedelta
+    import calendar, re
 
-    if periodo:
-        comp_alvo = str(periodo).strip()
+    if periodo and str(periodo).strip() != 'auto':
+        comp_alvo = str(periodo).strip().replace('-', '').replace('/', '')
         ano_alvo = int(comp_alvo[:4])
         mes_alvo = int(comp_alvo[4:6])
         
@@ -810,9 +810,42 @@ def processa_rel135(caminho, periodo=None):
         # Filtra cadastros acumulados até o fim do mês da competência alvo
         df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= ultimo_dia_mes]
     else:
-        # Sem período explícito, define a competência pelo mês do cadastro mais recente
-        comp_alvo = max_data_cad.strftime('%Y%m')
-        df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= max_data_cad]
+        # Tenta detectar competência pelo nome do arquivo (ex: penha_20260531, penha_202605, rel135_05_2026)
+        nome_base = os.path.basename(caminho).lower()
+        match_ano_mes = re.search(r'(202[0-9])([0-1][0-9])', nome_base)
+        match_mes_ano = re.search(r'([0-1][0-9])[-_](202[0-9])', nome_base)
+        
+        if match_ano_mes:
+            comp_detectada = match_ano_mes.group(1) + match_ano_mes.group(2)
+        elif match_mes_ano:
+            comp_detectada = match_mes_ano.group(2) + match_mes_ano.group(1)
+        else:
+            comp_detectada = None
+
+        # Se a data máxima está nos primeiros 7 dias do mês (ex: 01/06 a 07/06),
+        # e o mês anterior concentra a quase totalidade dos dados recentes, a competência pretendida é o mês anterior
+        ano_max = max_data_cad.year
+        mes_max = max_data_cad.month
+        
+        if max_data_cad.day <= 7:
+            primeiro_dia_mes_max = datetime(ano_max, mes_max, 1)
+            recs_mes_max = (df_limpo['data_cadastro_dt'] >= primeiro_dia_mes_max).sum()
+            
+            # Se forem poucos registros no início do mês (< 500)
+            if recs_mes_max < 500:
+                data_mes_ant = primeiro_dia_mes_max - timedelta(days=1)
+                comp_alvo = comp_detectada or data_mes_ant.strftime('%Y%m')
+                ano_alvo_ant = int(comp_alvo[:4])
+                mes_alvo_ant = int(comp_alvo[4:6])
+                _, ultimo_dia_ant = calendar.monthrange(ano_alvo_ant, mes_alvo_ant)
+                fim_mes_ant = datetime(ano_alvo_ant, mes_alvo_ant, ultimo_dia_ant, 23, 59, 59)
+                df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= fim_mes_ant]
+            else:
+                comp_alvo = comp_detectada or max_data_cad.strftime('%Y%m')
+                df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= max_data_cad]
+        else:
+            comp_alvo = comp_detectada or max_data_cad.strftime('%Y%m')
+            df_filtrado = df_limpo[df_limpo['data_cadastro_dt'] <= max_data_cad]
 
     # 3. Agrupa por UNIDADE, CNES e COD_INE fazendo a contagem do NOME_CIDADAO
     df_resumo = df_filtrado.groupby(['unidade', 'cnes', 'cod_ine']).agg(
@@ -1279,6 +1312,14 @@ def processa_raas_arquivo(caminho, periodo=None):
     if not linhas_15 and not linhas_16:
         print(f"Nenhum registro RAAS (tipo 15 ou 16) encontrado no arquivo {caminho}.")
         return False
+
+    if periodo and str(periodo).strip() != 'auto':
+        comp_alvo = str(periodo).strip().replace('-', '').replace('/', '')
+        linhas_15 = [l for l in linhas_15 if l.get('competencia') == comp_alvo]
+        linhas_16 = [l for l in linhas_16 if l.get('competencia') == comp_alvo]
+        if not linhas_15 and not linhas_16:
+            print(f"Aviso: Nenhum registro RAAS encontrado para a competência {comp_alvo}.")
+            return False
 
     hoje_ts = datetime.now().strftime('%Y-%m-%d %H:%M')
 

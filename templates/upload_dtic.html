@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Importação de Arquivos (ZIP / BPA / RAAS){% endblock %}
+{% block title %}Importação de Arquivos (ZIP / CSV / XLSX / BPA / RAAS){% endblock %}
 {% block content %}
 <div class="container mt-4 mb-5">
     <!-- Mensagens de Feedback / Flash -->
@@ -26,7 +26,7 @@
         <div class="col-lg-5">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Importação de Arquivos (ZIP / BPA / RAAS)</h5>
+                    <h5 class="mb-0"><i class="bi bi-cloud-arrow-up me-2"></i>Importação de Arquivos (ZIP / CSV / BPA / RAAS)</h5>
                 </div>
                 <div class="card-body">
                     <form method="POST" action="/upload_zip" enctype="multipart/form-data" id="formUpload">
@@ -38,25 +38,51 @@
                                     <option value="rel02">PAPENHA (BPA)</option>
                                     <option value="rel05">Arquivos RAAS</option>
                                 </optgroup>
-                                <optgroup label="Arquivos Compactados (ZIP)">
+                                <optgroup label="Relatórios DTIC (ZIP / CSV / XLSX)">
                                     <option value="rel09">Rel 114 (rel_sb_gestante_prev_parto_MM_AAAA)</option>
                                     <option value="rel17">Rel 134 (ATIVIDADE_COLETIVA_POR_PROFISSIONAL_AAAAMMDD)</option>
                                     <option value="rel15">Rel 135 (penha_AAAAMMDD)</option>
-                                    <option value="rel16">SIGA_-_AMG_-_Pacientes_cadastrados_por_status</option>
+                                    <option value="rel16">SIGA - AMG (Pacientes cadastrados por status)</option>
                                 </optgroup>
                             </select>
-                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, PAPENHA, .JUL, .AGO, etc.).</small>
+                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, .CSV, .XLSX, PAPENHA, .JUL, .AGO, etc.).</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Competência de Referência</label>
+                            <select class="form-select" name="periodo_referencia" id="selectPeriodoUpload">
+                                <option value="auto" selected>Automática (Detectar data dos arquivos)</option>
+                                {% for comp_val, comp_lbl in lista_competencias %}
+                                    <option value="{{ comp_val }}" {% if periodo_ativo == comp_val %}selected{% endif %}>
+                                        {{ comp_lbl }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted">Selecione o mês desejado para fixar a competência ou deixe em "Automática".</small>
+                        </div>
+
+                        <!-- Checkbox de Importação Estrita -->
+                        <div class="form-check form-switch mb-4 p-2 bg-light rounded border">
+                            <div class="d-flex align-items-center">
+                                <input class="form-check-input ms-0 me-2" type="checkbox" name="forcar_competencia_estrita" id="chkCompetenciaEstrita" value="1" checked>
+                                <label class="form-check-label fw-bold" for="chkCompetenciaEstrita" style="cursor: pointer;">
+                                    <i class="bi bi-shield-check text-primary me-1"></i>Importação estrita por competência
+                                </label>
+                            </div>
+                            <div class="form-text text-muted small mt-1 ms-4">
+                                Se ativado, importa <strong>estritamente</strong> os registros do mês selecionado e alerta caso o arquivo não contenha dados desse período. Se desativado, o sistema identificará e importará automaticamente as competências dos arquivos.
+                            </div>
                         </div>
                         
                         <div class="mb-4">
-                            <label class="form-label fw-bold">Arquivos (ZIP, BPA, RAAS)</label>
+                            <label class="form-label fw-bold">Arquivos (ZIP, CSV, XLSX, BPA, RAAS)</label>
                             
                             <!-- Área de Arrastar e Soltar -->
                             <div id="dropzone" class="p-4 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
                                 <i class="bi bi-cloud-arrow-up display-4 text-primary"></i>
                                 <p class="mt-2 mb-1 fs-5">Arraste seus arquivos para cá</p>
-                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos .ZIP, arquivos brutos do BPA (PAPENHA) ou RAAS (.JUL, .AGO, etc.).</small>
-                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf,.jul,.ago,.set,.out,.nov,.dez,.jan,.fev,.mar,.abr,.mai,.jun,.txt,.raas" multiple>
+                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos compactados (.ZIP) ou descompactados (.CSV, .XLSX, .XLS, .DBF, PAPENHA, RAAS).</small>
+                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf,.jul,.ago,.set,.out,.nov,.dez,.jan,.fev,.mar,.abr,.mai,.jun,.txt,.raas,.csv,.xlsx,.xls" multiple>
                             </div>
                             
                             <!-- Lista Visual dos Arquivos Acumulados -->
@@ -83,10 +109,10 @@
                     <div>
                         <i class="bi bi-file-earmark-text me-1 text-info"></i> Nomes Padrão dos Arquivos (DTIC / Sistemas)
                     </div>
-                    <!-- Seletor de Competência com opção Automática -->
-                    <form method="GET" action="/upload_zip" class="d-flex align-items-center gap-2 m-0" id="formCompetencia">
+                    <!-- Seletor de Competência com atualização AJAX sem reload -->
+                    <form class="d-flex align-items-center gap-2 m-0" id="formCompetencia" onsubmit="return false;">
                         <label class="form-label fw-bold mb-0 text-nowrap small text-dark"><i class="bi bi-calendar-check me-1"></i>Competência:</label>
-                        <select name="periodo" class="form-select form-select-sm border-info" onchange="this.form.submit()" style="min-width: 175px;">
+                        <select name="periodo" id="selectPeriodoStatus" class="form-select form-select-sm border-info" style="min-width: 175px;">
                             <option value="auto" {% if periodo_selecionado == 'auto' or not periodo_selecionado %}selected{% endif %}>
                                 Automática ({{ comp_auto_desc }})
                             </option>
@@ -100,13 +126,15 @@
                 </div>
                 <div class="card-body p-3">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <span class="small text-muted">
-                            Status de importação para a competência ativa: <strong>{{ periodo_ativo_desc }}</strong> {% if periodo_selecionado == 'auto' or not periodo_selecionado %}<span class="badge bg-light text-dark border">Automática</span>{% endif %}
+                        <span class="small text-muted" id="txtStatusHeader">
+                            Status de importação para a competência ativa: <strong id="lblPeriodoAtivoDesc">{{ periodo_ativo_desc }}</strong> 
+                            <span id="badgeAutoStatus" class="badge bg-light text-dark border {% if periodo_selecionado != 'auto' and periodo_selecionado %}d-none{% endif %}">Automática</span>
                         </span>
+                        <span id="spinnerStatusLoading" class="spinner-border spinner-border-sm text-info d-none" role="status"></span>
                     </div>
 
                     <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle small mb-0">
+                        <table class="table table-bordered table-sm align-middle small mb-0" id="tabelaStatusDtic">
                             <thead class="table-light">
                                 <tr>
                                     <th>Identificação</th>
@@ -122,7 +150,7 @@
                                     <td class="fw-semibold text-nowrap">PAPENHA (BPA)</td>
                                     <td><code>PAPENHA-.MES</code> (ex: <code>PAPENHA-.AGO</code>)</td>
                                     <td class="text-center"><span class="badge bg-secondary">BPA</span></td>
-                                    <td>
+                                    <td id="td-status-rel02">
                                         {% if status_dtic.rel02.importado %}
                                             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
                                             <div class="text-muted" style="font-size: 0.73rem;">
@@ -132,7 +160,7 @@
                                             <span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" id="td-acao-rel02">
                                         {% if status_dtic.rel02.importado %}
                                             <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
                                                     data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
@@ -151,7 +179,7 @@
                                     <td class="fw-semibold text-nowrap">Arquivos RAAS</td>
                                     <td><code>AA*.MES</code> (ex: <code>AA968846.JUL</code>)</td>
                                     <td class="text-center"><span class="badge bg-secondary">RAAS</span></td>
-                                    <td>
+                                    <td id="td-status-rel05">
                                         {% if status_dtic.rel05.importado %}
                                             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
                                             <div class="text-muted" style="font-size: 0.73rem;">
@@ -161,7 +189,7 @@
                                             <span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" id="td-acao-rel05">
                                         {% if status_dtic.rel05.importado %}
                                             <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
                                                     data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
@@ -180,7 +208,7 @@
                                     <td class="fw-semibold text-nowrap">Rel 114</td>
                                     <td><code>rel_sb_gestante_prev_parto_MM_AAAA.zip</code></td>
                                     <td class="text-center"><span class="badge bg-warning text-dark">ZIP</span></td>
-                                    <td>
+                                    <td id="td-status-rel09">
                                         {% if status_dtic.rel09.importado %}
                                             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
                                             <div class="text-muted" style="font-size: 0.73rem;">
@@ -190,7 +218,7 @@
                                             <span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" id="td-acao-rel09">
                                         {% if status_dtic.rel09.importado %}
                                             <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
                                                     data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
@@ -209,7 +237,7 @@
                                     <td class="fw-semibold text-nowrap">Rel 134</td>
                                     <td><code>ATIVIDADE_COLETIVA_POR_PROFISSIONAL_AAAAMMDD.zip</code></td>
                                     <td class="text-center"><span class="badge bg-warning text-dark">ZIP</span></td>
-                                    <td>
+                                    <td id="td-status-rel17">
                                         {% if status_dtic.rel17.importado %}
                                             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
                                             <div class="text-muted" style="font-size: 0.73rem;">
@@ -219,7 +247,7 @@
                                             <span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" id="td-acao-rel17">
                                         {% if status_dtic.rel17.importado %}
                                             <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
                                                     data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
@@ -238,7 +266,7 @@
                                     <td class="fw-semibold text-nowrap">Rel 135</td>
                                     <td><code>penha_AAAAMMDD.zip</code></td>
                                     <td class="text-center"><span class="badge bg-warning text-dark">ZIP</span></td>
-                                    <td>
+                                    <td id="td-status-rel15">
                                         {% if status_dtic.rel15.importado %}
                                             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
                                             <div class="text-muted" style="font-size: 0.73rem;">
@@ -248,7 +276,7 @@
                                             <span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" id="td-acao-rel15">
                                         {% if status_dtic.rel15.importado %}
                                             <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
                                                     data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
@@ -267,7 +295,7 @@
                                     <td class="fw-semibold text-nowrap">SIGA - AMG</td>
                                     <td><code>SIGA_-_AMG_-_Pacientes_cadastrados_por_status*.zip</code></td>
                                     <td class="text-center"><span class="badge bg-warning text-dark">ZIP</span></td>
-                                    <td>
+                                    <td id="td-status-rel16">
                                         {% if status_dtic.rel16.importado %}
                                             <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
                                             <div class="text-muted" style="font-size: 0.73rem;">
@@ -277,7 +305,7 @@
                                             <span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-center" id="td-acao-rel16">
                                         {% if status_dtic.rel16.importado %}
                                             <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
                                                     data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
@@ -423,10 +451,10 @@
     }
 
     function adicionarArquivos(arquivosNovos) {
-        const extensoesValidas = ['.zip', '.dbf', '.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.txt', '.raas'];
+        const extensoesValidas = ['.zip', '.dbf', '.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.txt', '.raas', '.csv', '.xlsx', '.xls'];
         for (let i = 0; i < arquivosNovos.length; i++) {
             let nomeLower = arquivosNovos[i].name.toLowerCase();
-            if(extensoesValidas.some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa')) {
+            if(extensoesValidas.some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa') || nomeLower.startsWith('pa')) {
                 acumulador.items.add(arquivosNovos[i]);
             }
         }
@@ -464,9 +492,13 @@
                 li.className = 'list-group-item d-flex justify-content-between align-items-center bg-white';
                 
                 let nomeLower = acumulador.files[i].name.toLowerCase();
-                let icone = '<i class="bi bi-file-earmark-zip text-warning me-2 fs-5"></i>';
-                if (nomeLower.endsWith('.dbf') || nomeLower.startsWith('pa')) {
+                let icone = '<i class="bi bi-file-earmark-text text-secondary me-2 fs-5"></i>';
+                if (nomeLower.endsWith('.zip')) {
+                    icone = '<i class="bi bi-file-earmark-zip text-warning me-2 fs-5"></i>';
+                } else if (nomeLower.endsWith('.dbf') || nomeLower.startsWith('pa')) {
                     icone = '<i class="bi bi-file-earmark-spreadsheet text-success me-2 fs-5"></i>';
+                } else if (nomeLower.endsWith('.csv') || nomeLower.endsWith('.xlsx') || nomeLower.endsWith('.xls')) {
+                    icone = '<i class="bi bi-file-earmark-excel text-success me-2 fs-5"></i>';
                 } else if (['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas'].some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa') || nomeLower.includes('raas')) {
                     icone = '<i class="bi bi-hospital text-primary me-2 fs-5"></i>';
                 }
@@ -488,11 +520,11 @@
         formUpload.addEventListener('submit', function(e) {
             if (acumulador.files.length === 0) {
                 e.preventDefault();
-                alert('Por favor, adicione pelo menos um arquivo (.ZIP, BPA ou RAAS) antes de processar.');
+                alert('Por favor, adicione pelo menos um arquivo antes de processar.');
                 return;
             }
             document.getElementById('spinner-upload').classList.remove('d-none');
-            document.getElementById('texto-botao').innerText = ' Extraindo e Processando...';
+            document.getElementById('texto-botao').innerText = ' Processando Arquivos...';
             document.getElementById('btn-upload').classList.add('disabled');
         });
     }
@@ -513,6 +545,89 @@
             document.getElementById('modalTipoRelatorio').value = tipo;
             document.getElementById('modalPeriodo').value = periodo;
         });
+    }
+
+    // Atualização dinâmica do Quadro de Status sem recarregar a página (preserva arquivos na Dropzone)
+    const MAPA_RELATORIOS = {
+        'rel02': 'PAPENHA (BPA)',
+        'rel05': 'Arquivos RAAS',
+        'rel09': 'Rel 114',
+        'rel17': 'Rel 134',
+        'rel15': 'Rel 135',
+        'rel16': 'SIGA - AMG'
+    };
+
+    const selectPeriodoStatus = document.getElementById('selectPeriodoStatus');
+    const selectPeriodoUpload = document.getElementById('selectPeriodoUpload');
+
+    if (selectPeriodoStatus) {
+        selectPeriodoStatus.addEventListener('change', function() {
+            carregarStatusCompetencia(this.value);
+        });
+    }
+
+    async function carregarStatusCompetencia(periodo) {
+        const spinner = document.getElementById('spinnerStatusLoading');
+        if (spinner) spinner.classList.remove('d-none');
+        
+        try {
+            const res = await fetch('/api/status_dtic/' + encodeURIComponent(periodo || 'auto'));
+            if (!res.ok) throw new Error('Falha ao obter status da competência');
+            const data = await res.json();
+            
+            // Atualiza cabeçalho e badge
+            const lblDesc = document.getElementById('lblPeriodoAtivoDesc');
+            if (lblDesc) lblDesc.textContent = data.periodo_ativo_desc;
+            
+            const badgeAuto = document.getElementById('badgeAutoStatus');
+            if (badgeAuto) {
+                if (data.is_auto) {
+                    badgeAuto.classList.remove('d-none');
+                } else {
+                    badgeAuto.classList.add('d-none');
+                }
+            }
+
+            // Atualiza as 6 linhas da tabela de status
+            for (const [chave, nomeRel] of Object.entries(MAPA_RELATORIOS)) {
+                const st = (data.status && data.status[chave]) ? data.status[chave] : {};
+                const tdStatus = document.getElementById('td-status-' + chave);
+                const tdAcao = document.getElementById('td-acao-' + chave);
+                
+                if (tdStatus) {
+                    if (st.importado) {
+                        let dtHtml = st.data_importacao ? ` &bull; ${st.data_importacao}` : '';
+                        tdStatus.innerHTML = `
+                            <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Importado</span>
+                            <div class="text-muted" style="font-size: 0.73rem;">
+                                ${st.total_registros} reg.${dtHtml}
+                            </div>
+                        `;
+                    } else {
+                        tdStatus.innerHTML = `<span class="badge bg-secondary opacity-75"><i class="bi bi-clock me-1"></i>Pendente</span>`;
+                    }
+                }
+                
+                if (tdAcao) {
+                    if (st.importado) {
+                        tdAcao.innerHTML = `
+                            <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 btn-remover-comp" 
+                                    data-bs-toggle="modal" data-bs-target="#modalExcluirCompetencia"
+                                    data-tipo="${chave}" data-nome="${nomeRel}" data-periodo="${data.periodo_ativo}" data-periodo-desc="${data.periodo_ativo_desc}"
+                                    title="Remover competência">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        `;
+                    } else {
+                        tdAcao.innerHTML = `<span class="text-muted small">-</span>`;
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao atualizar status via AJAX:', err);
+        } finally {
+            if (spinner) spinner.classList.add('d-none');
+        }
     }
 </script>
 {% endblock %}

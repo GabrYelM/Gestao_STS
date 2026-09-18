@@ -50,52 +50,122 @@ with app.app_context():
         db.session.add(normal)
         db.session.commit()
 
-    # Inicialização dos Vínculos Padrão EMAB / eMulti para PICS Penha
-    if models.VinculoEmab.query.count() == 0:
-        vinculos_iniciais = [
-            ("Emab Ae Carvalho", "UBS ANTONIO ESTEVÃO DE CARVALHO", "EMAB"),
-            ("Emab Ae Carvalho/Nobrega", "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA", "EMAB"),
-            ("Emab Anchieta", "UBS PADRE JOSÉ DE ANCHIETA", "EMAB"),
-            ("Emab Anchieta/Villalobo", "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO", "EMAB"),
-            ("Emab Aricanduva", "UBS VILA ARICANDUVA", "EMAB"),
-            ("Emab Aricanduva/Sao Nicolau", "UBS JARDIM SAO NICOLAU", "EMAB"),
-            ("Emab Arthur Alvim", "UBS PARQUE ARTHUR ALVIM", "EMAB"),
-            ("Emab Arthur Alvim/Guilhermina", "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO", "EMAB"),
-            ("Emab Chacara Cruzeiro Do Sul", "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO", "EMAB"),
-            ("Emab Chacara/Patriarca", "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR", "EMAB"),
-            ("Emab Esperanca", "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO", "EMAB"),
-            ("Inativo - Emab Esperanca/Trindade", "UBS ENGENHEIRO TRINDADE", "EMAB"),
-            ("Emab Sao Francisco", "UBS JARDIM SAO FRANCISCO I", "EMAB"),
-            ("Emab Sao Francisco/Vila Silvia", "AMA/UBS INTEGRADA VILA SILVIA", "EMAB"),
-            ("Emab Vila Matilde", "UBS VILA MATILDE - DR. RUBENS DO VAL", "EMAB"),
-            ("Emab Vila Matilde/Maringa", "UBS JARDIM MARINGA - VILA TALARICO", "EMAB"),
-            ("Emulti Ae Carvalho", "UBS ANTONIO ESTEVÃO DE CARVALHO", "eMulti"),
-            ("Emulti Ae Carvalho/Nobrega", "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA", "eMulti"),
-            ("Emulti Anchieta", "UBS PADRE JOSÉ DE ANCHIETA", "eMulti"),
-            ("Emulti Anchieta/Villalobo", "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO", "eMulti"),
-            ("Emulti Aricanduva", "UBS VILA ARICANDUVA", "eMulti"),
-            ("Emulti Aricanduva/Sao Nicolau", "UBS JARDIM SAO NICOLAU", "eMulti"),
-            ("Emulti Arthur Alvim", "UBS PARQUE ARTHUR ALVIM", "eMulti"),
-            ("Emulti Arthur Alvim/Guilhermina", "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO", "eMulti"),
-            ("Emulti Chacara Cruzeiro Do Sul", "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO", "eMulti"),
-            ("Emulti Chacara/Patriarca", "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR", "eMulti"),
-            ("Emulti Eng Goulart", "AMA/UBS ENGENHEIRO GOULART- DR JOSE PIRES", "eMulti"),
-            ("Emulti Eng Goulart/Cangaiba", "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO", "eMulti"),
-            ("Emulti Esperanca", "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO", "eMulti"),
-            ("Emulti Esperanca/Emilio", "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA", "eMulti"),
-            ("Emulti Granada/Trindade", "UBS ENGENHEIRO TRINDADE", "eMulti"),
-            ("Emulti Sao Francisco", "UBS JARDIM SAO FRANCISCO I", "eMulti"),
-            ("Emulti Sao Francisco/Vila Silvia", "AMA/UBS INTEGRADA VILA SILVIA", "eMulti"),
-            ("Emulti Vila Matilde", "UBS VILA MATILDE - DR. RUBENS DO VAL", "eMulti"),
-            ("Emulti Vila Matilde/Maringa", "UBS JARDIM MARINGA - VILA TALARICO", "eMulti")
-        ]
-        for nome, dest, tp in vinculos_iniciais:
-            v = models.VinculoEmab(nome_equipe=nome, unidade_destino=dest, tipo=tp)
-            db.session.add(v)
+    # Inicialização dos Vínculos EMAB / eMulti e Equipes a partir do catalogo_geral.json
+    catalogo_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
+    cat_init = {}
+    if os.path.exists(catalogo_path):
+        try:
+            with open(catalogo_path, 'r', encoding='utf-8') as f:
+                cat_init = json.load(f)
+        except Exception:
+            pass
+
+    # 1. Equipes do Catálogo Geral
+    if models.Equipe.query.count() == 0 and 'equipes' in cat_init and cat_init['equipes']:
+        for eq in cat_init['equipes']:
+            if isinstance(eq, dict) and eq.get('cod_ine') and eq.get('sigla'):
+                e_obj = models.Equipe(cod_ine=str(eq['cod_ine']), sigla=eq['sigla'], unidade=eq.get('unidade', ''))
+                db.session.add(e_obj)
         try:
             db.session.commit()
         except Exception:
             db.session.rollback()
+
+    # 2. Vínculos EMAB / eMulti do Catálogo Geral ou Padrão Inicial
+    if models.VinculoEmab.query.count() == 0:
+        if 'vinculos_emab' in cat_init and cat_init['vinculos_emab']:
+            for vinc in cat_init['vinculos_emab']:
+                if isinstance(vinc, dict) and vinc.get('nome_equipe') and vinc.get('unidade_destino'):
+                    v_obj = models.VinculoEmab(nome_equipe=vinc['nome_equipe'], unidade_destino=vinc['unidade_destino'], tipo=vinc.get('tipo', 'EMAB'))
+                    db.session.add(v_obj)
+        else:
+            vinculos_iniciais = [
+                ("Emab Ae Carvalho", "UBS ANTONIO ESTEVÃO DE CARVALHO", "EMAB"),
+                ("Emab Ae Carvalho/Nobrega", "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA", "EMAB"),
+                ("Emab Anchieta", "UBS PADRE JOSÉ DE ANCHIETA", "EMAB"),
+                ("Emab Anchieta/Villalobo", "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO", "EMAB"),
+                ("Emab Aricanduva", "UBS VILA ARICANDUVA", "EMAB"),
+                ("Emab Aricanduva/Sao Nicolau", "UBS JARDIM SAO NICOLAU", "EMAB"),
+                ("Emab Arthur Alvim", "UBS PARQUE ARTHUR ALVIM", "EMAB"),
+                ("Emab Arthur Alvim/Guilhermina", "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO", "EMAB"),
+                ("Emab Chacara Cruzeiro Do Sul", "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO", "EMAB"),
+                ("Emab Chacara/Patriarca", "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR", "EMAB"),
+                ("Emab Esperanca", "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO", "EMAB"),
+                ("Inativo - Emab Esperanca/Trindade", "UBS ENGENHEIRO TRINDADE", "EMAB"),
+                ("Emab Sao Francisco", "UBS JARDIM SAO FRANCISCO I", "EMAB"),
+                ("Emab Sao Francisco/Vila Silvia", "AMA/UBS INTEGRADA VILA SILVIA", "EMAB"),
+                ("Emab Vila Matilde", "UBS VILA MATILDE - DR. RUBENS DO VAL", "EMAB"),
+                ("Emab Vila Matilde/Maringa", "UBS JARDIM MARINGA - VILA TALARICO", "EMAB"),
+                ("Emulti Ae Carvalho", "UBS ANTONIO ESTEVÃO DE CARVALHO", "eMulti"),
+                ("Emulti Ae Carvalho/Nobrega", "AMA/UBS INTEGRADA PADRE MANOEL DA NOBREGA", "eMulti"),
+                ("Emulti Anchieta", "UBS PADRE JOSÉ DE ANCHIETA", "eMulti"),
+                ("Emulti Anchieta/Villalobo", "UBS DR. ANTONIO PIRES FERREIRA VILLA LOBO", "eMulti"),
+                ("Emulti Aricanduva", "UBS VILA ARICANDUVA", "eMulti"),
+                ("Emulti Aricanduva/Sao Nicolau", "UBS JARDIM SAO NICOLAU", "eMulti"),
+                ("Emulti Arthur Alvim", "UBS PARQUE ARTHUR ALVIM", "eMulti"),
+                ("Emulti Arthur Alvim/Guilhermina", "UBS VILA GUILHERMINA - DR. AMERICO RASPA NETO", "eMulti"),
+                ("Emulti Chacara Cruzeiro Do Sul", "AMA/UBS INTEGRADA CHACARA CRUZEIRO DO SUL - ZELIA L M DORO", "eMulti"),
+                ("Emulti Chacara/Patriarca", "UBS CIDADE PATRIARCA - DR. HERMENEGILDO MORBIN JUNIOR", "eMulti"),
+                ("Emulti Eng Goulart", "AMA/UBS ENGENHEIRO GOULART- DR JOSE PIRES", "eMulti"),
+                ("Emulti Eng Goulart/Cangaiba", "AMA/UBS INTEGRADA CANGAIBA - DR. CARLOS GENTILE DE MELLO", "eMulti"),
+                ("Emulti Esperanca", "UBS VILA ESPERANÇA - DR. CASSIO BITENCOURT FILHO", "eMulti"),
+                ("Emulti Esperanca/Emilio", "UBS VILA ESPERANÇA - DR. EMILIO SANTIAGO DE OLIVEIRA", "eMulti"),
+                ("Emulti Granada/Trindade", "UBS ENGENHEIRO TRINDADE", "eMulti"),
+                ("Emulti Sao Francisco", "UBS JARDIM SAO FRANCISCO I", "eMulti"),
+                ("Emulti Sao Francisco/Vila Silvia", "AMA/UBS INTEGRADA VILA SILVIA", "eMulti"),
+                ("Emulti Vila Matilde", "UBS VILA MATILDE - DR. RUBENS DO VAL", "eMulti"),
+                ("Emulti Vila Matilde/Maringa", "UBS JARDIM MARINGA - VILA TALARICO", "eMulti")
+            ]
+            for nome, dest, tp in vinculos_iniciais:
+                v = models.VinculoEmab(nome_equipe=nome, unidade_destino=dest, tipo=tp)
+                db.session.add(v)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    # Inicialização dos Dados Populacionais Demográficos (Relatório 01 / Censo 2010) se vazio
+    if models.REL01.query.count() == 0:
+        caminho_pop = os.path.join(basedir, "ARQUIVOS ORIGINAIS", "Desejado", "Final desejado.xlsx")
+        if os.path.exists(caminho_pop):
+            try:
+                import pandas as pd
+                df_raw = pd.read_excel(caminho_pop, sheet_name='POP', header=None)
+                faixas_cols = [
+                    'faixa_00_04', 'faixa_05_09', 'faixa_10_14', 'faixa_15_19',
+                    'faixa_20_24', 'faixa_25_29', 'faixa_30_34', 'faixa_35_39',
+                    'faixa_40_44', 'faixa_45_49', 'faixa_50_54', 'faixa_55_59',
+                    'faixa_60_64', 'faixa_65_69', 'faixa_70_74', 'faixa_75_mais'
+                ]
+                sections = [
+                    ('TOTAL', 7, 27),
+                    ('MASCULINO', 31, 51),
+                    ('FEMININO', 55, 75)
+                ]
+                for tipo_nome, start_r, end_r in sections:
+                    for r in range(start_r, end_r + 1):
+                        cnes_val = str(df_raw.iloc[r, 1]).strip() if pd.notna(df_raw.iloc[r, 1]) else ''
+                        if cnes_val.endswith('.0'): cnes_val = cnes_val[:-2]
+                        estab_val = str(df_raw.iloc[r, 2]).strip() if pd.notna(df_raw.iloc[r, 2]) else ''
+                        da_val = str(df_raw.iloc[r, 3]).strip() if pd.notna(df_raw.iloc[r, 3]) else ''
+                        pop_tot = float(df_raw.iloc[r, 4]) if pd.notna(df_raw.iloc[r, 4]) else 0.0
+
+                        kwargs = {
+                            'tipo': tipo_nome,
+                            'cnes': cnes_val,
+                            'estabelecimento': estab_val,
+                            'da': da_val,
+                            'populacao_total': pop_tot
+                        }
+                        for i, col_name in enumerate(faixas_cols):
+                            val = float(df_raw.iloc[r, 5 + i]) if pd.notna(df_raw.iloc[r, 5 + i]) else 0.0
+                            kwargs[col_name] = val
+                        obj = models.REL01(**kwargs)
+                        db.session.add(obj)
+                db.session.commit()
+            except Exception as e:
+                print(f"Erro ao inicializar dados populacionais do Relatório 01: {e}")
+                db.session.rollback()
 
 import services.utils as su
 import services.bot as sb
@@ -681,6 +751,44 @@ def restaurar_backup():
     return redirect(url_for("tela_backup"))
 
 
+@app.route("/admin/expurgar_db", methods=["POST"])
+@admin_required
+def expurgar_db():
+    try:
+        import sqlite3
+        db_path = os.path.join(basedir, 'database.db')
+
+        # Fecha conexões ativas do SQLAlchemy
+        db.session.remove()
+        db.engine.dispose()
+
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+
+            # Obter todas as tabelas criadas no banco de dados
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+            tabelas = [row[0] for row in cursor.fetchall()]
+
+            # Excluir dados de todas as tabelas de relatórios/dados (mantendo usuários e REL-01 para preservar acessos e base demográfica)
+            for tab in tabelas:
+                if tab not in ('usuarios', 'REL-01'):
+                    cursor.execute(f'DELETE FROM "{tab}";')
+
+            conn.commit()
+            cursor.execute("VACUUM;")
+            conn.close()
+
+        # Sincroniza competências pós-limpeza (limpa competências órfãs)
+        sincronizar_todas_competencias()
+
+        flash("Banco de dados expurgado com sucesso! Todos os dados de produção foram apagados (base demográfica e usuários mantidos).", "success")
+    except Exception as e:
+        flash(f"Erro ao expurgar o banco de dados: {str(e)}", "error")
+
+    return redirect(url_for("tela_backup"))
+
+
 @app.route("/admin/desligar", methods=["POST"])
 @admin_required
 def desligar_servidor():
@@ -811,25 +919,18 @@ def download_excel(indice, periodo):
                 if df_fem is not None and not df_fem.empty:
                     df_fem.to_excel(writer, index=False, sheet_name='Sexo Feminino')
             output.seek(0)
-            return send_file(output, download_name="Relatorio_01_Populacional_Censo2010.xlsx", as_attachment=True)
+            return send_file(output, download_name=f"Relatorio_01_Populacional.xlsx", as_attachment=True)
         elif indice == '02':
-            df = prod.gera_relatorio_02(periodo)
+            output = prod.exportar_excel_relatorio_02(periodo)
+            return send_file(output, download_name=f"Relatorio_02_Producao_Geral_BPA_{periodo}.xlsx", as_attachment=True)
         elif indice == '03':
-            df = prod.gera_relatorio_03(periodo)
+            output = prod.exportar_excel_relatorio_03(periodo)
+            return send_file(output, download_name=f"Relatorio_03_Producao_Especialidade_SIGA_{periodo}.xlsx", as_attachment=True)
         elif indice == '04':
-            df = prod.gera_relatorio_04(periodo)
+            output = prod.exportar_excel_relatorio_04(periodo)
+            return send_file(output, download_name=f"Relatorio_04_Oferta_de_Vagas_BI_{periodo}.xlsx", as_attachment=True)
         elif indice == '05':
-            df_pac, df_prof, df_acoes = prod.gera_relatorio_05(periodo)
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                if df_pac is not None and not df_pac.empty:
-                    df_pac.to_excel(writer, index=False, sheet_name='RAAS')
-                if df_prof is not None and not df_prof.empty:
-                    df_prof.to_excel(writer, index=False, sheet_name='RAAS_PROF')
-                if df_acoes is not None and not df_acoes.empty:
-                    df_acoes_export = df_acoes[[c for c in df_acoes.columns if not str(c).startswith('_')]].copy()
-                    df_acoes_export.to_excel(writer, index=False, sheet_name='CONS_ACOES')
-            output.seek(0)
+            output = prod.exportar_excel_relatorio_05(periodo)
             return send_file(output, download_name=f"Relatorio_05_RAAS_CAPS_{periodo}.xlsx", as_attachment=True)
         elif indice == '08':
             output = prod.exportar_excel_relatorio_08(periodo)
@@ -884,7 +985,14 @@ def producao():
     tabela_html = None
     json_dados = None
     json_colunas = None
-    indice = request.form.get("indice_relatorio") if request.method == "POST" else None
+    
+    if request.method == "POST":
+        indice = request.form.get("indice_relatorio")
+        periodo = request.form.get("periodo")
+    else:
+        # Por padrão ao acessar a aba de relatórios, o Relatório 01 é pré-selecionado como rosto da visualização
+        indice = request.args.get("indice_relatorio", "01")
+        periodo = request.args.get("periodo")
     
     mapa_competencias = obter_competencias_por_relatorio()
     
@@ -899,7 +1007,6 @@ def producao():
         periodos_disponiveis = [(p, f"{p[4:6]}/{p[:4]}") for p in ord_todos] if ord_todos else [('202607', '07/2026')]
         
     periodo_padrao = periodos_disponiveis[0][0] if periodos_disponiveis else '202607'
-    periodo = request.form.get("periodo") if request.method == "POST" else None
     if not periodo or periodo not in [p[0] for p in periodos_disponiveis]:
         periodo = periodo_padrao
 
@@ -907,21 +1014,13 @@ def producao():
     data_geracao = None
     fontes_detalhadas = []
 
-    if request.method == "POST":
-        # 1. Pega as opções que o usuário digitou/escolheu na tela
-        indice = request.form.get("indice_relatorio")
-        if not request.form.get("periodo"):
-            periodo = periodo_padrao
-        else:
-            periodo = request.form.get("periodo")
-        
-        if indice:
-            meta = prod.obter_metadados_relatorio(indice, periodo)
-            fonte_dados = meta.get('fonte')
-            data_geracao = meta.get('data_geracao')
-            fontes_detalhadas = meta.get('fontes_detalhadas', [])
+    if indice:
+        meta = prod.obter_metadados_relatorio(indice, periodo)
+        fonte_dados = meta.get('fonte')
+        data_geracao = meta.get('data_geracao')
+        fontes_detalhadas = meta.get('fontes_detalhadas', [])
 
-        # 2. Um "if" simples para decidir qual função rodar
+        # 2. Executa a geração de dados do relatório selecionado
         try:
             if indice == '01':
                 df_total, df_masc, df_fem = prod.gera_relatorio_01()
@@ -1197,6 +1296,120 @@ def upload_bi_manual():
             except Exception:
                 pass
 
+@app.route("/api/status_dtic/<periodo>", methods=["GET"])
+@admin_required
+def api_status_dtic(periodo):
+    from services.competencias import (
+        obter_competencia_automatica,
+        obter_status_importacao_dtic,
+        formatar_descricao_competencia
+    )
+    comp_auto_val, comp_auto_desc = obter_competencia_automatica()
+    if periodo == "auto" or not periodo:
+        periodo_ativo = comp_auto_val
+        is_auto = True
+    else:
+        periodo_ativo = periodo
+        is_auto = False
+        
+    periodo_ativo_desc = formatar_descricao_competencia(periodo_ativo)
+    status = obter_status_importacao_dtic(periodo_ativo)
+    
+    return jsonify({
+        "periodo_selecionado": periodo,
+        "periodo_ativo": periodo_ativo,
+        "periodo_ativo_desc": periodo_ativo_desc,
+        "is_auto": is_auto,
+        "comp_auto_val": comp_auto_val,
+        "comp_auto_desc": comp_auto_desc,
+        "status": status
+    })
+
+def _processar_arquivo_tabela_dtic(fonte_stream_ou_bytes, nome_original, tipo_identificado, ext, periodo_form, modo_estrito, desc_periodo_alvo):
+    """
+    Processa arquivos tabulares descompactados ou extraídos de ZIPs (CSV, XLS, XLSX) dos relatórios DTIC (114, 134, 135, 16).
+    Aplica os filtros de supervisão quando aplicável e executa o ETL.
+    Retorna (sucesso: bool, aviso: str or None, erro: str or None).
+    """
+    import pandas as pd
+    from services.etl import processa_rel114, processa_rel134, processa_rel135, processa_rel16
+    
+    pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
+    os.makedirs(pasta_destino, exist_ok=True)
+    nome_final = f"{tipo_identificado}{ext}"
+    caminho_final = os.path.join(pasta_destino, nome_final)
+    
+    filtro_coluna = None
+    filtro_valor = None
+    if "(rel114)" in tipo_identificado:
+        filtro_coluna = "SUPERVISAO"
+        filtro_valor = "SUDESTE - STS PENHA"
+    elif "(rel134)" in tipo_identificado:
+        filtro_coluna = "supervisao"
+        filtro_valor = "SUDESTE - PENHA"
+    elif "(rel16)" in tipo_identificado:
+        filtro_coluna = "SUPERVISAO"
+        filtro_valor = "SUDESTE - STS PENHA"
+
+    try:
+        if ext.lower() in ['.csv', '.txt']:
+            if filtro_coluna:
+                first = True
+                for chunk in pd.read_csv(fonte_stream_ou_bytes, sep=';', encoding='latin1', chunksize=50000, low_memory=False):
+                    if filtro_coluna in chunk.columns:
+                        chunk_filtrado = chunk[chunk[filtro_coluna] == filtro_valor]
+                        chunk_filtrado.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
+                        first = False
+                    else:
+                        chunk.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
+                        first = False
+            else:
+                if hasattr(fonte_stream_ou_bytes, 'save'):
+                    fonte_stream_ou_bytes.save(caminho_final)
+                elif hasattr(fonte_stream_ou_bytes, 'read'):
+                    with open(caminho_final, "wb") as destino:
+                        if hasattr(fonte_stream_ou_bytes, 'seek'):
+                            fonte_stream_ou_bytes.seek(0)
+                        destino.write(fonte_stream_ou_bytes.read())
+                elif isinstance(fonte_stream_ou_bytes, (bytes, bytearray)):
+                    with open(caminho_final, "wb") as destino:
+                        destino.write(fonte_stream_ou_bytes)
+        else:
+            # Excel (.xlsx, .xls)
+            if hasattr(fonte_stream_ou_bytes, 'save'):
+                fonte_stream_ou_bytes.save(caminho_final)
+            elif hasattr(fonte_stream_ou_bytes, 'read'):
+                with open(caminho_final, "wb") as destino:
+                    if hasattr(fonte_stream_ou_bytes, 'seek'):
+                        fonte_stream_ou_bytes.seek(0)
+                    destino.write(fonte_stream_ou_bytes.read())
+            elif isinstance(fonte_stream_ou_bytes, (bytes, bytearray)):
+                with open(caminho_final, "wb") as destino:
+                    destino.write(fonte_stream_ou_bytes)
+    except Exception as e:
+        return False, None, f"Erro ao preparar arquivo '{nome_original}': {e}"
+
+    # Executa ETL
+    try:
+        res_etl = False
+        if "(rel114)" in tipo_identificado:
+            res_etl = processa_rel114(caminho_final, periodo=periodo_form)
+        elif "(rel134)" in tipo_identificado:
+            res_etl = processa_rel134(caminho_final, periodo=periodo_form)
+        elif "(rel135)" in tipo_identificado:
+            res_etl = processa_rel135(caminho_final, periodo=periodo_form)
+        elif "(rel16)" in tipo_identificado:
+            res_etl = processa_rel16(caminho_final, periodo=periodo_form)
+
+        if res_etl:
+            return True, None, None
+        elif modo_estrito and periodo_form:
+            return False, f"O arquivo '{nome_original}' ({tipo_identificado}) não contém registros para a competência {desc_periodo_alvo}.", None
+        else:
+            return False, None, None
+    except Exception as e:
+        return False, None, f"Erro ao processar ETL de '{nome_original}': {e}"
+
 @app.route("/upload_zip", methods=["GET", "POST"])
 @app.route("/upload_dtic", methods=["GET", "POST"])
 @admin_required
@@ -1204,9 +1417,24 @@ def upload_dtic():
     mensagem = None
     if request.method == "POST":
         tipo_relatorio = request.form.get("tipo_relatorio")
+        periodo_form_raw = request.form.get("periodo_referencia") or request.form.get("periodo")
+        modo_estrito = bool(request.form.get("forcar_competencia_estrita"))
+
+        from services.competencias import formatar_descricao_competencia
+        if periodo_form_raw == "auto" or not periodo_form_raw:
+            periodo_form = None
+            desc_periodo_alvo = "Automática"
+            modo_estrito = False
+        else:
+            periodo_form = periodo_form_raw if modo_estrito else None
+            desc_periodo_alvo = formatar_descricao_competencia(periodo_form_raw)
+
         arquivos = request.files.getlist("arquivos")
         
         sucessos = 0
+        avisos = []
+        erros = []
+
         for arquivo in arquivos:
             if not arquivo or not arquivo.filename:
                 continue
@@ -1222,9 +1450,13 @@ def upload_dtic():
                 
                 from services.etl import processa_bpa_dbf
                 try:
-                    if processa_bpa_dbf(caminho_final):
+                    res_etl = processa_bpa_dbf(caminho_final, periodo=periodo_form)
+                    if res_etl:
                         sucessos += 1
+                    elif modo_estrito and periodo_form:
+                        avisos.append(f"O arquivo '{nome_arq}' não contém dados para a competência {desc_periodo_alvo}.")
                 except Exception as e:
+                    erros.append(f"Erro ao processar DBF '{nome_arq}': {e}")
                     print(f"Erro ao processar DBF {nome_arq}: {e}")
                 finally:
                     if os.path.exists(caminho_final):
@@ -1233,16 +1465,20 @@ def upload_dtic():
                         except Exception as err_rem:
                             print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
 
-            elif (tipo_relatorio == "rel02") or (nome_lower.startswith('pa') and not nome_lower.endswith('.zip') and not nome_lower.endswith('.csv') and not nome_lower.endswith('.xlsx')):
+            elif (tipo_relatorio == "rel02" and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))) or (nome_lower.startswith('pa') and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))):
                 pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
                 caminho_final = os.path.join(pasta_destino, nome_arq)
                 arquivo.save(caminho_final)
                 
                 from services.etl import processa_bpa_pa
                 try:
-                    if processa_bpa_pa(caminho_final):
+                    res_etl = processa_bpa_pa(caminho_final, periodo=periodo_form)
+                    if res_etl:
                         sucessos += 1
+                    elif modo_estrito and periodo_form:
+                        avisos.append(f"O arquivo BPA '{nome_arq}' não contém registros para a competência {desc_periodo_alvo}.")
                 except Exception as e:
+                    erros.append(f"Erro ao processar BPA PA '{nome_arq}': {e}")
                     print(f"Erro ao processar BPA PA {nome_arq}: {e}")
                 finally:
                     if os.path.exists(caminho_final):
@@ -1252,16 +1488,20 @@ def upload_dtic():
                             print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
 
             # 2. Arquivos RAAS das Unidades CAPS (Relatório 05)
-            elif (tipo_relatorio == "rel05") or (nome_lower.startswith('aa') and len(nome_lower) >= 8 and not nome_lower.endswith('.zip')) or ("raas" in nome_lower and not nome_lower.endswith('.zip')):
+            elif (tipo_relatorio == "rel05" and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))) or (nome_lower.startswith('aa') and len(nome_lower) >= 8 and not nome_lower.endswith('.zip')) or ("raas" in nome_lower and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))):
                 pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
                 caminho_final = os.path.join(pasta_destino, nome_arq)
                 arquivo.save(caminho_final)
                 
                 from services.etl import processa_raas_arquivo
                 try:
-                    if processa_raas_arquivo(caminho_final):
+                    res_etl = processa_raas_arquivo(caminho_final, periodo=periodo_form)
+                    if res_etl:
                         sucessos += 1
+                    elif modo_estrito and periodo_form:
+                        avisos.append(f"O arquivo RAAS '{nome_arq}' não contém registros para a competência {desc_periodo_alvo}.")
                 except Exception as e:
+                    erros.append(f"Erro ao processar RAAS '{nome_arq}': {e}")
                     print(f"Erro ao processar RAAS {nome_arq}: {e}")
                 finally:
                     if os.path.exists(caminho_final):
@@ -1270,7 +1510,41 @@ def upload_dtic():
                         except Exception as err_rem:
                             print(f"Erro ao remover arquivo temporário RAAS {caminho_final}: {err_rem}")
 
-            # 3. Arquivos .ZIP do DTIC / SIGAPEP ou pacotes RAAS / BPA
+            # 3. Arquivos Tabulares Descompactados (.CSV, .XLSX, .XLS, .TXT)
+            elif nome_lower.endswith(('.csv', '.xlsx', '.xls')) or (nome_lower.endswith('.txt') and any(k in nome_lower for k in ['gestante', 'rel114', 'rel_114', 'penha', 'rel135', 'rel_135', 'amg', 'pacientes', 'rel16', 'rel_16', 'atividade', 'rel134', 'rel_134'])):
+                tipo_identificado = None
+                if (tipo_relatorio == "todos" or tipo_relatorio == "rel09") and ("rel_sb_gestante_prev_parto" in nome_lower or "gestante" in nome_lower or "rel114" in nome_lower or "rel_114" in nome_lower):
+                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
+                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel15") and ("penha" in nome_lower or "rel135" in nome_lower or "rel_135" in nome_lower):
+                    tipo_identificado = "(rel135) penha"
+                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel16") and ("amg" in nome_lower or "pacientes_cadastrados" in nome_lower or "pacientes cadastrados" in nome_lower or "rel16" in nome_lower or "rel_16" in nome_lower):
+                    tipo_identificado = "(rel16) siga_amg"
+                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel17") and ("atividade_coletiva_por_profissional" in nome_lower or "atividade_coletiva" in nome_lower or "atividade" in nome_lower or "rel134" in nome_lower or "rel_134" in nome_lower):
+                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
+                elif tipo_relatorio == "rel09":
+                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
+                elif tipo_relatorio == "rel15":
+                    tipo_identificado = "(rel135) penha"
+                elif tipo_relatorio == "rel16":
+                    tipo_identificado = "(rel16) siga_amg"
+                elif tipo_relatorio == "rel17":
+                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
+
+                if tipo_identificado:
+                    ext = os.path.splitext(nome_arq)[1]
+                    ok, av, er = _processar_arquivo_tabela_dtic(
+                        arquivo, nome_arq, tipo_identificado, ext, periodo_form, modo_estrito, desc_periodo_alvo
+                    )
+                    if ok:
+                        sucessos += 1
+                    if av:
+                        avisos.append(av)
+                    if er:
+                        erros.append(er)
+                else:
+                    avisos.append(f"O arquivo '{nome_arq}' não pôde ser identificado automaticamente. Selecione o tipo de relatório no menu.")
+
+            # 4. Arquivos Compactados (.ZIP)
             elif nome_lower.endswith('.zip'):
                 nome_zip = nome_lower
                 
@@ -1286,9 +1560,13 @@ def upload_dtic():
                                     f_out.write(zip_ref.read(nome_arq_zip))
                                 from services.etl import processa_bpa_dbf
                                 try:
-                                    if processa_bpa_dbf(caminho_temp):
+                                    res_etl = processa_bpa_dbf(caminho_temp, periodo=periodo_form)
+                                    if res_etl:
                                         sucessos += 1
+                                    elif modo_estrito and periodo_form:
+                                        avisos.append(f"O arquivo '{nome_arq_zip}' (do ZIP '{nome_arq}') não contém dados para a competência {desc_periodo_alvo}.")
                                 except Exception as e:
+                                    erros.append(f"Erro ao processar DBF '{nome_arq_zip}': {e}")
                                     print(f"Erro ao processar DBF do ZIP {nome_arq_zip}: {e}")
                                 finally:
                                     if os.path.exists(caminho_temp):
@@ -1303,9 +1581,13 @@ def upload_dtic():
                                     f_out.write(zip_ref.read(nome_arq_zip))
                                 from services.etl import processa_bpa_pa
                                 try:
-                                    if processa_bpa_pa(caminho_temp):
+                                    res_etl = processa_bpa_pa(caminho_temp, periodo=periodo_form)
+                                    if res_etl:
                                         sucessos += 1
+                                    elif modo_estrito and periodo_form:
+                                        avisos.append(f"O arquivo '{nome_arq_zip}' (do ZIP '{nome_arq}') não contém dados para a competência {desc_periodo_alvo}.")
                                 except Exception as e:
+                                    erros.append(f"Erro ao processar BPA PA '{nome_arq_zip}': {e}")
                                     print(f"Erro ao processar BPA PA do ZIP {nome_arq_zip}: {e}")
                                 finally:
                                     if os.path.exists(caminho_temp):
@@ -1330,9 +1612,13 @@ def upload_dtic():
                                 
                                 from services.etl import processa_raas_arquivo
                                 try:
-                                    if processa_raas_arquivo(caminho_temp):
+                                    res_etl = processa_raas_arquivo(caminho_temp, periodo=periodo_form)
+                                    if res_etl:
                                         sucessos += 1
+                                    elif modo_estrito and periodo_form:
+                                        avisos.append(f"O arquivo RAAS '{nome_arq_zip}' (do ZIP '{nome_arq}') não contém registros para a competência {desc_periodo_alvo}.")
                                 except Exception as e:
+                                    erros.append(f"Erro ao processar RAAS '{nome_arq_zip}': {e}")
                                     print(f"Erro ao processar RAAS do ZIP {nome_arq_zip}: {e}")
                                 finally:
                                     if os.path.exists(caminho_temp):
@@ -1341,8 +1627,6 @@ def upload_dtic():
                                         except Exception:
                                             pass
                     continue
-                
-                # Identifica por nome (regra das referências)
                 
                 # Identifica por nome (regra das referências)
                 tipo_identificado = None
@@ -1354,77 +1638,44 @@ def upload_dtic():
                     tipo_identificado = "(rel16) siga_amg"
                 elif (tipo_relatorio == "todos" or tipo_relatorio == "rel17") and "atividade_coletiva_por_profissional" in nome_zip:
                     tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
+                elif tipo_relatorio == "rel09":
+                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
+                elif tipo_relatorio == "rel15":
+                    tipo_identificado = "(rel135) penha"
+                elif tipo_relatorio == "rel16":
+                    tipo_identificado = "(rel16) siga_amg"
+                elif tipo_relatorio == "rel17":
+                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
                 
                 if tipo_identificado:
-                    # Salvar diretamente na pasta raiz ARQUIVOS ORIGINAIS
-                    pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                    
                     with zipfile.ZipFile(arquivo, 'r') as zip_ref:
                         for nome_arq_zip in zip_ref.namelist():
-                            if nome_arq_zip.endswith('.csv') or nome_arq_zip.endswith('.xls') or nome_arq_zip.endswith('.xlsx'):
+                            if nome_arq_zip.endswith(('.csv', '.xls', '.xlsx')):
                                 ext = os.path.splitext(nome_arq_zip)[1]
-                                nome_final = f"{tipo_identificado}{ext}"
-                                caminho_final = os.path.join(pasta_destino, nome_final)
-                                
-                                # Extrai, filtra e salva o arquivo
                                 with zip_ref.open(nome_arq_zip) as fonte:
-                                    import pandas as pd
-                                    
-                                    # Definir regras de filtro baseadas no relatório
-                                    filtro_coluna = None
-                                    filtro_valor = None
-                                    
-                                    if "(rel114)" in tipo_identificado:
-                                        filtro_coluna = "SUPERVISAO"
-                                        filtro_valor = "SUDESTE - STS PENHA"
-                                    elif "(rel134)" in tipo_identificado:
-                                        filtro_coluna = "supervisao"
-                                        filtro_valor = "SUDESTE - PENHA"
-                                    elif "(rel16)" in tipo_identificado:
-                                        filtro_coluna = "SUPERVISAO"
-                                        filtro_valor = "SUDESTE - STS PENHA"
-                                    
-                                    if filtro_coluna:
-                                        # Leitura em pedaços (chunks) para não estourar a memória
-                                        first = True
-                                        for chunk in pd.read_csv(fonte, sep=';', encoding='latin1', chunksize=50000, low_memory=False):
-                                            if filtro_coluna in chunk.columns:
-                                                chunk_filtrado = chunk[chunk[filtro_coluna] == filtro_valor]
-                                                chunk_filtrado.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
-                                                first = False
-                                            else:
-                                                # Se a coluna não existir, salva tudo por segurança
-                                                chunk.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
-                                                first = False
-                                    else:
-                                        # Sem filtro definido, extrai normalmente (copia o conteúdo)
-                                        with open(caminho_final, "wb") as destino:
-                                            destino.write(fonte.read())
-                                
-                                # Chama a função de ETL correspondente
-                                from services.etl import processa_rel114, processa_rel134, processa_rel135, processa_rel16
-                                try:
-                                    res_etl = False
-                                    if "(rel114)" in tipo_identificado:
-                                        res_etl = processa_rel114(caminho_final)
-                                    elif "(rel134)" in tipo_identificado:
-                                        res_etl = processa_rel134(caminho_final)
-                                    elif "(rel135)" in tipo_identificado:
-                                        res_etl = processa_rel135(caminho_final)
-                                    elif "(rel16)" in tipo_identificado:
-                                        res_etl = processa_rel16(caminho_final)
-                                    if res_etl is not False:
+                                    ok, av, er = _processar_arquivo_tabela_dtic(
+                                        fonte, nome_arq_zip, tipo_identificado, ext, periodo_form, modo_estrito, desc_periodo_alvo
+                                    )
+                                    if ok:
                                         sucessos += 1
-                                except Exception as e:
-                                    print(f"Erro ao processar ETL do {tipo_identificado}: {e}")
+                                    if av:
+                                        avisos.append(av)
+                                    if er:
+                                        erros.append(er)
                                 
+        for av in avisos:
+            flash(av, "warning")
+        for er in erros:
+            flash(er, "danger")
+
         if sucessos > 0:
             try:
                 sincronizar_todas_competencias()
             except Exception as e:
                 print(f"Erro ao sincronizar competencias pós-upload: {e}")
-                
-        mensagem = f"{sucessos} arquivo(s) processado(s) com sucesso e importado(s) para o banco de dados!"
+            flash(f"{sucessos} arquivo(s) processado(s) com sucesso e importado(s) para o banco de dados!", "success")
+        elif not avisos and not erros:
+            flash("Nenhum arquivo válido foi encontrado para processamento.", "warning")
         
     from services.competencias import (
         obter_competencia_automatica,
@@ -1582,6 +1833,7 @@ def cadastros():
                     equipe = models.Equipe(cod_ine=cod_ine, sigla=sigla, unidade=unidade.strip() if unidade else "")
                     db.session.add(equipe)
                 db.session.commit()
+                alterou = True
                 mensagem = f"Equipe {cod_ine} ({sigla}) salva com sucesso!"
 
         elif acao == 'excluir_equipe':
@@ -1591,6 +1843,7 @@ def cadastros():
                 if equipe:
                     db.session.delete(equipe)
                     db.session.commit()
+                    alterou = True
                     mensagem = f"Equipe {cod_ine} excluída do cadastro!"
 
         elif acao == 'salvar_prof' or acao == 'salvar_prof_modal':
@@ -1684,6 +1937,7 @@ def cadastros():
                     vinc = models.VinculoEmab(nome_equipe=nome_equipe, unidade_destino=unidade_destino, tipo=tipo)
                     db.session.add(vinc)
                 db.session.commit()
+                alterou = True
                 mensagem = f"Vínculo da equipe '{nome_equipe}' configurado para reposição em '{unidade_destino}' com sucesso!"
 
         elif acao == 'excluir_vinculo_emab':
@@ -1698,12 +1952,28 @@ def cadastros():
                 nome_del = vinc.nome_equipe
                 db.session.delete(vinc)
                 db.session.commit()
+                alterou = True
                 mensagem = f"Vínculo da equipe '{nome_del}' removido com sucesso!"
 
         if alterou:
             cat_data['profissionais'] = profissionais
             cat_data['procedimentos'] = procedimentos
             cat_data['cbos'] = cbos
+            try:
+                cat_data['equipes'] = [
+                    {'cod_ine': e.cod_ine, 'sigla': e.sigla, 'unidade': e.unidade}
+                    for e in models.Equipe.query.order_by(models.Equipe.unidade, models.Equipe.sigla).all()
+                ]
+            except Exception:
+                pass
+            try:
+                cat_data['vinculos_emab'] = [
+                    {'nome_equipe': v.nome_equipe, 'unidade_destino': v.unidade_destino, 'tipo': v.tipo}
+                    for v in models.VinculoEmab.query.order_by(models.VinculoEmab.nome_equipe).all()
+                ]
+            except Exception:
+                pass
+
             with open(catalogo_path, 'w', encoding='utf-8') as f:
                 json.dump(cat_data, f, ensure_ascii=False, indent=2)
 
