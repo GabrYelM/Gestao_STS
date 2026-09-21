@@ -24,8 +24,8 @@ MAPA_RELATORIO_TABELAS = {
     '10': [('REL-10', 'ano_mes'), ('AT-03', 'ano')],
     '11': [('FE-02', 'ano_mes')],
     '12': [('AT-02', 'ano_mes')],
-    '13': [('AG-04', 'ano_mes')],
-    '14': [('VG-02', 'ano_mes')],
+    '13': [('VG-02', 'ano_mes')],
+    '14': [('AG-04', 'ano_mes')],
     '15': [('REL-135', 'ano_mes_competencia')],
     '16': [('REL-16', 'ano_mes')],
     '17': [('REL-134', 'ano_mes')]

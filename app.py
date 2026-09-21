@@ -1336,90 +1336,255 @@ def api_status_dtic(periodo):
         "status": status
     })
 
-def _processar_arquivo_tabela_dtic(fonte_stream_ou_bytes, nome_original, tipo_identificado, ext, periodo_form, modo_estrito, desc_periodo_alvo):
+def _identificar_tipo_relatorio(nome_arquivo, tipo_selecionado="todos"):
     """
-    Processa arquivos tabulares descompactados ou extraídos de ZIPs (CSV, XLS, XLSX) dos relatórios DTIC (114, 134, 135, 16).
-    Aplica os filtros de supervisão quando aplicável e executa o ETL.
+    Identifica de forma universal o tipo de relatório a partir do nome do arquivo ou do seletor.
+    Retorna uma tupla: (chave_tipo, nome_amigavel) ou (None, None).
+    """
+    if not nome_arquivo:
+        return None, None
+    nl = str(nome_arquivo).lower().strip()
+    ts = str(tipo_selecionado).lower().strip() if tipo_selecionado else "todos"
+
+    # 1. Seletor explícito diferente de 'todos'
+    if ts in ['rel02', 'bpa']:
+        return 'bpa', 'PAPENHA (BPA - Relatório 02)'
+    elif ts in ['rel05', 'raas']:
+        return 'raas', 'Arquivos RAAS CAPS (Relatório 05)'
+    elif ts in ['rel08', 'gac02']:
+        return 'gac02', 'GAC-02 - Gestantes Ativas (Snapshot)'
+    elif ts == 'cg01':
+        return 'cg01', 'CG-01 - Gestantes com 7+ Consultas'
+    elif ts == 'cg05':
+        return 'cg05', 'CG-05 - Total de Consultas PN'
+    elif ts == 'cg06':
+        return 'cg06', 'CG-06 - Exames de Pré-Natal'
+    elif ts in ['rel09', 'rel114']:
+        return 'rel114', 'Rel 114 - Consulta Odontológica Gestante'
+    elif ts in ['rel10', 'at03']:
+        return 'at03', 'AT-03 - Citopatológico / Papanicolau'
+    elif ts in ['rel11', 'fe02']:
+        return 'fe02', 'FE-02 - Fila de Espera'
+    elif ts in ['rel03', 'rel12', 'at02']:
+        return 'at02', 'AT-02 - Produção por Especialidade / PICS'
+    elif ts in ['rel13', 'vg02']:
+        return 'vg02', 'VG-02 - Perda Primária'
+    elif ts in ['rel14', 'ag04']:
+        return 'ag04', 'AG-04 - Absenteísmo / Perda Secundária'
+    elif ts in ['rel04', 'vg04']:
+        return 'vg04', 'VG-04 - Oferta de Vagas'
+    elif ts in ['rel15', 'rel135']:
+        return 'rel135', 'Rel 135 - Acompanhamento Cadastro ESF'
+    elif ts in ['rel16', 'amg']:
+        return 'rel16', 'Rel 16 / AMG - Pacientes Cadastrados'
+    elif ts in ['rel17', 'rel134']:
+        return 'rel134', 'Rel 134 - Atividades Coletivas PSE'
+    elif ts == 'rel06':
+        return 'painel_sts', 'Painel de Monitoramento STS PENHA (Relatório 06)'
+    elif ts == 'rel07':
+        return 'painel_subpref', 'Painel de Monitoramento por Estabelecimento (Relatório 07)'
+
+    # 2. Auto-identificação por padrões de nomenclatura e extensões
+    # Painel de Monitoramento (.html / .htm / painel / monitoramento)
+    if nl.endswith(('.html', '.htm')) or 'painel' in nl or 'monitoramento' in nl:
+        if 'subpref' in nl or 'estabelec' in nl or 'rel07' in nl or 'rel-07' in nl:
+            return 'painel_subpref', 'Painel de Monitoramento por Estabelecimento (Relatório 07)'
+        else:
+            return 'painel_sts', 'Painel de Monitoramento STS PENHA (Relatório 06)'
+
+    # AT03 / Papanicolau (Rel 10)
+    if any(k in nl for k in ['papanicolau', 'citopatologico', 'citopatologia', 'at03', 'at_03', 'at-03', 'at 03', 'rel10', 'rel_10']):
+        return 'at03', 'AT-03 - Citopatológico / Papanicolau'
+
+    # BPA (.dbf ou arquivos 'pa*.')
+    if nl.endswith('.dbf') or nl.startswith('papenha') or 'bpa' in nl or 'sts26_' in nl or (nl.startswith('pa') and not nl.startswith('painel') and not nl.startswith('papanic') and not nl.startswith('paciente')):
+        return 'bpa', 'PAPENHA (BPA - Relatório 02)'
+
+    # RAAS (.jul, .ago, .set, etc., ou 'aa*.', ou 'raas')
+    if (any(nl.endswith(ext) for ext in ['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas']) and not nl.endswith('.zip')) or (nl.startswith('aa') and len(nl) >= 8 and not nl.endswith('.zip')) or ('raas' in nl and not nl.endswith('.zip')):
+        return 'raas', 'Arquivos RAAS CAPS (Relatório 05)'
+
+    # GAC02 (Gestantes Ativas Snapshot)
+    if any(k in nl for k in ['gac02', 'gac_02', 'gac-02', 'gac 02']) or ('gac' in nl and 'gestante' in nl) or ('gestante' in nl and 'ativas' in nl):
+        return 'gac02', 'GAC-02 - Gestantes Ativas'
+
+    # CG01 (Gestantes 7+ Consultas)
+    if any(k in nl for k in ['cg01', 'cg_01', 'cg-01', 'cg 01', 'sete_ou_mais', 'sete ou mais', '7_consultas', '7 consultas', '7 ou mais']):
+        return 'cg01', 'CG-01 - Gestantes com 7+ Consultas'
+
+    # CG05 (Total de Consultas PN)
+    if any(k in nl for k in ['cg05', 'cg_05', 'cg-05', 'cg 05', 'total_consultas_pn', 'total de consultas pn', 'consultas_pn', 'consultas pn']):
+        return 'cg05', 'CG-05 - Total de Consultas PN'
+
+    # CG06 (Exames Pré-Natal)
+    if any(k in nl for k in ['cg06', 'cg_06', 'cg-06', 'cg 06', 'exames_realizados', 'exames realizados', 'exames_pn', 'exames pn', 'exames pre natal']):
+        return 'cg06', 'CG-06 - Exames de Pré-Natal'
+
+    # REL114 / Saúde Bucal Gestante
+    if any(k in nl for k in ['rel_sb_gestante_prev_parto', 'rel114', 'rel_114', 'rel-114', 'rel 114', 'saude_bucal_gestante', 'saude bucal']):
+        return 'rel114', 'Rel 114 - Consulta Odontológica Gestante'
+
+    # REL134 / Atividades Coletivas PSE
+    if any(k in nl for k in ['atividade_coletiva_por_profissional', 'atividade_coletiva', 'atividade coletiva', 'atividades_coletivas', 'atividades coletivas', 'rel134', 'rel_134', 'rel-134', 'rel 134', 'pse']):
+        return 'rel134', 'Rel 134 - Atividades Coletivas PSE'
+
+    # REL135 / Cadastro ESF
+    if any(k in nl for k in ['rel135', 'rel_135', 'rel-135', 'rel 135', 'penha_']) or (nl.startswith('penha') and nl.endswith(('.csv', '.xlsx', '.xls', '.zip', '.txt'))):
+        return 'rel135', 'Rel 135 - Acompanhamento Cadastro ESF'
+
+    # REL16 / AMG
+    if any(k in nl for k in ['siga_amg', 'siga - amg', 'siga-amg', 'amg', 'pacientes_cadastrados', 'pacientes cadastrados', 'rel16', 'rel_16', 'rel-16', 'rel 16']):
+        return 'rel16', 'Rel 16 / AMG - Pacientes Cadastrados'
+
+    # AT02 / Produção por Especialidade / PICS (Rel 03 / Rel 12)
+    if any(k in nl for k in ['at02', 'at_02', 'at-02', 'at 02', 'producao_por_profissional', 'producao por profissional', 'rel03', 'rel12', 'pics']):
+        return 'at02', 'AT-02 - Produção por Especialidade / PICS'
+
+    # AT03 / Papanicolau (Rel 10)
+    if any(k in nl for k in ['at03', 'at_03', 'at-03', 'at 03', 'papanicolau', 'citopatologico', 'citopatologia', 'rel10', 'rel_10']):
+        return 'at03', 'AT-03 - Citopatológico / Papanicolau'
+
+    # FE02 / Fila de Espera (Rel 11)
+    if any(k in nl for k in ['fe02', 'fe_02', 'fe-02', 'fe 02', 'fila_de_espera', 'fila de espera', 'fila espera', 'rel11', 'rel_11']):
+        return 'fe02', 'FE-02 - Fila de Espera'
+
+    # VG02 / Perda Primária (Rel 13)
+    if any(k in nl for k in ['vg02', 'vg_02', 'vg-02', 'vg 02', 'perda_primaria', 'perda primaria', 'rel13', 'rel_13']):
+        return 'vg02', 'VG-02 - Perda Primária'
+
+    # AG04 / Absenteísmo / Perda Secundária (Rel 14)
+    if any(k in nl for k in ['ag04', 'ag_04', 'ag-04', 'ag 04', 'absenteismo', 'perda_secundaria', 'perda secundaria', 'rel14', 'rel_14']):
+        return 'ag04', 'AG-04 - Absenteísmo / Perda Secundária'
+
+    # VG04 / Oferta de Vagas (Rel 04)
+    if any(k in nl for k in ['vg04', 'vg_04', 'vg-04', 'vg 04', 'vagas_ofertadas', 'vagas ofertadas', 'oferta_vagas', 'oferta de vagas', 'rel04', 'rel_04']):
+        return 'vg04', 'VG-04 - Oferta de Vagas'
+
+    # Fallback genérico para arquivos com gestante
+    if 'gestante' in nl:
+        return 'rel114', 'Rel 114 - Consulta Odontológica Gestante'
+
+    return None, None
+
+def _processar_arquivo_tabular(fonte_stream_ou_bytes, nome_original, tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo):
+    """
+    Processa qualquer arquivo do sistema (BPA, RAAS, DTIC, SIGA/BI, GAC, Painel, etc.)
+    salvando em disco temporariamente, aplicando filtros de supervisão se necessário e executando o ETL.
     Retorna (sucesso: bool, aviso: str or None, erro: str or None).
     """
     import pandas as pd
-    from services.etl import processa_rel114, processa_rel134, processa_rel135, processa_rel16
+    from services.etl import (
+        processa_bpa_dbf, processa_bpa_pa, processa_raas_arquivo,
+        processa_painel_monitoramento,
+        processa_gac02, processa_cg01, processa_cg05, processa_cg06,
+        processa_rel114, processa_rel134, processa_rel135, processa_rel16,
+        processa_at02, processa_at03, processa_fe02, processa_vg02, processa_ag04, processa_vg04,
+        read_clean_tabular, read_clean_csv
+    )
     
     pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
     os.makedirs(pasta_destino, exist_ok=True)
-    nome_final = f"{tipo_identificado}{ext}"
-    caminho_final = os.path.join(pasta_destino, nome_final)
+    nome_seguro = f"tmp_{tipo_chave}_{os.path.basename(nome_original)}"
+    caminho_final = os.path.join(pasta_destino, nome_seguro)
     
     filtro_coluna = None
     filtro_valor = None
-    if "(rel114)" in tipo_identificado:
+    if tipo_chave == 'rel114':
         filtro_coluna = "SUPERVISAO"
         filtro_valor = "SUDESTE - STS PENHA"
-    elif "(rel134)" in tipo_identificado:
+    elif tipo_chave == 'rel134':
         filtro_coluna = "supervisao"
         filtro_valor = "SUDESTE - PENHA"
-    elif "(rel16)" in tipo_identificado:
+    elif tipo_chave == 'rel16':
         filtro_coluna = "SUPERVISAO"
         filtro_valor = "SUDESTE - STS PENHA"
 
     try:
-        if ext.lower() in ['.csv', '.txt']:
-            if filtro_coluna:
-                first = True
-                for chunk in pd.read_csv(fonte_stream_ou_bytes, sep=';', encoding='latin1', chunksize=50000, low_memory=False):
-                    if filtro_coluna in chunk.columns:
-                        chunk_filtrado = chunk[chunk[filtro_coluna] == filtro_valor]
-                        chunk_filtrado.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
-                        first = False
-                    else:
-                        chunk.to_csv(caminho_final, mode='w' if first else 'a', header=first, index=False, sep=';', encoding='latin1')
-                        first = False
-            else:
-                if hasattr(fonte_stream_ou_bytes, 'save'):
-                    fonte_stream_ou_bytes.save(caminho_final)
-                elif hasattr(fonte_stream_ou_bytes, 'read'):
-                    with open(caminho_final, "wb") as destino:
-                        if hasattr(fonte_stream_ou_bytes, 'seek'):
-                            fonte_stream_ou_bytes.seek(0)
-                        destino.write(fonte_stream_ou_bytes.read())
-                elif isinstance(fonte_stream_ou_bytes, (bytes, bytearray)):
-                    with open(caminho_final, "wb") as destino:
-                        destino.write(fonte_stream_ou_bytes)
-        else:
-            # Excel (.xlsx, .xls)
-            if hasattr(fonte_stream_ou_bytes, 'save'):
-                fonte_stream_ou_bytes.save(caminho_final)
-            elif hasattr(fonte_stream_ou_bytes, 'read'):
-                with open(caminho_final, "wb") as destino:
-                    if hasattr(fonte_stream_ou_bytes, 'seek'):
-                        fonte_stream_ou_bytes.seek(0)
-                    destino.write(fonte_stream_ou_bytes.read())
-            elif isinstance(fonte_stream_ou_bytes, (bytes, bytearray)):
-                with open(caminho_final, "wb") as destino:
-                    destino.write(fonte_stream_ou_bytes)
+        # Salva o arquivo em disco com segurança
+        if hasattr(fonte_stream_ou_bytes, 'save'):
+            fonte_stream_ou_bytes.save(caminho_final)
+        elif hasattr(fonte_stream_ou_bytes, 'read'):
+            with open(caminho_final, "wb") as destino:
+                if hasattr(fonte_stream_ou_bytes, 'seek'):
+                    fonte_stream_ou_bytes.seek(0)
+                destino.write(fonte_stream_ou_bytes.read())
+        elif isinstance(fonte_stream_ou_bytes, (bytes, bytearray)):
+            with open(caminho_final, "wb") as destino:
+                destino.write(fonte_stream_ou_bytes)
+
+        # Se houver filtro de supervisão específico para CSV/TXT
+        if ext.lower() in ['.csv', '.txt'] and filtro_coluna:
+            try:
+                df_temp = read_clean_csv(caminho_final, termo_cabecalho=filtro_coluna.lower())
+                if filtro_coluna in df_temp.columns:
+                    df_temp = df_temp[df_temp[filtro_coluna] == filtro_valor]
+                df_temp.to_csv(caminho_final, index=False, sep=';', encoding='latin1')
+            except Exception:
+                pass
     except Exception as e:
         return False, None, f"Erro ao preparar arquivo '{nome_original}': {e}"
 
     # Executa ETL
     try:
         res_etl = False
-        if "(rel114)" in tipo_identificado:
+        if tipo_chave == 'bpa':
+            if caminho_final.lower().endswith('.dbf'):
+                res_etl = processa_bpa_dbf(caminho_final, periodo=periodo_form)
+            else:
+                res_etl = processa_bpa_pa(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'raas':
+            res_etl = processa_raas_arquivo(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'painel_sts':
+            with open(caminho_final, 'r', encoding='utf-8', errors='ignore') as f_h:
+                conteudo_html = f_h.read()
+            res_etl = processa_painel_monitoramento(conteudo_html, tabela_db='REL-06', default_localidade='STS PENHA')
+        elif tipo_chave == 'painel_subpref':
+            with open(caminho_final, 'r', encoding='utf-8', errors='ignore') as f_h:
+                conteudo_html = f_h.read()
+            res_etl = processa_painel_monitoramento(conteudo_html, tabela_db='REL-07', default_localidade='Subprefeitura PENHA')
+        elif tipo_chave == 'gac02':
+            res_etl = processa_gac02(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'cg01':
+            res_etl = processa_cg01(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'cg05':
+            res_etl = processa_cg05(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'cg06':
+            res_etl = processa_cg06(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'rel114':
             res_etl = processa_rel114(caminho_final, periodo=periodo_form)
-        elif "(rel134)" in tipo_identificado:
+        elif tipo_chave == 'rel134':
             res_etl = processa_rel134(caminho_final, periodo=periodo_form)
-        elif "(rel135)" in tipo_identificado:
+        elif tipo_chave == 'rel135':
             res_etl = processa_rel135(caminho_final, periodo=periodo_form)
-        elif "(rel16)" in tipo_identificado:
+        elif tipo_chave == 'rel16':
             res_etl = processa_rel16(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'at02':
+            res_etl = processa_at02(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'at03':
+            res_etl = processa_at03(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'fe02':
+            res_etl = processa_fe02(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'vg02':
+            res_etl = processa_vg02(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'ag04':
+            res_etl = processa_ag04(caminho_final, periodo=periodo_form)
+        elif tipo_chave == 'vg04':
+            res_etl = processa_vg04(caminho_final, periodo=periodo_form)
 
         if res_etl:
             return True, None, None
         elif modo_estrito and periodo_form:
-            return False, f"O arquivo '{nome_original}' ({tipo_identificado}) não contém registros para a competência {desc_periodo_alvo}.", None
+            return False, f"O arquivo '{nome_original}' ({nome_amigavel}) não contém registros para a competência {desc_periodo_alvo}.", None
         else:
             return False, None, None
     except Exception as e:
-        return False, None, f"Erro ao processar ETL de '{nome_original}': {e}"
+        return False, None, f"Erro ao processar ETL de '{nome_original}' ({nome_amigavel}): {e}"
+    finally:
+        if os.path.exists(caminho_final):
+            try:
+                os.remove(caminho_final)
+            except Exception:
+                pass
 
 @app.route("/upload_zip", methods=["GET", "POST"])
 @app.route("/upload_dtic", methods=["GET", "POST"])
@@ -1427,7 +1592,7 @@ def _processar_arquivo_tabela_dtic(fonte_stream_ou_bytes, nome_original, tipo_id
 def upload_dtic():
     mensagem = None
     if request.method == "POST":
-        tipo_relatorio = request.form.get("tipo_relatorio")
+        tipo_relatorio = request.form.get("tipo_relatorio", "todos")
         periodo_form_raw = request.form.get("periodo_referencia") or request.form.get("periodo")
         modo_estrito = bool(request.form.get("forcar_competencia_estrita"))
 
@@ -1446,105 +1611,51 @@ def upload_dtic():
         avisos = []
         erros = []
 
+        import zipfile
         for arquivo in arquivos:
             if not arquivo or not arquivo.filename:
                 continue
             nome_arq = arquivo.filename
             nome_lower = nome_arq.lower()
             
-            # 1. Arquivos de Produção BPA (Relatório 02)
-            # Pode ser o arquivo bruto BPA (ex: PAPENHA-.AGO, PA*.JUL) ou o .DBF gerado no TabWin (ex: STS26_08.dbf)
-            if nome_lower.endswith('.dbf'):
-                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                caminho_final = os.path.join(pasta_destino, nome_arq)
-                arquivo.save(caminho_final)
-                
-                from services.etl import processa_bpa_dbf
+            # 1. Arquivos Compactados (.ZIP)
+            if nome_lower.endswith('.zip'):
                 try:
-                    res_etl = processa_bpa_dbf(caminho_final, periodo=periodo_form)
-                    if res_etl:
-                        sucessos += 1
-                    elif modo_estrito and periodo_form:
-                        avisos.append(f"O arquivo '{nome_arq}' não contém dados para a competência {desc_periodo_alvo}.")
+                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
+                        for nome_membro in zip_ref.namelist():
+                            nl_membro = nome_membro.lower()
+                            if nl_membro.endswith('/') or '__macosx' in nl_membro or '_erro' in nl_membro or '_protocolo' in nl_membro:
+                                continue
+                            
+                            # Identifica pelo nome do membro ou pelo nome do zip
+                            tipo_chave, nome_amigavel = _identificar_tipo_relatorio(nome_membro, tipo_relatorio)
+                            if not tipo_chave:
+                                tipo_chave, nome_amigavel = _identificar_tipo_relatorio(nome_arq, tipo_relatorio)
+                                
+                            if tipo_chave:
+                                ext = os.path.splitext(nome_membro)[1]
+                                with zip_ref.open(nome_membro) as fonte:
+                                    ok, av, er = _processar_arquivo_tabular(
+                                        fonte, f"{os.path.basename(nome_arq)} -> {os.path.basename(nome_membro)}",
+                                        tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo
+                                    )
+                                    if ok:
+                                        sucessos += 1
+                                    if av:
+                                        avisos.append(av)
+                                    if er:
+                                        erros.append(er)
+                            else:
+                                avisos.append(f"O item '{os.path.basename(nome_membro)}' do ZIP '{nome_arq}' não pôde ser identificado automaticamente.")
                 except Exception as e:
-                    erros.append(f"Erro ao processar DBF '{nome_arq}': {e}")
-                    print(f"Erro ao processar DBF {nome_arq}: {e}")
-                finally:
-                    if os.path.exists(caminho_final):
-                        try:
-                            os.remove(caminho_final)
-                        except Exception as err_rem:
-                            print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
-
-            elif (tipo_relatorio == "rel02" and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))) or (nome_lower.startswith('pa') and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))):
-                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                caminho_final = os.path.join(pasta_destino, nome_arq)
-                arquivo.save(caminho_final)
-                
-                from services.etl import processa_bpa_pa
-                try:
-                    res_etl = processa_bpa_pa(caminho_final, periodo=periodo_form)
-                    if res_etl:
-                        sucessos += 1
-                    elif modo_estrito and periodo_form:
-                        avisos.append(f"O arquivo BPA '{nome_arq}' não contém registros para a competência {desc_periodo_alvo}.")
-                except Exception as e:
-                    erros.append(f"Erro ao processar BPA PA '{nome_arq}': {e}")
-                    print(f"Erro ao processar BPA PA {nome_arq}: {e}")
-                finally:
-                    if os.path.exists(caminho_final):
-                        try:
-                            os.remove(caminho_final)
-                        except Exception as err_rem:
-                            print(f"Erro ao remover arquivo temporário {caminho_final}: {err_rem}")
-
-            # 2. Arquivos RAAS das Unidades CAPS (Relatório 05)
-            elif (tipo_relatorio == "rel05" and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))) or (nome_lower.startswith('aa') and len(nome_lower) >= 8 and not nome_lower.endswith('.zip')) or ("raas" in nome_lower and not nome_lower.endswith(('.zip', '.csv', '.xlsx', '.xls'))):
-                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                caminho_final = os.path.join(pasta_destino, nome_arq)
-                arquivo.save(caminho_final)
-                
-                from services.etl import processa_raas_arquivo
-                try:
-                    res_etl = processa_raas_arquivo(caminho_final, periodo=periodo_form)
-                    if res_etl:
-                        sucessos += 1
-                    elif modo_estrito and periodo_form:
-                        avisos.append(f"O arquivo RAAS '{nome_arq}' não contém registros para a competência {desc_periodo_alvo}.")
-                except Exception as e:
-                    erros.append(f"Erro ao processar RAAS '{nome_arq}': {e}")
-                    print(f"Erro ao processar RAAS {nome_arq}: {e}")
-                finally:
-                    if os.path.exists(caminho_final):
-                        try:
-                            os.remove(caminho_final)
-                        except Exception as err_rem:
-                            print(f"Erro ao remover arquivo temporário RAAS {caminho_final}: {err_rem}")
-
-            # 3. Arquivos Tabulares Descompactados (.CSV, .XLSX, .XLS, .TXT)
-            elif nome_lower.endswith(('.csv', '.xlsx', '.xls')) or (nome_lower.endswith('.txt') and any(k in nome_lower for k in ['gestante', 'rel114', 'rel_114', 'penha', 'rel135', 'rel_135', 'amg', 'pacientes', 'rel16', 'rel_16', 'atividade', 'rel134', 'rel_134'])):
-                tipo_identificado = None
-                if (tipo_relatorio == "todos" or tipo_relatorio == "rel09") and ("rel_sb_gestante_prev_parto" in nome_lower or "gestante" in nome_lower or "rel114" in nome_lower or "rel_114" in nome_lower):
-                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
-                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel15") and ("penha" in nome_lower or "rel135" in nome_lower or "rel_135" in nome_lower):
-                    tipo_identificado = "(rel135) penha"
-                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel16") and ("amg" in nome_lower or "pacientes_cadastrados" in nome_lower or "pacientes cadastrados" in nome_lower or "rel16" in nome_lower or "rel_16" in nome_lower):
-                    tipo_identificado = "(rel16) siga_amg"
-                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel17") and ("atividade_coletiva_por_profissional" in nome_lower or "atividade_coletiva" in nome_lower or "atividade" in nome_lower or "rel134" in nome_lower or "rel_134" in nome_lower):
-                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
-                elif tipo_relatorio == "rel09":
-                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
-                elif tipo_relatorio == "rel15":
-                    tipo_identificado = "(rel135) penha"
-                elif tipo_relatorio == "rel16":
-                    tipo_identificado = "(rel16) siga_amg"
-                elif tipo_relatorio == "rel17":
-                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
-
-                if tipo_identificado:
+                    erros.append(f"Erro ao descompactar ou ler o arquivo ZIP '{nome_arq}': {e}")
+            else:
+                # 2. Arquivos Descompactados (.CSV, .XLSX, .XLS, .DBF, .TXT, .HTML, BPA, RAAS, etc.)
+                tipo_chave, nome_amigavel = _identificar_tipo_relatorio(nome_arq, tipo_relatorio)
+                if tipo_chave:
                     ext = os.path.splitext(nome_arq)[1]
-                    ok, av, er = _processar_arquivo_tabela_dtic(
-                        arquivo, nome_arq, tipo_identificado, ext, periodo_form, modo_estrito, desc_periodo_alvo
+                    ok, av, er = _processar_arquivo_tabular(
+                        arquivo, nome_arq, tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo
                     )
                     if ok:
                         sucessos += 1
@@ -1554,125 +1665,6 @@ def upload_dtic():
                         erros.append(er)
                 else:
                     avisos.append(f"O arquivo '{nome_arq}' não pôde ser identificado automaticamente. Selecione o tipo de relatório no menu.")
-
-            # 4. Arquivos Compactados (.ZIP)
-            elif nome_lower.endswith('.zip'):
-                nome_zip = nome_lower
-                
-                # Identifica se é ZIP do BPA
-                if "bpa" in nome_zip or tipo_relatorio == "rel02":
-                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
-                        for nome_arq_zip in zip_ref.namelist():
-                            nl_zip = nome_arq_zip.lower()
-                            if nl_zip.endswith('.dbf'):
-                                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                                caminho_temp = os.path.join(pasta_destino, os.path.basename(nome_arq_zip))
-                                with open(caminho_temp, "wb") as f_out:
-                                    f_out.write(zip_ref.read(nome_arq_zip))
-                                from services.etl import processa_bpa_dbf
-                                try:
-                                    res_etl = processa_bpa_dbf(caminho_temp, periodo=periodo_form)
-                                    if res_etl:
-                                        sucessos += 1
-                                    elif modo_estrito and periodo_form:
-                                        avisos.append(f"O arquivo '{nome_arq_zip}' (do ZIP '{nome_arq}') não contém dados para a competência {desc_periodo_alvo}.")
-                                except Exception as e:
-                                    erros.append(f"Erro ao processar DBF '{nome_arq_zip}': {e}")
-                                    print(f"Erro ao processar DBF do ZIP {nome_arq_zip}: {e}")
-                                finally:
-                                    if os.path.exists(caminho_temp):
-                                        try:
-                                            os.remove(caminho_temp)
-                                        except Exception:
-                                            pass
-                            elif os.path.basename(nl_zip).startswith('pa'):
-                                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                                caminho_temp = os.path.join(pasta_destino, os.path.basename(nome_arq_zip))
-                                with open(caminho_temp, "wb") as f_out:
-                                    f_out.write(zip_ref.read(nome_arq_zip))
-                                from services.etl import processa_bpa_pa
-                                try:
-                                    res_etl = processa_bpa_pa(caminho_temp, periodo=periodo_form)
-                                    if res_etl:
-                                        sucessos += 1
-                                    elif modo_estrito and periodo_form:
-                                        avisos.append(f"O arquivo '{nome_arq_zip}' (do ZIP '{nome_arq}') não contém dados para a competência {desc_periodo_alvo}.")
-                                except Exception as e:
-                                    erros.append(f"Erro ao processar BPA PA '{nome_arq_zip}': {e}")
-                                    print(f"Erro ao processar BPA PA do ZIP {nome_arq_zip}: {e}")
-                                finally:
-                                    if os.path.exists(caminho_temp):
-                                        try:
-                                            os.remove(caminho_temp)
-                                        except Exception:
-                                            pass
-                    continue
-                
-                # Identifica se é ZIP do RAAS
-                if "raas" in nome_zip or tipo_relatorio == "rel05":
-                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
-                        for nome_arq_zip in zip_ref.namelist():
-                            nl_zip = nome_arq_zip.lower()
-                            if "_erro" in nl_zip or "_protocolo" in nl_zip:
-                                continue
-                            if any(nl_zip.endswith(ext) for ext in ['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas', '.txt']) or os.path.basename(nl_zip).startswith('aa'):
-                                pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
-                                caminho_temp = os.path.join(pasta_destino, os.path.basename(nome_arq_zip))
-                                with open(caminho_temp, "wb") as f_out:
-                                    f_out.write(zip_ref.read(nome_arq_zip))
-                                
-                                from services.etl import processa_raas_arquivo
-                                try:
-                                    res_etl = processa_raas_arquivo(caminho_temp, periodo=periodo_form)
-                                    if res_etl:
-                                        sucessos += 1
-                                    elif modo_estrito and periodo_form:
-                                        avisos.append(f"O arquivo RAAS '{nome_arq_zip}' (do ZIP '{nome_arq}') não contém registros para a competência {desc_periodo_alvo}.")
-                                except Exception as e:
-                                    erros.append(f"Erro ao processar RAAS '{nome_arq_zip}': {e}")
-                                    print(f"Erro ao processar RAAS do ZIP {nome_arq_zip}: {e}")
-                                finally:
-                                    if os.path.exists(caminho_temp):
-                                        try:
-                                            os.remove(caminho_temp)
-                                        except Exception:
-                                            pass
-                    continue
-                
-                # Identifica por nome (regra das referências)
-                tipo_identificado = None
-                if (tipo_relatorio == "todos" or tipo_relatorio == "rel09") and "rel_sb_gestante_prev_parto" in nome_zip:
-                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
-                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel15") and "penha" in nome_zip:
-                    tipo_identificado = "(rel135) penha"
-                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel16") and ("amg" in nome_zip or "pacientes_cadastrados" in nome_zip or "pacientes cadastrados" in nome_zip):
-                    tipo_identificado = "(rel16) siga_amg"
-                elif (tipo_relatorio == "todos" or tipo_relatorio == "rel17") and "atividade_coletiva_por_profissional" in nome_zip:
-                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
-                elif tipo_relatorio == "rel09":
-                    tipo_identificado = "(rel114) rel_sb_gestante_prev_parto"
-                elif tipo_relatorio == "rel15":
-                    tipo_identificado = "(rel135) penha"
-                elif tipo_relatorio == "rel16":
-                    tipo_identificado = "(rel16) siga_amg"
-                elif tipo_relatorio == "rel17":
-                    tipo_identificado = "(rel134) atividade_coletiva_por_profissional"
-                
-                if tipo_identificado:
-                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
-                        for nome_arq_zip in zip_ref.namelist():
-                            if nome_arq_zip.endswith(('.csv', '.xls', '.xlsx')):
-                                ext = os.path.splitext(nome_arq_zip)[1]
-                                with zip_ref.open(nome_arq_zip) as fonte:
-                                    ok, av, er = _processar_arquivo_tabela_dtic(
-                                        fonte, nome_arq_zip, tipo_identificado, ext, periodo_form, modo_estrito, desc_periodo_alvo
-                                    )
-                                    if ok:
-                                        sucessos += 1
-                                    if av:
-                                        avisos.append(av)
-                                    if er:
-                                        erros.append(er)
                                 
         for av in avisos:
             flash(av, "warning")

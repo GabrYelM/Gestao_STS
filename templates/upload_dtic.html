@@ -35,17 +35,35 @@
                             <select class="form-select" name="tipo_relatorio" required>
                                 <option value="todos" selected>Todos os Relatórios (Auto-identificação)</option>
                                 <optgroup label="Arquivos Sistêmicos (BPA / RAAS)">
-                                    <option value="rel02">PAPENHA (BPA)</option>
-                                    <option value="rel05">Arquivos RAAS</option>
+                                    <option value="rel02">PAPENHA / BPA (Relatório 02)</option>
+                                    <option value="rel05">Arquivos RAAS CAPS (Relatório 05)</option>
                                 </optgroup>
                                 <optgroup label="Relatórios DTIC (ZIP / CSV / XLSX)">
-                                    <option value="rel09">Rel 114 (rel_sb_gestante_prev_parto_MM_AAAA)</option>
-                                    <option value="rel17">Rel 134 (ATIVIDADE_COLETIVA_POR_PROFISSIONAL_AAAAMMDD)</option>
-                                    <option value="rel15">Rel 135 (penha_AAAAMMDD)</option>
-                                    <option value="rel16">SIGA - AMG (Pacientes cadastrados por status)</option>
+                                    <option value="rel09">Rel 114 - Saúde Bucal Gestantes (Relatório 09)</option>
+                                    <option value="rel17">Rel 134 - Atividades Coletivas PSE (Relatório 17)</option>
+                                    <option value="rel15">Rel 135 - Acompanhamento Cadastro ESF (Relatório 15)</option>
+                                    <option value="rel16">SIGA - AMG (Pacientes Cadastrados - Relatório 16)</option>
+                                </optgroup>
+                                <optgroup label="Acompanhamento Pré-Natal (GAC / CG - Relatório 08)">
+                                    <option value="gac02">GAC-02 - Gestantes Ativas (Snapshot)</option>
+                                    <option value="cg01">CG-01 - Gestantes 7+ Consultas</option>
+                                    <option value="cg05">CG-05 - Total de Consultas Pré-Natal</option>
+                                    <option value="cg06">CG-06 - Exames de Pré-Natal</option>
+                                </optgroup>
+                                <optgroup label="Produção e Acesso SIGA">
+                                    <option value="at02">AT-02 - Produção por Especialidade / PICS (Relatórios 03 e 12)</option>
+                                    <option value="at03">AT-03 - Citopatológico / Papanicolau (Relatório 10)</option>
+                                    <option value="fe02">FE-02 - Fila de Espera (Relatório 11)</option>
+                                    <option value="vg02">VG-02 - Perda Primária (Relatório 13)</option>
+                                    <option value="ag04">AG-04 - Absenteísmo / Perda Secundária (Relatório 14)</option>
+                                    <option value="vg04">VG-04 - Oferta de Vagas (Relatório 04)</option>
+                                </optgroup>
+                                <optgroup label="Painel de Monitoramento (HTML)">
+                                    <option value="rel06">Painel de Monitoramento STS Penha (Relatório 06)</option>
+                                    <option value="rel07">Painel de Monitoramento por Estabelecimento (Relatório 07)</option>
                                 </optgroup>
                             </select>
-                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, .CSV, .XLSX, PAPENHA, .JUL, .AGO, etc.).</small>
+                            <small class="text-muted">A opção "Todos" identifica os relatórios automaticamente pelo nome ou formato do arquivo (.ZIP, .CSV, .XLSX, PAPENHA, .JUL, .AGO, .HTML, etc.).</small>
                         </div>
 
                         <div class="mb-3">
@@ -75,14 +93,14 @@
                         </div>
                         
                         <div class="mb-4">
-                            <label class="form-label fw-bold">Arquivos (ZIP, CSV, XLSX, BPA, RAAS)</label>
+                            <label class="form-label fw-bold">Arquivos (ZIP, CSV, XLSX, BPA, RAAS, HTML)</label>
                             
                             <!-- Área de Arrastar e Soltar -->
                             <div id="dropzone" class="p-4 border border-2 border-primary rounded text-center bg-light" style="border-style: dashed !important; cursor: pointer; transition: 0.3s;">
                                 <i class="bi bi-cloud-arrow-up display-4 text-primary"></i>
                                 <p class="mt-2 mb-1 fs-5">Arraste seus arquivos para cá</p>
-                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos compactados (.ZIP) ou descompactados (.CSV, .XLSX, .XLS, .DBF, PAPENHA, RAAS).</small>
-                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf,.jul,.ago,.set,.out,.nov,.dez,.jan,.fev,.mar,.abr,.mai,.jun,.txt,.raas,.csv,.xlsx,.xls" multiple>
+                                <small class="text-muted">ou clique para selecionar. Você pode enviar arquivos compactados (.ZIP) ou descompactados (.CSV, .XLSX, .XLS, .DBF, .HTML, PAPENHA, RAAS).</small>
+                                <input class="d-none" type="file" id="inputArquivos" name="arquivos" accept=".zip,.dbf,.jul,.ago,.set,.out,.nov,.dez,.jan,.fev,.mar,.abr,.mai,.jun,.txt,.raas,.csv,.xlsx,.xls,.html,.htm" multiple>
                             </div>
                             
                             <!-- Lista Visual dos Arquivos Acumulados -->
@@ -451,7 +469,7 @@
     }
 
     function adicionarArquivos(arquivosNovos) {
-        const extensoesValidas = ['.zip', '.dbf', '.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.txt', '.raas', '.csv', '.xlsx', '.xls'];
+        const extensoesValidas = ['.zip', '.dbf', '.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.txt', '.raas', '.csv', '.xlsx', '.xls', '.html', '.htm'];
         for (let i = 0; i < arquivosNovos.length; i++) {
             let nomeLower = arquivosNovos[i].name.toLowerCase();
             if(extensoesValidas.some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa') || nomeLower.startsWith('pa')) {
@@ -499,6 +517,8 @@
                     icone = '<i class="bi bi-file-earmark-spreadsheet text-success me-2 fs-5"></i>';
                 } else if (nomeLower.endsWith('.csv') || nomeLower.endsWith('.xlsx') || nomeLower.endsWith('.xls')) {
                     icone = '<i class="bi bi-file-earmark-excel text-success me-2 fs-5"></i>';
+                } else if (nomeLower.endsWith('.html') || nomeLower.endsWith('.htm')) {
+                    icone = '<i class="bi bi-filetype-html text-danger me-2 fs-5"></i>';
                 } else if (['.jul', '.ago', '.set', '.out', '.nov', '.dez', '.jan', '.fev', '.mar', '.abr', '.mai', '.jun', '.raas'].some(ext => nomeLower.endsWith(ext)) || nomeLower.startsWith('aa') || nomeLower.includes('raas')) {
                     icone = '<i class="bi bi-hospital text-primary me-2 fs-5"></i>';
                 }

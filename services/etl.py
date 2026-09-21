@@ -72,7 +72,7 @@ def read_clean_csv(caminho, primeira_coluna):
             norm_linha = _normalizar_str(linha)
             if 'reporttitle' in norm_linha or 'rdl' in norm_linha or 'filto' in norm_linha or 'filtro' in norm_linha or 'hierarquia' in norm_linha or 'data da extra' in norm_linha:
                 continue
-            if linha.count(';') >= 4 and any(k in norm_linha for k in ['numeroanomes', 'codigocnes', 'cbo', 'procedimento', 'especialidade', 'nmmunicipio', 'nmcoordenadoria', 'faixaetaria']):
+            if linha.count(';') >= 4 and any(k in norm_linha for k in ['numeroanomes', 'codigocnes', 'cbo', 'procedimento', 'especialidade', 'nmmunicipio', 'nmcoordenadoria', 'faixaetaria', 'supervisao', 'statusatual', 'unidade']):
                 inicio = i
                 break
             
@@ -89,8 +89,38 @@ def read_clean_csv(caminho, primeira_coluna):
         
     return df
 
+def read_clean_tabular(caminho, primeira_coluna=None):
+    """
+    Lê de forma limpa arquivos tabulares em CSV, TXT, XLS ou XLSX.
+    Identifica automaticamente a linha de cabeçalho ignorando metadados de relatórios do SSRS/SIGA.
+    """
+    caminho_str = str(caminho).lower()
+    if caminho_str.endswith(('.xlsx', '.xls')):
+        try:
+            with pd.ExcelFile(caminho) as xl:
+                sheet = xl.sheet_names[0]
+                df_sample = pd.read_excel(xl, sheet_name=sheet, header=None, nrows=30)
+                skip = 0
+                norm_primeira = _normalizar_str(primeira_coluna) if primeira_coluna else ''
+                for idx, row in df_sample.iterrows():
+                    row_str = " ".join([str(v) for v in row.dropna()])
+                    norm_row = _normalizar_str(row_str)
+                    if 'reporttitle' in norm_row or 'filto' in norm_row or 'filtro' in norm_row or 'hierarquia' in norm_row or 'data da extra' in norm_row:
+                        continue
+                    if norm_primeira and norm_primeira in norm_row:
+                        skip = idx
+                        break
+                    if not norm_primeira and any(k in norm_row for k in ['numeroanomes', 'codigocnes', 'cbo', 'procedimento', 'especialidade', 'municipio', 'coordenadoria', 'faixaetaria', 'supervisao', 'statusatual', 'unidade']):
+                        skip = idx
+                        break
+                df = pd.read_excel(xl, sheet_name=sheet, skiprows=skip)
+                return df
+        except Exception as e:
+            print(f"Tentativa de leitura Excel de {caminho} falhou, tentando como CSV: {e}")
+    return read_clean_csv(caminho, primeira_coluna)
+
 def processa_ag04(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Nome_Mes1')
+    df = read_clean_tabular(caminho, 'Nome_Mes1')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -116,6 +146,8 @@ def processa_ag04(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in ['ano_mes', 'tipo_agenda', 'estabelecimento', 'cnes', 'especialidade', 'tipo_atendimento_agenda', 'procedimento', 'situacao_agendamento', 'tipo_entidade', 'quantidade_agendamento'] if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
@@ -124,12 +156,13 @@ def processa_ag04(caminho, periodo=None):
             db.session.execute(text(f"DELETE FROM 'AG-04' WHERE ano_mes = {periodo}"))
             db.session.commit()
             df_limpo.to_sql(name='AG-04', con=db.engine, if_exists='append', index=False)
-            registrar_competencia('13', periodo)
+            registrar_competencia('14', periodo)
 
     print('AG-04 carregado')
+    return True
 
 def processa_at02(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Número_Ano_Mes__AAAAMM_')
+    df = read_clean_tabular(caminho, 'Número_Ano_Mes__AAAAMM_')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -159,10 +192,15 @@ def processa_at02(caminho, periodo=None):
     col = [c for c in cols_desejadas if c in df.columns]
     df_limpo = df[col].copy()
 
+    if df_limpo.empty:
+        return False
+
     # Validação estrita de ano_mes
     df_limpo = df_limpo.dropna(subset=['ano_mes', 'cnes']).copy()
     df_limpo['ano_mes_str'] = df_limpo['ano_mes'].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
     df_limpo = df_limpo[df_limpo['ano_mes_str'].str.match(r'^202[0-9](0[1-9]|1[0-2])$')].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['ano_mes'] = df_limpo['ano_mes_str'].astype(int)
     df_limpo = df_limpo.drop(columns=['ano_mes_str'])
 
@@ -184,9 +222,10 @@ def processa_at02(caminho, periodo=None):
             registrar_competencias_lote('12', meses_no_arquivo)
 
     print('AT-02 carregado')
+    return True
 
 def processa_at03(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Nome_Mes')
+    df = read_clean_tabular(caminho, 'Nome_Mes')
 
     traduz_col = {
         'Número_Ano': 'ano',
@@ -203,6 +242,8 @@ def processa_at03(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in ['ano', 'mes', 'sts', 'estabelecimento', 'faixa_etaria', 'nome_cbo', 'nome_procedimento', 'sexo', 'quantidade_procedimento'] if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
@@ -258,9 +299,10 @@ def processa_at03(caminho, periodo=None):
                     registrar_competencia('10', str(comp_val))
 
     print('AT-03 e REL-10 carregados com sucesso')
+    return True
 
 def processa_fe02(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Nome_Mes6')
+    df = read_clean_tabular(caminho, 'Nome_Mes6')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -283,6 +325,8 @@ def processa_fe02(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in ['ano_mes', 'sts', 'estabelecimento', 'cnes', 'nome_procedimento', 'nome_especialidade', 'entrou_em_espera', 'saiu_da_espera', 'pacientes_ativos'] if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
@@ -294,9 +338,10 @@ def processa_fe02(caminho, periodo=None):
             registrar_competencia('11', periodo)
 
     print('FE-02 carregado')
+    return True
 
 def processa_vg02(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Nome_Mes')
+    df = read_clean_tabular(caminho, 'Nome_Mes')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -319,6 +364,8 @@ def processa_vg02(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in ['ano_mes', 'cnes', 'estabelecimento', 'procedimento', 'nome_especialidade', 'tipo_agenda', 'tipo_atendimento_agenda', 'situacao_vaga', 'qtde_vaga_ofertada'] if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
@@ -327,12 +374,13 @@ def processa_vg02(caminho, periodo=None):
             db.session.execute(text(f"DELETE FROM 'VG-02' WHERE ano_mes = {periodo}"))
             db.session.commit()
             df_limpo.to_sql(name='VG-02', con=db.engine, if_exists='append', index=False)
-            registrar_competencia('14', periodo)
+            registrar_competencia('13', periodo)
 
     print('VG-02 carregado')
+    return True
 
 def processa_vg04(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'Nome_Mes_')
+    df = read_clean_tabular(caminho, 'Nome_Mes_')
 
     traduz_col = {
         'Número_Ano_Mes__AAAAMM_': 'ano_mes',
@@ -360,6 +408,8 @@ def processa_vg04(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in ['ano_mes', 'tipo_agenda', 'tipo_atendimento_agenda', 'nome_procedimento', 'nome_especialidade', 'cnes', 'estabelecimento', 'entidade', 'qtde_vaga_ofertada', 'qtde_agendamento', 'qtde_atendimento'] if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     with app.app_context():
@@ -371,9 +421,10 @@ def processa_vg04(caminho, periodo=None):
             registrar_competencia('04', periodo)
 
     print('VG-04 carregado')
+    return True
 
 def processa_cg01(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'nm_municipio3')
+    df = read_clean_tabular(caminho, 'nm_municipio3')
 
     traduz_col = {
         'nm_estabelecimento3': 'estabelecimento',
@@ -385,6 +436,8 @@ def processa_cg01(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
     
     if not periodo:
@@ -398,9 +451,10 @@ def processa_cg01(caminho, periodo=None):
         df_limpo.to_sql(name='CG-01', con=db.engine, if_exists='append', index=False)
 
     print('CG-01 carregado')
+    return True
 
 def processa_cg05(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'nm_coordenadoria_regional')
+    df = read_clean_tabular(caminho, 'nm_coordenadoria_regional')
 
     traduz_col = {
         'cd_cnes': 'cnes',
@@ -420,6 +474,8 @@ def processa_cg05(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     if not periodo:
@@ -433,9 +489,10 @@ def processa_cg05(caminho, periodo=None):
         df_limpo.to_sql(name='CG-05', con=db.engine, if_exists='append', index=False)
 
     print('CG-05 carregado')
+    return True
 
 def processa_cg06(caminho, periodo=None):
-    df = read_clean_csv(caminho, 'nm_coordenadoria_regional')
+    df = read_clean_tabular(caminho, 'nm_coordenadoria_regional')
 
     traduz_col = {
         'cd_cnes': 'cnes',
@@ -459,6 +516,8 @@ def processa_cg06(caminho, periodo=None):
     df = renomear_colunas_flexivel(df, traduz_col)
     col = [c for c in traduz_col.values() if c in df.columns]
     df_limpo = df[col].copy()
+    if df_limpo.empty:
+        return False
     df_limpo['data_extracao'] = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     if not periodo:
@@ -472,27 +531,28 @@ def processa_cg06(caminho, periodo=None):
         df_limpo.to_sql(name='CG-06', con=db.engine, if_exists='append', index=False)
 
     print('CG-06 carregado')
+    return True
 
 def processa_gac02(caminho, periodo=None):
     data_exec_encontrada = None
     if str(caminho).lower().endswith(('.xlsx', '.xls')):
         # Leitura flexível de Excel (compatível com os exports do SIGA com cabeçalhos de execução)
-        xl = pd.ExcelFile(caminho)
-        sheet = 'GAC02 - Gestantes ativas' if 'GAC02 - Gestantes ativas' in xl.sheet_names else xl.sheet_names[0]
-        df_sample = pd.read_excel(caminho, sheet_name=sheet, header=None, nrows=10)
-        skip = 0
-        for idx, row in df_sample.iterrows():
-            row_str = " ".join([str(v) for v in row.dropna()])
-            if "execu" in row_str.lower():
-                import re
-                m = re.search(r'(\d{2})/(\d{2})/(\d{4})', row_str)
-                if m:
-                    d_e, m_e, a_e = m.groups()
-                    data_exec_encontrada = f"{a_e}-{m_e}-{d_e}"
-            if "municipio" in row_str.lower():
-                skip = idx
-                break
-        df = pd.read_excel(caminho, sheet_name=sheet, skiprows=skip)
+        with pd.ExcelFile(caminho) as xl:
+            sheet = 'GAC02 - Gestantes ativas' if 'GAC02 - Gestantes ativas' in xl.sheet_names else xl.sheet_names[0]
+            df_sample = pd.read_excel(xl, sheet_name=sheet, header=None, nrows=10)
+            skip = 0
+            for idx, row in df_sample.iterrows():
+                row_str = " ".join([str(v) for v in row.dropna()])
+                if "execu" in row_str.lower():
+                    import re
+                    m = re.search(r'(\d{2})/(\d{2})/(\d{4})', row_str)
+                    if m:
+                        d_e, m_e, a_e = m.groups()
+                        data_exec_encontrada = f"{a_e}-{m_e}-{d_e}"
+                if "municipio" in row_str.lower():
+                    skip = idx
+                    break
+            df = pd.read_excel(xl, sheet_name=sheet, skiprows=skip)
     else:
         # Leitura de CSV com detecção de cabeçalho de execução do SIGA
         import re
@@ -532,15 +592,18 @@ def processa_gac02(caminho, periodo=None):
         df_limpo['qtde_consultas'] = pd.to_numeric(df_limpo['qtde_consultas'], errors='coerce').fillna(0).astype(int)
 
     import calendar
-    if data_exec_encontrada:
-        data_referencia = data_exec_encontrada
-        mes_filtro = data_exec_encontrada[:7]
-    elif periodo:
+    if periodo:
         ano_str = str(periodo)[:4]
         mes_str = str(periodo)[4:6]
         ultimo_dia = calendar.monthrange(int(ano_str), int(mes_str))[1]
         mes_filtro = f"{ano_str}-{mes_str}"
-        data_referencia = f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
+        if data_exec_encontrada and data_exec_encontrada.startswith(mes_filtro):
+            data_referencia = data_exec_encontrada
+        else:
+            data_referencia = f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
+    elif data_exec_encontrada:
+        data_referencia = data_exec_encontrada
+        mes_filtro = data_exec_encontrada[:7]
     else:
         data_referencia = datetime.today().strftime('%Y-%m-%d')
         mes_filtro = datetime.today().strftime('%Y-%m')
@@ -555,9 +618,10 @@ def processa_gac02(caminho, periodo=None):
         registrar_competencia('08', mes_filtro.replace('-', ''))
 
     print(f'GAC-02 carregado para a competência {mes_filtro} (Data: {data_referencia})')
+    return True
 
 def processa_rel114(caminho, periodo=None):
-    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+    df = read_clean_tabular(caminho, 'CNES_ESTAB_ACOLHIMENTO')
         
     traduz_col = {
         'CNES_ESTAB_ACOLHIMENTO': 'cnes_estab_acolhimento',
@@ -580,7 +644,7 @@ def processa_rel114(caminho, periodo=None):
         'DATA_ULTIMO_ATENDIMENTO': 'data_ultimo_atendimento'
     }
 
-    df = df.rename(columns=traduz_col)
+    df = renomear_colunas_flexivel(df, traduz_col)
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
@@ -637,7 +701,7 @@ def processa_rel134(caminho, periodo=None):
     from datetime import datetime
     from dateutil.relativedelta import relativedelta
 
-    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+    df = read_clean_tabular(caminho, 'supervisao')
         
     # Filtrado para manter apenas colunas essenciais para o Relatório 17 e histórico base, reduzindo o peso do BD
     traduz_col = {
@@ -652,7 +716,7 @@ def processa_rel134(caminho, periodo=None):
         'data_atividade': 'data_atividade'
     }
 
-    df = df.rename(columns=traduz_col)
+    df = renomear_colunas_flexivel(df, traduz_col)
     
     # Filtrar para Supervisão Penha se a coluna estiver presente
     if 'supervisao' in df.columns:
@@ -707,7 +771,7 @@ def processa_rel134(caminho, periodo=None):
     return True
 
 def processa_rel16(caminho, periodo=None):
-    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+    df = read_clean_tabular(caminho, 'STATUS_ATUAL')
         
     traduz_col = {
         'STATUS_ATUAL': 'status_atual',
@@ -733,7 +797,7 @@ def processa_rel16(caminho, periodo=None):
         'OSS': 'oss'
     }
 
-    df = df.rename(columns=traduz_col)
+    df = renomear_colunas_flexivel(df, traduz_col)
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
@@ -775,7 +839,7 @@ def processa_rel16(caminho, periodo=None):
     return True
 
 def processa_rel135(caminho, periodo=None):
-    df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
+    df = read_clean_tabular(caminho, 'unidade')
         
     traduz_col = {
         'unidade': 'unidade', 
@@ -785,7 +849,7 @@ def processa_rel135(caminho, periodo=None):
         'nome_cidadao': 'nome_cidadao'
     }
 
-    df = df.rename(columns=traduz_col)
+    df = renomear_colunas_flexivel(df, traduz_col)
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
