@@ -474,13 +474,13 @@ def processa_cg06(caminho, periodo=None):
     print('CG-06 carregado')
 
 def processa_gac02(caminho, periodo=None):
+    data_exec_encontrada = None
     if str(caminho).lower().endswith(('.xlsx', '.xls')):
         # Leitura flexível de Excel (compatível com os exports do SIGA com cabeçalhos de execução)
         xl = pd.ExcelFile(caminho)
         sheet = 'GAC02 - Gestantes ativas' if 'GAC02 - Gestantes ativas' in xl.sheet_names else xl.sheet_names[0]
         df_sample = pd.read_excel(caminho, sheet_name=sheet, header=None, nrows=10)
         skip = 0
-        data_exec_encontrada = None
         for idx, row in df_sample.iterrows():
             row_str = " ".join([str(v) for v in row.dropna()])
             if "execu" in row_str.lower():
@@ -494,8 +494,23 @@ def processa_gac02(caminho, periodo=None):
                 break
         df = pd.read_excel(caminho, sheet_name=sheet, skiprows=skip)
     else:
+        # Leitura de CSV com detecção de cabeçalho de execução do SIGA
+        import re
+        try:
+            with open(caminho, 'r', encoding='latin1') as fp:
+                for _ in range(10):
+                    line = fp.readline()
+                    if not line:
+                        break
+                    if "execu" in line.lower():
+                        m = re.search(r'(\d{2})/(\d{2})/(\d{4})', line)
+                        if m:
+                            d_e, m_e, a_e = m.groups()
+                            data_exec_encontrada = f"{a_e}-{m_e}-{d_e}"
+                            break
+        except Exception:
+            pass
         df = read_clean_csv(caminho, 'municipio')
-        data_exec_encontrada = None
 
     traduz_col = {
         'cnes': 'cnes',
@@ -512,23 +527,20 @@ def processa_gac02(caminho, periodo=None):
 
     # Tipagem limpa
     if 'cnes' in df_limpo.columns:
-        df_limpo['cnes'] = pd.to_numeric(df_limpo['cnes'], errors='coerce').fillna(0).astype(int)
+        df_limpo['cnes'] = pd.to_numeric(df_limpo['cnes'].astype(str).str.replace('.', '', regex=False).str.strip(), errors='coerce').fillna(0).astype(int)
     if 'qtde_consultas' in df_limpo.columns:
         df_limpo['qtde_consultas'] = pd.to_numeric(df_limpo['qtde_consultas'], errors='coerce').fillna(0).astype(int)
 
     import calendar
-    if periodo:
+    if data_exec_encontrada:
+        data_referencia = data_exec_encontrada
+        mes_filtro = data_exec_encontrada[:7]
+    elif periodo:
         ano_str = str(periodo)[:4]
         mes_str = str(periodo)[4:6]
         ultimo_dia = calendar.monthrange(int(ano_str), int(mes_str))[1]
         mes_filtro = f"{ano_str}-{mes_str}"
-        if data_exec_encontrada and data_exec_encontrada.startswith(mes_filtro):
-            data_referencia = data_exec_encontrada
-        else:
-            data_referencia = f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
-    elif data_exec_encontrada:
-        data_referencia = data_exec_encontrada
-        mes_filtro = data_exec_encontrada[:7]
+        data_referencia = f"{ano_str}-{mes_str}-{str(ultimo_dia).zfill(2)}"
     else:
         data_referencia = datetime.today().strftime('%Y-%m-%d')
         mes_filtro = datetime.today().strftime('%Y-%m')
@@ -621,10 +633,15 @@ def processa_rel114(caminho, periodo=None):
     return True
 
 def processa_rel134(caminho, periodo=None):
+    import re, os
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+
     df = pd.read_csv(caminho, sep=';', encoding='latin1', low_memory=False)
         
     # Filtrado para manter apenas colunas essenciais para o Relatório 17 e histórico base, reduzindo o peso do BD
     traduz_col = {
+        'supervisao': 'supervisao',
         'nome_unidade': 'nome_unidade',
         'inep': 'inep',
         'nome_instituicao': 'nome_instituicao',
@@ -636,58 +653,56 @@ def processa_rel134(caminho, periodo=None):
     }
 
     df = df.rename(columns=traduz_col)
+    
+    # Filtrar para Supervisão Penha se a coluna estiver presente
+    if 'supervisao' in df.columns:
+        df = df[df['supervisao'].astype(str).str.upper().str.contains('PENHA')].copy()
+
     colunas_presentes = [col for col in traduz_col.values() if col in df.columns]
     df_limpo = df[colunas_presentes].copy()
 
-    # 1. Determina o ano_mes a partir de data_atividade ou ano/mes real de cada registro
-    if 'data_atividade' in df_limpo.columns:
-        dt_series = pd.to_datetime(df_limpo['data_atividade'], format='%d/%m/%Y', errors='coerce')
-        df_limpo['ano_mes'] = dt_series.dt.strftime('%Y%m')
-    
-    # Preenche eventuais nulos a partir das colunas ano e mes
-    if 'ano' in df_limpo.columns and 'mes' in df_limpo.columns:
-        ano_mes_fallback = df_limpo['ano'].astype(str).str.strip().str.zfill(4) + df_limpo['mes'].astype(str).str.strip().str.zfill(2)
-        if 'ano_mes' not in df_limpo.columns:
-            df_limpo['ano_mes'] = ano_mes_fallback
-        else:
-            df_limpo['ano_mes'] = df_limpo['ano_mes'].fillna(ano_mes_fallback)
-
-    # Remove registros sem ano_mes válido
-    df_limpo = df_limpo[df_limpo['ano_mes'].notna() & (df_limpo['ano_mes'].astype(str).str.len() == 6)]
-
     if df_limpo.empty:
-        print("Aviso: Nenhuma data de atividade válida encontrada no arquivo REL-134.")
+        print("Aviso: Arquivo REL-134 vazio.")
         return False
+
+    # 1. Determina a competência alvo (cada arquivo de extração do REL 134 representa o lote do mês de fechamento)
+    if periodo and str(periodo).strip() != 'auto':
+        comp_alvo = str(periodo).strip().replace('-', '').replace('/', '')
+    else:
+        nome_base = os.path.basename(caminho).lower()
+        # Procura data no padrão AAAAMMDD no nome do arquivo
+        m_dt = re.search(r'202[0-9][0-1][0-9][0-3][0-9]', nome_base)
+        if m_dt:
+            dt_ext = datetime.strptime(m_dt.group(0), '%Y%m%d')
+            # Extrações feitas até dia 25 do mês referem-se à competência do mês anterior
+            if dt_ext.day <= 25:
+                comp_alvo = (dt_ext - relativedelta(months=1)).strftime('%Y%m')
+            else:
+                comp_alvo = dt_ext.strftime('%Y%m')
+        else:
+            # Fallback por data_atividade / ano e mes majoritário
+            comp_alvo = None
+            if 'data_atividade' in df_limpo.columns:
+                dt_series = pd.to_datetime(df_limpo['data_atividade'], format='%d/%m/%Y', errors='coerce').dropna()
+                if not dt_series.empty:
+                    comp_alvo = dt_series.dt.strftime('%Y%m').value_counts().index[0]
+            if not comp_alvo:
+                comp_alvo = datetime.now().strftime('%Y%m')
 
     agora_str = datetime.now().strftime('%Y-%m-%d %H:%M')
     df_limpo['data_extracao'] = agora_str
+    df_limpo['ano_mes'] = comp_alvo
 
     with app.app_context():
-        if periodo:
-            comp_alvo = str(periodo).strip()
-            df_salvar = df_limpo[df_limpo['ano_mes'].astype(str) == comp_alvo].copy()
-            if df_salvar.empty:
-                print(f"Aviso: Nenhuma atividade encontrada no arquivo para a competência {comp_alvo}.")
-                return False
-            try:
-                db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp_alvo}'"))
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-            df_salvar.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
-            registrar_competencia('17', comp_alvo)
-            print(f'REL-134 carregado com sucesso para a competência {comp_alvo}! ({len(df_salvar)} registros)')
-        else:
-            competencias_encontradas = df_limpo['ano_mes'].astype(str).unique().tolist()
-            for comp in competencias_encontradas:
-                try:
-                    db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp}'"))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-            df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
-            registrar_competencias_lote('17', competencias_encontradas)
-            print(f'REL-134 carregado com sucesso para as competências: {competencias_encontradas}! ({len(df_limpo)} registros)')
+        try:
+            db.session.execute(text(f"DELETE FROM 'REL-134' WHERE ano_mes = '{comp_alvo}'"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            
+        df_limpo.to_sql(name='REL-134', con=db.engine, if_exists='append', index=False)
+        registrar_competencia('17', comp_alvo)
+        print(f'REL-134 carregado com sucesso para a competência {comp_alvo}! ({len(df_limpo)} registros)')
 
     return True
 

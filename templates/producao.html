@@ -501,6 +501,8 @@ div.dt-button-collection button.dt-button:hover {
                     <i class="bi bi-person-x me-2"></i>14. Relatório de Absenteísmo por Estabelecimento e Especialidade (AG-04)
                 {% elif relatorio_selecionado == '15' %}
                     <i class="bi bi-people me-2"></i>15. Relatório de Acompanhamento de Cadastro Individual ESF (REL-135)
+                {% elif relatorio_selecionado == '17' %}
+                    <i class="bi bi-mortarboard-fill me-2"></i>17. Temas Abordados pelas Equipes de Saúde no PSE nas Escolas (REL-134)
                 {% else %}
                     Resultado:
                 {% endif %}
@@ -3421,30 +3423,259 @@ div.dt-button-collection button.dt-button:hover {
 
 {% if relatorio_selecionado == '17' %}
 <style>
-    /* Permite quebra de linha nos cabeçalhos e limita a largura */
-    #tabela-dinamica th {
+    /* Padronização Oficial do Relatório 17 (PSE - REL-134): 3 Colunas Fixas e Temas na Vertical */
+    #tabela-dinamica {
+        width: max-content !important;
+        min-width: 100% !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        table-layout: fixed !important;
+    }
+
+    #tabela-dinamica thead th:before,
+    #tabela-dinamica thead th:after {
+        display: none !important;
+    }
+    #tabela-dinamica thead th.sorting,
+    #tabela-dinamica thead th.sorting_asc,
+    #tabela-dinamica thead th.sorting_desc {
+        padding-right: 4px !important;
+    }
+
+    /* ------------------------------------------------------------- */
+    /* 1. Três Colunas Iniciais de Identificação (Congeladas / Sticky)*/
+    /* ------------------------------------------------------------- */
+    /* Coluna 1: UNIDADE */
+    #tabela-dinamica th:nth-child(1), #tabela-dinamica td:nth-child(1) {
+        width: 220px !important;
+        min-width: 220px !important;
+        max-width: 220px !important;
+        position: sticky !important;
+        left: 0px !important;
+        box-sizing: border-box !important;
         white-space: normal !important;
-        word-wrap: break-word;
-        word-break: normal;
-        overflow-wrap: break-word;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 1px solid #dee2e6 !important;
     }
-    #tabela-dinamica th:nth-child(n+4) {
-        width: 140px !important;
-        min-width: 130px !important;
-        max-width: 160px !important;
-        vertical-align: bottom;
-        text-align: center;
-        font-size: 0.85rem;
+
+    /* Coluna 2: INEP */
+    #tabela-dinamica th:nth-child(2), #tabela-dinamica td:nth-child(2) {
+        width: 95px !important;
+        min-width: 95px !important;
+        max-width: 95px !important;
+        position: sticky !important;
+        left: 220px !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+        border-right: 1px solid #dee2e6 !important;
     }
-    #tabela-dinamica td:nth-child(n+4) {
-        text-align: center;
+
+    /* Coluna 3: ESCOLA / INSTITUIÇÃO */
+    #tabela-dinamica th:nth-child(3), #tabela-dinamica td:nth-child(3) {
+        width: 260px !important;
+        min-width: 260px !important;
+        max-width: 260px !important;
+        position: sticky !important;
+        left: 315px !important;
+        box-sizing: border-box !important;
+        white-space: normal !important;
+        line-height: 1.2 !important;
+        word-break: break-word !important;
+        border-right: 2px solid #adb5bd !important;
     }
-    /* Evita que o dropdown estique a coluna e impeça a quebra de texto */
-    #tabela-dinamica th:nth-child(n+4) select {
+
+    /* Z-Index e Cores para elementos Sticky das 3 Colunas Iniciais */
+    #tabela-dinamica thead th:nth-child(-n+3) {
+        z-index: 5 !important;
+        background-color: #f8f9fa !important;
+        vertical-align: middle !important;
+        padding: 6px 8px !important;
+        height: 340px !important;
+        box-sizing: border-box !important;
+        border-bottom: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica tbody td:nth-child(-n+3) {
+        z-index: 2 !important;
+        background-color: #ffffff !important;
+        padding: 4px 8px !important;
+        font-size: 0.82rem !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(-n+3) {
+        z-index: 5 !important;
+        background-color: #cfe2ff !important;
+        padding: 6px 8px !important;
+    }
+
+    /* Containers de Cabeçalho das 3 Primeiras Colunas */
+    #tabela-dinamica thead th:nth-child(-n+3) .header-excel-container {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
         width: 100% !important;
-        max-width: 130px !important;
-        margin-top: 10px;
-        font-size: 0.75rem;
+        height: 100% !important;
+        gap: 4px !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+3) .header-text {
+        font-size: 0.82rem !important;
+        font-weight: 700 !important;
+        line-height: 1.2 !important;
+        color: #212529 !important;
+    }
+    #tabela-dinamica thead th:nth-child(2) .header-text {
+        text-align: center !important;
+        width: 100% !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+3) .btn-excel-filter {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #6c757d !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        flex-shrink: 0 !important;
+        padding: 2px !important;
+    }
+    #tabela-dinamica thead th:nth-child(-n+3) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* ------------------------------------------------------------- */
+    /* 2. Colunas dos Temas de Saúde (Texto na Vertical / 4 em diante)*/
+    /* ------------------------------------------------------------- */
+    #tabela-dinamica thead th:nth-child(n+4) {
+        vertical-align: middle !important;
+        text-align: center !important;
+        padding: 8px 4px 6px 4px !important;
+        height: 340px !important;
+        min-width: 64px !important;
+        max-width: 85px !important;
+        width: 72px !important;
+        box-sizing: border-box !important;
+        background-color: #f8f9fa !important;
+        border-right: 1px solid #dee2e6 !important;
+        border-bottom: 2px solid #adb5bd !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+4) .header-excel-container {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 4px 0 2px 0 !important;
+        gap: 6px !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+4) .header-text,
+    #tabela-dinamica thead th:nth-child(n+4) .header-text.text-nowrap {
+        writing-mode: vertical-rl !important;
+        transform: rotate(180deg) !important;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+        text-align: center !important;
+        font-size: 0.74rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.2px !important;
+        line-height: 1.15 !important;
+        max-height: 300px !important;
+        color: #212529 !important;
+        display: inline-block !important;
+        margin: auto !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+4) .btn-excel-filter {
+        margin-top: 0 !important;
+        margin-bottom: 2px !important;
+        color: #6c757d !important;
+        font-size: 0.80rem !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 1px !important;
+        flex-shrink: 0 !important;
+    }
+    #tabela-dinamica thead th:nth-child(n+4) .btn-excel-filter:hover {
+        color: #0d6efd !important;
+    }
+
+    /* Células Numéricas dos Temas */
+    #tabela-dinamica tbody td:nth-child(n+4) {
+        text-align: right !important;
+        font-size: 0.82rem !important;
+        min-width: 64px !important;
+        max-width: 85px !important;
+        width: 72px !important;
+        padding: 4px 6px !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+        border: 1px solid #dee2e6 !important;
+    }
+
+    /* ------------------------------------------------------------- */
+    /* 3. Coluna de Total Geral (Última Coluna)                      */
+    /* ------------------------------------------------------------- */
+    #tabela-dinamica thead th:last-child {
+        background-color: #cfe2ff !important;
+        border-left: 2px solid #0d6efd !important;
+        min-width: 64px !important;
+        max-width: 85px !important;
+        width: 72px !important;
+    }
+    #tabela-dinamica thead th:last-child .header-text {
+        font-weight: 700 !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica thead th:last-child .btn-excel-filter {
+        color: #084298 !important;
+    }
+    #tabela-dinamica tbody td:last-child {
+        background-color: #f8fafc !important;
+        border-left: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        color: #0d6efd !important;
+        min-width: 64px !important;
+        max-width: 85px !important;
+        width: 72px !important;
+    }
+
+    /* ------------------------------------------------------------- */
+    /* 4. Linha de Rodapé com Totais Globais                         */
+    /* ------------------------------------------------------------- */
+    #tabela-dinamica tfoot tr {
+        background-color: #cfe2ff !important;
+        border-top: 2px solid #0d6efd !important;
+        font-weight: 700 !important;
+        font-size: 0.84rem !important;
+    }
+    #tabela-dinamica tfoot th {
+        vertical-align: middle !important;
+        padding: 6px 6px !important;
+        border: 1px solid #b6d4fe !important;
+        background-color: #cfe2ff !important;
+        color: #084298 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(1) {
+        text-align: left !important;
+        font-weight: 700 !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(2),
+    #tabela-dinamica tfoot th:nth-child(3) {
+        text-align: center !important;
+    }
+    #tabela-dinamica tfoot th:nth-child(n+4) {
+        text-align: right !important;
+        font-size: 0.80rem !important;
+        font-weight: 700 !important;
+        min-width: 48px !important;
+        max-width: 58px !important;
+        width: 48px !important;
+        padding: 6px 6px !important;
+        box-sizing: border-box !important;
+    }
+    #tabela-dinamica tfoot th:last-child {
+        border-left: 2px solid #0d6efd !important;
+        color: #084298 !important;
+        font-weight: 700 !important;
     }
 </style>
 {% endif %}
@@ -3896,6 +4127,24 @@ div.dt-button-collection button.dt-button:hover {
                 $('#tabela-dinamica').append(tfootHtml09);
             }
 
+            // Configuração para Relatório 17 (PSE - Atividades Coletivas): Quebra de múltiplos temas e rodapé de totais
+            if (relIndice === '17') {
+                for (var c = 3; c < tableCols.length; c++) {
+                    if (tableCols[c].data !== 'Total Geral') {
+                        tableCols[c].title = tableCols[c].data.replace(/\s*\|\s*/g, '<br>| ');
+                    }
+                }
+                var tfootHtml17 = '<tfoot><tr class="table-primary fw-bold" style="border-top: 2px solid #0d6efd;">';
+                tfootHtml17 += '<th class="text-start">TOTAL GERAL</th>';
+                tfootHtml17 += '<th class="text-center"></th>';
+                tfootHtml17 += '<th class="text-start"></th>';
+                for (var f = 3; f < tableCols.length; f++) {
+                    tfootHtml17 += '<th class="text-end"></th>';
+                }
+                tfootHtml17 += '</tr></tfoot>';
+                $('#tabela-dinamica').append(tfootHtml17);
+            }
+
             // Estatísticas e interpolação de cores para Escala Tricolor (Relatório 08 e 13)
             var statsCols08 = {};
             if (relIndice === '08') {
@@ -4292,7 +4541,7 @@ div.dt-button-collection button.dt-button:hover {
                             }, 0);
                             $(api.column(c).footer()).text(colTot.toLocaleString('pt-BR'));
                         }
-                    } else if (relIndice === '16') {
+                    } else if (relIndice === '16' || relIndice === '17') {
                         var api = this.api();
                         var intVal = function(i) {
                             if (typeof i === 'number') return i;
@@ -4303,7 +4552,11 @@ div.dt-button-collection button.dt-button:hover {
                             return 0;
                         };
                         $(api.column(0).footer()).text('TOTAL GERAL');
-                        for (var c = 1; c < tableCols.length; c++) {
+                        var startCol = (relIndice === '17') ? 3 : 1;
+                        for (var sc = 1; sc < startCol; sc++) {
+                            $(api.column(sc).footer()).text('');
+                        }
+                        for (var c = startCol; c < tableCols.length; c++) {
                             var colTot = api.column(c, { search: 'applied' }).data().reduce(function(a, b) {
                                 return intVal(a) + intVal(b);
                             }, 0);
@@ -4489,6 +4742,24 @@ div.dt-button-collection button.dt-button:hover {
                                 cellInt.addClass('text-end');
                             }
                         }
+                    } else if (relIndice === '17') {
+                        for (var ic = 3; ic < tableCols.length; ic++) {
+                            var cellInt = $('td', row).eq(ic);
+                            var colKey = tableCols[ic].data;
+                            var rawVal = data[colKey];
+                            var num = parseInt(rawVal, 10);
+                            cellInt.addClass('text-end');
+                            if (!isNaN(num)) {
+                                cellInt.text(num.toLocaleString('pt-BR'));
+                            }
+                            if (colKey === 'Total Geral' || ic === tableCols.length - 1) {
+                                cellInt.css({
+                                    'font-weight': '700',
+                                    'background-color': '#f8fafc',
+                                    'color': '#0d6efd'
+                                });
+                            }
+                        }
                     }
                 },
                 language: {
@@ -4511,7 +4782,7 @@ div.dt-button-collection button.dt-button:hover {
                         text: '<i class="bi bi-file-earmark-excel"></i> Exportar para Excel',
                         className: 'btn btn-success',
                         action: function(e, dt, button, config) {
-                            if (relIndice === '08' || relIndice === '09' || relIndice === '11' || relIndice === '12' || relIndice === '13' || relIndice === '14' || relIndice === '15' || relIndice === '16') {
+                            if (relIndice === '08' || relIndice === '09' || relIndice === '11' || relIndice === '12' || relIndice === '13' || relIndice === '14' || relIndice === '15' || relIndice === '16' || relIndice === '17') {
                                 var selectPeriodo = document.querySelector('select[name=periodo]');
                                 var per = (selectPeriodo && selectPeriodo.value) ? selectPeriodo.value : '{{ periodo_selecionado }}';
                                 window.location.href = '/download_excel/' + relIndice + '/' + per;
@@ -4538,8 +4809,8 @@ div.dt-button-collection button.dt-button:hover {
                         window.initExcelFilters(this.api());
                     }
                     
-                    if (relIndice === '03' || relIndice === '15' || relIndice === '07' || relIndice === '08') {
-                        var maxCols = (relIndice === '03') ? 5 : ((relIndice === '07') ? 2 : ((relIndice === '08') ? 1 : 4));
+                    if (relIndice === '03' || relIndice === '15' || relIndice === '07' || relIndice === '08' || relIndice === '17') {
+                        var maxCols = (relIndice === '03') ? 5 : ((relIndice === '17') ? 3 : ((relIndice === '07') ? 2 : ((relIndice === '08') ? 1 : 4)));
                         function fixarColunasSticky() {
                             var leftOffset = 0;
                             for (var i = 1; i <= maxCols; i++) {

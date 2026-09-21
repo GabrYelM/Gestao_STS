@@ -332,22 +332,32 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
         else:
             funcoes_loop.append((chave, bot_f, etl_f))
 
-    MAPA_MESES = {
-        "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
-        "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
-        "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
-    }
-    periodo_gac = f"{ano_inicio}{MAPA_MESES.get(mes_inicio, '01')}"
+    hoje = datetime.today()
+    periodo_gac = f"{hoje.year}{str(hoje.month).zfill(2)}"
 
     sucessos_fila = []
     erros_fila = []
 
-    if gac02_item and not evento_cancelar_extracao.is_set():
+    lista_periodos = gerar_lista_meses(mes_inicio, ano_inicio, mes_fim, ano_fim) if relatorio_escolhido != "GAC02" else []
+
+    # O GAC-02 é um snapshot em tempo real. Em rotinas de lote, só deve ser executado
+    # se o usuário selecionou explicitamente GAC02 ou se o período do lote inclui o mês/ano corrente.
+    meses_pt = {
+        1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+        5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+        9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+    }
+    hoje_mes_nome = meses_pt.get(hoje.month)
+    hoje_ano_str = str(hoje.year)
+    periodo_contem_atual = any(m == hoje_mes_nome and str(a) == hoje_ano_str for m, a in lista_periodos)
+    deve_extrair_gac = (relatorio_escolhido == "GAC02") or (gac02_item is not None and periodo_contem_atual)
+
+    if gac02_item and deve_extrair_gac and not evento_cancelar_extracao.is_set():
         chave, bot_gac, etl_gac = gac02_item
         nome_rel = MAPA_NOMES_RELATORIOS.get(chave, chave)
         status_extracao["progresso"] = "Extraindo GAC02 (Snapshot Geral)..."
         try:
-            caminho_gac, erro_gac = executar_bot(bot_gac, mes_inicio, ano_inicio, usuario, senha)
+            caminho_gac, erro_gac = executar_bot(bot_gac, hoje.strftime('%B'), hoje.year, usuario, senha)
             if evento_cancelar_extracao.is_set():
                 pass
             elif caminho_gac:
@@ -355,7 +365,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                 sucessos_fila.append({
                     "codigo": chave,
                     "relatorio": nome_rel,
-                    "competencia": f"{mes_inicio}/{ano_inicio}",
+                    "competencia": hoje.strftime('%m/%Y'),
                     "periodo": int(periodo_gac),
                     "status": "Atualizado com sucesso"
                 })
@@ -363,7 +373,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
                 erros_fila.append({
                     "codigo": chave,
                     "relatorio": nome_rel,
-                    "competencia": f"{mes_inicio}/{ano_inicio}",
+                    "competencia": hoje.strftime('%m/%Y'),
                     "periodo": int(periodo_gac),
                     "motivo": erro_gac
                 })
@@ -372,7 +382,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
             erros_fila.append({
                 "codigo": chave,
                 "relatorio": nome_rel,
-                "competencia": f"{mes_inicio}/{ano_inicio}",
+                "competencia": hoje.strftime('%m/%Y'),
                 "periodo": int(periodo_gac),
                 "motivo": f"Erro no processamento (ETL): {str(e)}"
             })
@@ -959,7 +969,8 @@ def download_excel(indice, periodo):
             output = prod.exportar_excel_relatorio_16(periodo)
             return send_file(output, download_name=f"Relatorio_16_AMG_{periodo}.xlsx", as_attachment=True)
         elif indice == '17':
-            df = prod.gera_relatorio_17(periodo)
+            output = prod.exportar_excel_relatorio_17(periodo)
+            return send_file(output, download_name=f"Relatorio_17_Atividades_Coletivas_PSE_{periodo}.xlsx", as_attachment=True)
         else:
             df = None
             

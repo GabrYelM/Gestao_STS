@@ -19,7 +19,7 @@ MAPA_RELATORIO_TABELAS = {
     '05': [('RAAS_ACOES_PROF', 'ano_mes'), ('RAAS_PACIENTES', 'ano_mes'), ('RAAS_ACOES', 'ano_mes')],
     '06': [],
     '07': [],
-    '08': [('GAC-02', 'data_extracao'), ('GAC-02', 'competencia')],
+    '08': [('CG-01', 'ano_mes_extracao'), ('CG-05', 'ano_mes_extracao'), ('CG-06', 'ano_mes_extracao'), ('GAC-02', 'data_extracao')],
     '09': [('REL-114', 'ano_mes')],
     '10': [('REL-10', 'ano_mes'), ('AT-03', 'ano')],
     '11': [('FE-02', 'ano_mes')],

@@ -442,9 +442,20 @@ def gera_relatorio_08(periodo):
             if not sub_df.empty:
                 for _, r in sub_df[['estabelecimento', 'cnes']].drop_duplicates().iterrows():
                     est = str(r['estabelecimento']).strip()
-                    cn = str(r['cnes']).strip()
+                    cn = str(r['cnes']).replace('.', '').strip()
                     if cn and cn != '0' and cn != 'nan' and est not in mapa_cnes:
                         mapa_cnes[est] = cn
+
+        # Fallback histórico para garantir que nenhuma unidade fique com CNES zerado
+        try:
+            df_fallback_cnes = pd.read_sql("SELECT DISTINCT estabelecimento, cnes FROM 'CG-01' WHERE cnes IS NOT NULL AND cnes != 0 AND cnes != '0'", con=db.engine)
+            for _, r in df_fallback_cnes.iterrows():
+                est = str(r['estabelecimento']).strip()
+                cn = str(r['cnes']).replace('.', '').strip()
+                if cn and cn != '0' and cn != 'nan' and est not in mapa_cnes:
+                    mapa_cnes[est] = cn
+        except Exception:
+            pass
 
         all_estabs = set()
         for sub_df in [df_gac02, df_cg01, df_cg05_quant, df_cg06]:
@@ -2292,16 +2303,16 @@ def gera_relatorio_15(periodo):
             query = f'''
                 SELECT r.*, e.sigla 
                 FROM "REL-135" r
-                JOIN equipes e ON r.cod_ine = e.cod_ine
+                JOIN equipes e ON TRIM(LTRIM(r.cod_ine, '0')) = TRIM(LTRIM(e.cod_ine, '0'))
                 WHERE r.ano_mes_competencia <= '{periodo}'
-                AND e.sigla IN ('ESF', 'ECR', 'EAP20H', 'EAP30H')
+                AND UPPER(REPLACE(REPLACE(e.sigla, '-', ''), ' ', '')) IN ('ESF', 'ECR', 'EAP20H', 'EAP30H')
             '''
         else:
             query = '''
                 SELECT r.*, e.sigla 
                 FROM "REL-135" r
-                JOIN equipes e ON r.cod_ine = e.cod_ine
-                WHERE e.sigla IN ('ESF', 'ECR', 'EAP20H', 'EAP30H')
+                JOIN equipes e ON TRIM(LTRIM(r.cod_ine, '0')) = TRIM(LTRIM(e.cod_ine, '0'))
+                WHERE UPPER(REPLACE(REPLACE(e.sigla, '-', ''), ' ', '')) IN ('ESF', 'ECR', 'EAP20H', 'EAP30H')
             '''
             
         df = pd.read_sql(query, con=db.engine)
@@ -2833,7 +2844,8 @@ def exportar_excel_relatorio_16(periodo=None):
 def gera_relatorio_17(periodo):
     with app.app_context():
         if periodo:
-            query = f'SELECT * FROM "REL-134" WHERE ano_mes = "{periodo}"'
+            p_clean = str(periodo).replace('-', '').strip()
+            query = f'SELECT * FROM "REL-134" WHERE REPLACE(ano_mes, "-", "") = "{p_clean}"'
         else:
             query = 'SELECT * FROM "REL-134"'
         df = pd.read_sql(query, con=db.engine)
@@ -2848,6 +2860,13 @@ def gera_relatorio_17(periodo):
         df = df[df['inep'].astype(str).str.upper() != 'NAN']
         df = df[df['inep'].astype(str).str.strip() != '-']
         
+        if df.empty:
+            return pd.DataFrame()
+
+        # Tratar temas_para_saude nulos ou vazios como '(vazio)'
+        df['temas_para_saude'] = df['temas_para_saude'].fillna('(vazio)').astype(str).str.strip()
+        df['temas_para_saude'] = df['temas_para_saude'].replace({'': '(vazio)', 'None': '(vazio)', 'nan': '(vazio)'})
+
         # Garantir tipo numérico
         df['num_participantes'] = pd.to_numeric(df['num_participantes'], errors='coerce').fillna(0)
         
@@ -2861,8 +2880,115 @@ def gera_relatorio_17(periodo):
             fill_value=0
         )
         
+        # Se houver coluna '(vazio)', colocar ela no final antes do Total Geral
+        cols = list(df_pivot.columns)
+        if '(vazio)' in cols:
+            cols.remove('(vazio)')
+            cols.append('(vazio)')
+            df_pivot = df_pivot[cols]
+
+        # Adiciona coluna Total Geral
+        df_pivot['Total Geral'] = df_pivot.sum(axis=1)
+        
         df_pivot = df_pivot.reset_index()
+        df_pivot = df_pivot.rename(columns={
+            'nome_unidade': 'UNIDADE',
+            'inep': 'INEP',
+            'nome_instituicao': 'ESCOLA / INSTITUIÇÃO'
+        })
         return df_pivot
+
+
+def exportar_excel_relatorio_17(periodo):
+    import io
+    import xlsxwriter
+    df = gera_relatorio_17(periodo)
+    output = io.BytesIO()
+    if df.empty:
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            pd.DataFrame({'Aviso': ['Nenhum registro encontrado para esta competência']}).to_excel(writer, index=False)
+        output.seek(0)
+        return output
+
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        workbook = writer.book
+        ws = workbook.add_worksheet('Relatório 17 - PSE')
+        
+        fmt_header = workbook.add_format({
+            'bold': True, 'bg_color': '#003366', 'font_color': '#FFFFFF',
+            'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True
+        })
+        fmt_header_left = workbook.add_format({
+            'bold': True, 'bg_color': '#003366', 'font_color': '#FFFFFF',
+            'border': 1, 'align': 'left', 'valign': 'vcenter', 'text_wrap': True
+        })
+        fmt_text = workbook.add_format({'border': 1, 'valign': 'vcenter'})
+        fmt_code = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        fmt_num = workbook.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0'})
+        fmt_num_total_col = workbook.add_format({
+            'bold': True, 'bg_color': '#F0F4F8', 'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0'
+        })
+        fmt_total_label = workbook.add_format({
+            'bold': True, 'bg_color': '#CFE2FF', 'font_color': '#084298', 'border': 1, 'align': 'left', 'valign': 'vcenter'
+        })
+        fmt_total_empty = workbook.add_format({
+            'bold': True, 'bg_color': '#CFE2FF', 'border': 1, 'align': 'center', 'valign': 'vcenter'
+        })
+        fmt_total_num = workbook.add_format({
+            'bold': True, 'bg_color': '#CFE2FF', 'font_color': '#084298', 'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0'
+        })
+        
+        cols = list(df.columns)
+        num_cols = len(cols)
+        data_rows = len(df)
+        
+        ws.set_row(0, 32)
+        for c_idx, col_name in enumerate(cols):
+            if c_idx == 0 or c_idx == 2:
+                ws.write(0, c_idx, col_name, fmt_header_left)
+            else:
+                ws.write(0, c_idx, col_name, fmt_header)
+            
+        for r_idx, row in df.iterrows():
+            curr_row = r_idx + 1
+            ws.set_row(curr_row, 19)
+            for c_idx, col_name in enumerate(cols):
+                val = row[col_name]
+                if c_idx == 0:
+                    ws.write(curr_row, c_idx, str(val) if pd.notna(val) else '', fmt_text)
+                elif c_idx == 1:
+                    ws.write(curr_row, c_idx, str(val) if pd.notna(val) else '', fmt_code)
+                elif c_idx == 2:
+                    ws.write(curr_row, c_idx, str(val) if pd.notna(val) else '', fmt_text)
+                elif c_idx == num_cols - 1:
+                    # Total Geral por linha
+                    ws.write(curr_row, c_idx, int(val) if pd.notna(val) else 0, fmt_num_total_col)
+                else:
+                    ws.write(curr_row, c_idx, int(val) if pd.notna(val) else 0, fmt_num)
+                    
+        total_row = data_rows + 1
+        ws.set_row(total_row, 22)
+        ws.write(total_row, 0, 'TOTAL GERAL', fmt_total_label)
+        ws.write(total_row, 1, '', fmt_total_empty)
+        ws.write(total_row, 2, '', fmt_total_empty)
+        for c_idx in range(3, num_cols):
+            col_letter = xlsxwriter.utility.xl_col_to_name(c_idx)
+            ws.write_formula(total_row, c_idx, f'=SUM({col_letter}2:{col_letter}{total_row})', fmt_total_num)
+            
+        # Largura das colunas
+        ws.set_column(0, 0, 38)
+        ws.set_column(1, 1, 14)
+        ws.set_column(2, 2, 45)
+        for c_idx in range(3, num_cols - 1):
+            ws.set_column(c_idx, c_idx, 22)
+        ws.set_column(num_cols - 1, num_cols - 1, 16)
+        
+        # Congelar painéis e adicionar autofiltro
+        ws.freeze_panes(1, 3)
+        ws.autofilter(0, 0, data_rows, num_cols - 1)
+            
+    output.seek(0)
+    return output
 
 
 def gera_relatorio_05(periodo):
@@ -3234,16 +3360,16 @@ def obter_metadados_relatorio(indice, periodo=None):
                     if periodo:
                         if item['tipo'] == 'gac':
                             mes_gac = f"{str(periodo)[:4]}-{str(periodo)[4:]}"
-                            query_sub += f" WHERE data_extracao LIKE '{mes_gac}-%'"
+                            query_sub = f"SELECT MAX(data_extracao) as dt FROM '{item['tabela']}' WHERE data_extracao LIKE '{mes_gac}-%'"
                         else:
-                            query_sub += f" WHERE ano_mes_extracao = {int(periodo)}"
+                            query_sub = f"SELECT MAX(data_extracao) as dt FROM '{item['tabela']}' WHERE ano_mes_extracao = {int(periodo)}"
                     res_sub = pd.read_sql(query_sub, con=db.engine)
                     if not res_sub.empty and res_sub.iloc[0]['dt']:
                         dt_item = _formatar_data_raw(res_sub.iloc[0]['dt'])
                 except Exception:
                     pass
 
-                if not dt_item and item.get('arquivo'):
+                if not dt_item and not periodo and item.get('arquivo'):
                     caminho_arq = os.path.join(os.getcwd(), 'ARQUIVOS ORIGINAIS', item['arquivo'])
                     if os.path.exists(caminho_arq):
                         mtime = os.path.getmtime(caminho_arq)
@@ -3256,7 +3382,7 @@ def obter_metadados_relatorio(indice, periodo=None):
                 })
             
     # 2. Se não encontrou no banco para aquela competência, busca a data de modificação do arquivo
-    if not data_geracao and info.get('arquivos'):
+    if not data_geracao and not periodo and info.get('arquivos'):
         pasta = os.path.join(os.getcwd(), 'ARQUIVOS ORIGINAIS')
         for nome_arq in info['arquivos']:
             caminho = os.path.join(pasta, nome_arq)
