@@ -1345,6 +1345,16 @@ def processa_raas_arquivo(caminho, periodo=None):
             for u in cat.get('unidades', []):
                 estab_map[str(u['cnes']).strip()] = u.get('nome', u.get('coluna', ''))
 
+    # Carrega mapeamento nominal de profissionais do arquivo local protegido (LGPD)
+    profs_local_path = os.path.join(os.path.dirname(__file__), 'profissionais_local.json')
+    if os.path.exists(profs_local_path):
+        try:
+            with open(profs_local_path, 'r', encoding='utf-8') as f:
+                profs_map.update(json.load(f))
+        except Exception:
+            pass
+
+
     linhas_15 = []
     linhas_16 = []
 

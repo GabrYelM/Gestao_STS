@@ -1733,14 +1733,25 @@ def remover_competencia_arquivo():
 @admin_required
 def cadastros():
     catalogo_path = os.path.join(os.getcwd(), 'services', 'catalogo_geral.json')
-    cat_data = {'cbos': {}, 'procedimentos': {}, 'profissionais': {}, 'unidades': []}
+    profs_local_path = os.path.join(os.getcwd(), 'services', 'profissionais_local.json')
+    cat_data = {'cbos': {}, 'procedimentos': {}, 'unidades': []}
     if os.path.exists(catalogo_path):
         with open(catalogo_path, 'r', encoding='utf-8') as f:
             cat_data = json.load(f)
 
-    profissionais = cat_data.get('profissionais', {})
+    profissionais = {}
+    if os.path.exists(profs_local_path):
+        try:
+            with open(profs_local_path, 'r', encoding='utf-8') as f:
+                profissionais = json.load(f)
+        except Exception:
+            pass
+    elif 'profissionais' in cat_data:
+        profissionais = cat_data.get('profissionais', {})
+
     procedimentos = cat_data.get('procedimentos', {})
     cbos = cat_data.get('cbos', {})
+
 
     mensagem = None
 
@@ -1959,7 +1970,6 @@ def cadastros():
                 mensagem = f"Vínculo da equipe '{nome_del}' removido com sucesso!"
 
         if alterou:
-            cat_data['profissionais'] = profissionais
             cat_data['procedimentos'] = procedimentos
             cat_data['cbos'] = cbos
             try:
@@ -1977,8 +1987,20 @@ def cadastros():
             except Exception:
                 pass
 
+            # Garante que dados nominais de profissionais NUNCA entrem no catalogo_geral.json público
+            if 'profissionais' in cat_data:
+                del cat_data['profissionais']
+
             with open(catalogo_path, 'w', encoding='utf-8') as f:
                 json.dump(cat_data, f, ensure_ascii=False, indent=2)
+
+            # Salva profissionais exclusivamente no arquivo local seguro
+            if profissionais:
+                try:
+                    with open(profs_local_path, 'w', encoding='utf-8') as f:
+                        json.dump(profissionais, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
 
     # 1. Equipes Mapeadas e Pendentes
     equipes = []

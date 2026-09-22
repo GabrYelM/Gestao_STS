@@ -14,6 +14,12 @@ __pycache__/
 .env
 .env.local
 
+# Proteção de Dados Pessoais / LGPD (Arquivos Locais)
+services/profissionais_local.json
+profissionais_local.json
+contratos/backups/
+contratos/uploads_tmp/
+
 # Banco de Dados e Logs do SQLite
 *.db
 *.db-wal
