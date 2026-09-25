@@ -1,0 +1,45 @@
+{# Fragmento carregado (fetch) quando o usuário clica em "Editar" num indicador da tela de Metas:
+   todos os subgrupos e estabelecimentos do indicador, cada subgrupo numa seção com o seu botão Salvar. #}
+<div class="bloco-metas" data-indicador="{{ grupo.indicador_id }}">
+  <div class="toolbar" style="margin-bottom:8px">
+    <span class="info-grupo-meta">
+      {{ grupo.linhas | length }} combinação(ões){% if grupo.indicador_servico %} · serviço: {{ grupo.indicador_servico }}{% endif %}
+      {% if grupo.consolida_cnes %} · <strong>consolidado por CNES</strong> (uma linha por CNES, no estabelecimento principal){% endif %}
+    </span>
+    <span class="espaco"></span>
+    <label style="margin:0">Filtrar linhas:</label>
+    <input type="text" class="filtro-linhas" placeholder="estabelecimento, subgrupo ou CBO..." style="min-width:240px">
+    <button type="button" class="btn-salvar-bloco" data-escopo="indicador">💾 Salvar indicador</button>
+  </div>
+
+  {% for sec in secoes %}
+  <details class="secao-subgrupo" data-ind="{{ grupo.indicador_id }}" data-sg="{{ sec.sg }}" {% if sec.aberta %}open{% endif %}>
+    <summary class="resumo-subgrupo">
+      <span class="seta-resumo">▸</span>
+      <strong>{{ sec.nome }}</strong>
+      <span class="info-grupo-meta">{{ sec.linhas | length }} linha(s) · <span class="qtd-sec-com-meta">{{ sec.com_meta }}</span> com meta</span>
+      <button type="button" class="btn-salvar-bloco" data-escopo="secao">💾 Salvar{% if grupo.tem_subgrupos %} subgrupo{% endif %}</button>
+    </summary>
+    <table style="margin-top:0">
+      <thead><tr><th>Estabelecimento</th>{% if grupo.tem_subgrupos %}<th>Subgrupo</th>{% endif %}<th>CBO</th>{% if grupo.segmentado %}<th>Segmento</th>{% endif %}<th>Valor meta</th><th></th></tr></thead>
+      <tbody>
+        {% for linha in sec.linhas %}
+        <tr>
+          <td>{{ linha.estabelecimento_nome }}</td>
+          {% if grupo.tem_subgrupos %}<td>{{ linha.subgrupo_nome }}</td>{% endif %}
+          <td>{{ linha.cbo_nome or 'Curinga / Geral' }}</td>
+          {% if grupo.segmentado %}<td>{{ linha.rotulo_segmento or 'geral' }}</td>{% endif %}
+          <td>
+            <input type="number" step="any" min="0" class="meta-input" data-est="{{ linha.estabelecimento_id }}"
+                   {% if linha.cbo_codigo %}data-cbo="{{ linha.cbo_codigo }}" {% endif %}{% if linha.rt %}data-rt="{{ linha.rt }}" {% endif %}{% if linha.tipo_equipe %}data-eq="{{ linha.tipo_equipe }}" {% endif %}{% if linha.pmmb %}data-pmmb="{{ linha.pmmb }}" {% endif %}{% if linha.valor_meta is not none %}data-original="{{ linha.valor_meta }}" value="{{ linha.valor_meta }}"{% endif %}>
+          </td>
+          <td><button type="button" class="btn-link btn-limpar-meta" title="Esvazia o campo; a meta é removida ao salvar">remover</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% else %}
+  <p class="subtitulo-pagina">Nenhuma combinação elegível para este indicador (confira o Serviço e os vínculos de CBO).</p>
+  {% endfor %}
+</div>

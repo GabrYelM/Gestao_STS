@@ -1,0 +1,701 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Importações e Exportações - STSPE Prod Monitor{% endblock %}
+
+{% block contrato_content %}
+<style>
+  .import-export-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--cor-borda, #e1e4e8);
+  }
+  .card-kpi-modern {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .card-kpi-modern:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  }
+  .kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+  }
+  .export-card-item {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    transition: all 0.2s ease;
+  }
+  .export-card-item:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  }
+  .dropzone-box {
+    border: 2px dashed #30407B;
+    background: #f8faff;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    transition: background 0.2s ease;
+  }
+  .dropzone-box:hover {
+    background: #eef3ff;
+  }
+  .badge-fonte-at02 { background: #e0e7ff; color: #3730a3; font-weight: 600; }
+  .badge-fonte-websass { background: #f3e8ff; color: #6b21a8; font-weight: 600; }
+  .badge-fonte-visita { background: #dcfce7; color: #166534; font-weight: 600; }
+  .badge-fonte-bi { background: #e0f2fe; color: #0369a1; font-weight: 600; }
+  .badge-fonte-dtic { background: #fef3c7; color: #92400e; font-weight: 600; }
+  .badge-fonte-sisad { background: #ccfbf1; color: #115e59; font-weight: 600; }
+  .badge-fonte-outro { background: #f1f5f9; color: #475569; font-weight: 600; }
+</style>
+
+<!-- Cabeçalho Principal -->
+<div class="import-export-header">
+  <div>
+    <h1 class="h3 fw-bold mb-1" style="color: var(--stspe-primary, #30407B);">
+      <i class="fa-solid fa-file-import me-2"></i> Central de Importações e Exportações
+    </h1>
+    <p class="text-muted mb-0 small">
+      Gerenciamento integrado de ingestão de dados contratuais, exportação de relatórios gerenciais e auditoria de produção.
+    </p>
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <a href="{{ url_for('importacao.logs') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm">
+      <i class="fa-solid fa-clock-rotate-left me-1"></i> Logs de Diagnóstico
+    </a>
+    <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalExcluirTodas">
+      <i class="fa-solid fa-trash-can me-1"></i> Excluir Todas as Importações
+    </button>
+  </div>
+</div>
+
+<!-- Métricas e Resumo Rápido -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-sm-6 col-lg-3">
+    <div class="card-kpi-modern d-flex align-items-center">
+      <div class="kpi-icon-box bg-primary-subtle text-primary me-3">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+      </div>
+      <div>
+        <div class="text-muted small fw-semibold">Total de Importações</div>
+        <div class="fs-4 fw-bold text-dark">{{ total_importacoes }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-sm-6 col-lg-3">
+    <div class="card-kpi-modern d-flex align-items-center">
+      <div class="kpi-icon-box bg-success-subtle text-success me-3">
+        <i class="fa-solid fa-calculator"></i>
+      </div>
+      <div>
+        <div class="text-muted small fw-semibold">Produção Apurada (STS)</div>
+        <div class="fs-4 fw-bold text-success">{{ "{:,}".format(total_linhas_apuradas).replace(",", ".") }} <span class="small fw-normal text-muted fs-6">linhas</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-sm-6 col-lg-3">
+    <div class="card-kpi-modern d-flex align-items-center">
+      <div class="kpi-icon-box bg-purple-subtle text-purple me-3" style="background-color: #f3e8ff; color: #7e22ce;">
+        <i class="fa-solid fa-clipboard-check"></i>
+      </div>
+      <div>
+        <div class="text-muted small fw-semibold">Declarado (WebSaass)</div>
+        <div class="fs-4 fw-bold" style="color: #7e22ce;">{{ "{:,}".format(total_linhas_declaradas).replace(",", ".") }} <span class="small fw-normal text-muted fs-6">linhas</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-sm-6 col-lg-3">
+    <div class="card-kpi-modern d-flex align-items-center">
+      <div class="kpi-icon-box bg-warning-subtle text-warning me-3">
+        <i class="fa-solid fa-calendar-days"></i>
+      </div>
+      <div>
+        <div class="text-muted small fw-semibold">Competências com Dados</div>
+        <div class="fs-4 fw-bold text-dark">{{ periodos_apurados|length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Layout Principal: 2 Colunas (Importação & Exportação) -->
+<div class="row g-4 mb-4">
+  <!-- Coluna da Esquerda: Central de Importações -->
+  <div class="col-12 col-xl-7">
+    <div class="card border-0 shadow-sm rounded-3 h-100">
+      <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+          <i class="fa-solid fa-layer-group text-primary fs-5 me-2"></i>
+          <h2 class="h5 fw-bold mb-0 text-dark">Importação de Arquivos</h2>
+        </div>
+        <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-1">Multi-fontes / ZIP</span>
+      </div>
+      <div class="card-body p-4">
+        <!-- Formulário de Upload em Lote -->
+        <form method="post" action="{{ url_for('importacao.upload_multiplo') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="mb-4">
+          <div class="dropzone-box mb-3">
+            <i class="fa-solid fa-cloud-arrow-up text-primary fs-1 mb-2"></i>
+            <h6 class="fw-bold mb-1">Selecione ou arraste os arquivos de produção</h6>
+            <p class="text-muted small mb-3">
+              Suporta arquivos <strong>.ZIP originais</strong>, <strong>.CSV</strong>, <strong>.XML</strong> ou <strong>.XLSX</strong>. O sistema identifica cada fonte pelo nome.
+            </p>
+            <input type="file" name="arquivos" id="inputArquivosLote" class="form-control" multiple required accept=".csv,.xml,.xlsx,.zip">
+          </div>
+
+          <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-6">
+              <label for="inputPeriodoLote" class="form-label small fw-bold text-muted text-uppercase">
+                Competência de Referência (AAAAMM)
+              </label>
+              <div class="input-group">
+                <span class="input-group-text bg-light"><i class="fa-regular fa-calendar"></i></span>
+                <input type="text" name="periodo" id="inputPeriodoLote" class="form-control" placeholder="Ex: 202608" maxlength="6" pattern="[0-9]{6}" required>
+              </div>
+            </div>
+            <div class="col-12 col-md-6">
+              <button type="submit" class="btn btn-stspe-primary w-100 py-2 fw-semibold shadow-sm">
+                <i class="fa-solid fa-upload me-1"></i> Iniciar Importação em Lote
+              </button>
+            </div>
+          </div>
+          <div class="aviso-processando alert alert-info mt-3 py-2 px-3 small d-none" role="alert">
+            <i class="fa-solid fa-spinner fa-spin me-2"></i> Processando arquivos e recalculando dados contratuais. Aguarde alguns instantes...
+          </div>
+        </form>
+
+        <!-- Legenda de Fontes Suportadas -->
+        <div class="p-3 bg-light rounded-3 mb-3 border">
+          <div class="small fw-bold text-dark mb-2">
+            <i class="fa-solid fa-circle-info text-primary me-1"></i> Fontes com Reconhecimento Automático:
+          </div>
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <span class="badge badge-fonte-at02 px-2 py-1"><i class="fa-solid fa-check me-1"></i> SIGA (AT-02)</span>
+            <span class="badge badge-fonte-websass px-2 py-1"><i class="fa-solid fa-check me-1"></i> WebSaass</span>
+            <span class="badge badge-fonte-visita px-2 py-1"><i class="fa-solid fa-check me-1"></i> Visita Domiciliar (REL_142)</span>
+            <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-shield-halved me-1"></i> BI SIGA (AT-08 a AT-61)</span>
+            <span class="badge badge-fonte-dtic px-2 py-1"><i class="fa-solid fa-shield-halved me-1"></i> DTIC (REL_130 / REL_134)</span>
+            <span class="badge badge-fonte-sisad px-2 py-1"><i class="fa-solid fa-shield-halved me-1"></i> SISAD</span>
+          </div>
+          <div class="text-muted" style="font-size: 0.78rem;">
+            * Arquivos com cálculos automatizados atualizam o painel instantaneamente; as demais fontes são arquivadas na camada de staging para auditoria e conferência.
+          </div>
+        </div>
+
+        <!-- Acordeão de Ferramentas Avançadas & Cargas Especializadas -->
+        <div class="accordion" id="accordionAvancado">
+          <div class="accordion-item border rounded-3 overflow-hidden">
+            <h2 class="accordion-header" id="headingAvancado">
+              <button class="accordion-button collapsed py-2 px-3 bg-white text-dark fw-semibold small" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAvancado" aria-expanded="false" aria-controls="collapseAvancado">
+                <i class="fa-solid fa-sliders text-secondary me-2"></i> Ferramentas Especializadas e Cargas Base
+              </button>
+            </h2>
+            <div id="collapseAvancado" class="accordion-collapse collapse" aria-labelledby="headingAvancado" data-bs-parent="#accordionAvancado">
+              <div class="accordion-body p-3 bg-light">
+                <!-- Abas das Ferramentas Especializadas -->
+                <ul class="nav nav-pills nav-fill mb-3 gap-1" id="pills-ferramentas" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link active py-1 px-2 small fw-semibold" id="tab-ind-base" data-bs-toggle="pill" data-bs-target="#pane-ind-base" type="button" role="tab">
+                      Indicadores Base
+                    </button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link py-1 px-2 small fw-semibold" id="tab-metas-base" data-bs-toggle="pill" data-bs-target="#pane-metas-base" type="button" role="tab">
+                      Metas TA
+                    </button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link py-1 px-2 small fw-semibold" id="tab-fontes-indiv" data-bs-toggle="pill" data-bs-target="#pane-fontes-indiv" type="button" role="tab">
+                      Upload Individual
+                    </button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link py-1 px-2 small fw-semibold" id="tab-recalc-manual" data-bs-toggle="pill" data-bs-target="#pane-recalc-manual" type="button" role="tab">
+                      Recalcular
+                    </button>
+                  </li>
+                </ul>
+
+                <div class="tab-content" id="pills-ferramentasContent">
+                  <!-- Indicadores Base -->
+                  <div class="tab-pane fade show active" id="pane-ind-base" role="tabpanel">
+                    <form method="post" action="{{ url_for('importacao.importar_indicadores_base') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-3 rounded border">
+                      <div class="fw-bold small text-primary mb-2">Importar Indicadores & Vínculos (CSV / JSON)</div>
+                      <div class="mb-2">
+                        <label class="form-label small text-muted mb-1">Arquivo</label>
+                        <input type="file" name="arquivo" accept=".csv,.json" class="form-control form-control-sm" required>
+                      </div>
+                      <div class="mb-2">
+                        <label class="form-label small text-muted mb-1">Portaria dos Indicadores</label>
+                        <select name="portaria_id" class="form-select form-select-sm">
+                          <option value="">-- Selecione uma Portaria existente --</option>
+                          {% for p in portarias %}<option value="{{ p.id }}">{{ p.numero }}</option>{% endfor %}
+                        </select>
+                      </div>
+                      <div class="mb-2">
+                        <label class="form-label small text-muted mb-1">Ou crie uma Portaria nova (Número / Início / Fim)</label>
+                        <div class="d-flex gap-2">
+                          <input type="text" name="portaria_nova_numero" placeholder="Ex: 943/2025" class="form-control form-control-sm">
+                          <input type="date" name="portaria_nova_inicio" class="form-control form-control-sm" title="Data Início">
+                          <input type="date" name="portaria_nova_fim" class="form-control form-control-sm" title="Data Fim">
+                        </div>
+                      </div>
+                      <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="substituir" value="1" id="chkSubstituirVinculos">
+                        <label class="form-check-label small text-muted" for="chkSubstituirVinculos">
+                          Substituir os vínculos de procedimentos/CBO já existentes nos indicadores do arquivo
+                        </label>
+                      </div>
+                      <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="fa-solid fa-file-import me-1"></i> Carregar Indicadores
+                      </button>
+                    </form>
+                  </div>
+
+                  <!-- Metas TA -->
+                  <div class="tab-pane fade" id="pane-metas-base" role="tabpanel">
+                    <form method="post" action="{{ url_for('importacao.importar_metas_base') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-3 rounded border">
+                      <div class="fw-bold small text-primary mb-2">Importar Metas de Termo Aditivo (CSV)</div>
+                      <div class="mb-2">
+                        <label class="form-label small text-muted mb-1">Termo Aditivo (TA)</label>
+                        <select name="ta_id" class="form-select form-select-sm" required>
+                          <option value="">-- Selecione o Termo Aditivo --</option>
+                          {% for t in tas %}<option value="{{ t.id }}">{{ t.numero }} ({{ t.periodo_inicio }} a {{ t.periodo_fim }})</option>{% endfor %}
+                        </select>
+                      </div>
+                      <div class="mb-2">
+                        <label class="form-label small text-muted mb-1">Portaria (Opcional se houver conflito de códigos)</label>
+                        <select name="portaria_id" class="form-select form-select-sm">
+                          <option value="">-- Todas as Portarias --</option>
+                          {% for p in portarias %}<option value="{{ p.id }}">{{ p.numero }}</option>{% endfor %}
+                        </select>
+                      </div>
+                      <div class="mb-3">
+                        <label class="form-label small text-muted mb-1">Arquivo CSV de Metas</label>
+                        <input type="file" name="arquivo" accept=".csv" class="form-control form-control-sm" required>
+                      </div>
+                      <button type="submit" class="btn btn-primary btn-sm w-100">
+                        <i class="fa-solid fa-bullseye me-1"></i> Carregar Metas do TA
+                      </button>
+                    </form>
+                  </div>
+
+                  <!-- Fontes Individuais -->
+                  <div class="tab-pane fade" id="pane-fontes-indiv" role="tabpanel">
+                    <div class="d-flex flex-column gap-2">
+                      <!-- AT-02 Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at02') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-02</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202608" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- WebSaass Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_webssas') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: WebSaass (XML)</div>
+                        <div class="d-flex gap-2 mb-1">
+                          <input type="file" name="arquivo" accept=".xml,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202608" class="form-control form-control-sm" style="max-width:110px" required>
+                        </div>
+                        <div class="d-flex gap-2">
+                          <input type="text" name="mes_filtro" placeholder="Filtro opcional: AGO 2026" class="form-control form-control-sm">
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- Visitas eSUS Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_visita_domiciliar') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: Visitas Domiciliares (eSUS)</div>
+                        <div class="d-flex gap-2 mb-1">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202608" class="form-control form-control-sm" style="max-width:110px" required>
+                        </div>
+                        <div class="d-flex gap-2">
+                          <input type="text" name="supervisao_filtro" placeholder="Ex: SUDESTE - PENHA" class="form-control form-control-sm">
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+
+                  <!-- Recálculo Manual -->
+                  <div class="tab-pane fade" id="pane-recalc-manual" role="tabpanel">
+                    <form method="post" action="{{ url_for('importacao.recalcular') }}" onsubmit="processando(this)" class="bg-white p-3 rounded border mb-2">
+                      <div class="fw-bold small text-warning text-dark mb-2">Recalcular Período Cadastrado</div>
+                      <div class="row g-2 mb-2">
+                        <div class="col-6">
+                          <label class="form-label small text-muted mb-1">Fonte</label>
+                          <select name="fonte" class="form-select form-select-sm" required>
+                            <option value="TODAS">Todas as Fontes</option>
+                            <option value="AT02">SIGA AT-02</option>
+                            <option value="WEBSSAS">WebSaass</option>
+                            <option value="VISITA_DOMICILIAR">Visita Domiciliar</option>
+                          </select>
+                        </div>
+                        <div class="col-6">
+                          <label class="form-label small text-muted mb-1">Competência</label>
+                          <input type="text" name="periodo" list="periodos-disponiveis" placeholder="202608" class="form-control form-control-sm" required>
+                        </div>
+                      </div>
+                      <button type="submit" class="btn btn-warning btn-sm w-100 text-dark fw-semibold">
+                        <i class="fa-solid fa-rotate me-1"></i> Executar Recálculo
+                      </button>
+                    </form>
+
+                    <!-- Auto cadastro -->
+                    <form method="post" action="{{ url_for('importacao.auto_cadastrar') }}" onsubmit="processando(this)" class="bg-white p-3 rounded border">
+                      <div class="fw-bold small text-primary mb-1">Auto-cadastrar Estabelecimentos & CBOs</div>
+                      <p class="text-muted small mb-2" style="font-size: 0.78rem;">
+                        Cadastra automaticamente novas unidades e CBOs identificados no AT-02 da competência.
+                      </p>
+                      <div class="d-flex gap-2">
+                        <input type="text" name="periodo" list="periodos-disponiveis" placeholder="202608" class="form-control form-control-sm" required>
+                        <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Cadastrar</button>
+                      </div>
+                    </form>
+                    <datalist id="periodos-disponiveis">
+                      {% for p in periodos_at02 %}<option value="{{ p }}">{% endfor %}
+                      {% for p in periodos_webssas %}<option value="{{ p }}">{% endfor %}
+                    </datalist>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Coluna da Direita: Central de Exportações & Modelos -->
+  <div class="col-12 col-xl-5">
+    <div class="card border-0 shadow-sm rounded-3 h-100">
+      <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+          <i class="fa-solid fa-file-export text-success fs-5 me-2"></i>
+          <h2 class="h5 fw-bold mb-0 text-dark">Central de Exportações</h2>
+        </div>
+        <span class="badge bg-success-subtle text-success rounded-pill px-3 py-1">Excel & CSV</span>
+      </div>
+      <div class="card-body p-4 d-flex flex-column justify-content-between">
+        <div class="d-flex flex-column gap-2 mb-3">
+          <!-- Item 1: Painel Geral de Metas e Produção -->
+          <div class="export-card-item">
+            <div>
+              <div class="fw-bold text-dark small"><i class="fa-solid fa-gauge-high text-primary me-2"></i> Painel Geral de Produção</div>
+              <div class="text-muted" style="font-size: 0.78rem;">Dados apurados do contrato de gestão com metas e percentuais atingidos.</div>
+            </div>
+            <div class="d-flex gap-1 flex-shrink-0">
+              <a href="{{ url_for('painel.exportar_excel', formato='resumido') }}" class="btn btn-sm btn-outline-primary shadow-sm" title="Exportar tabela resumida">
+                <i class="fa-solid fa-file-excel me-1"></i> Resumo
+              </a>
+              <a href="{{ url_for('painel.exportar_excel', formato='expandido') }}" class="btn btn-sm btn-primary shadow-sm" title="Exportar com detalhes de profissionais e procedimentos">
+                <i class="fa-solid fa-diagram-project me-1"></i> Detalhado
+              </a>
+            </div>
+          </div>
+
+          <!-- Item 2: Auditoria WebSaass -->
+          <div class="export-card-item">
+            <div>
+              <div class="fw-bold text-dark small"><i class="fa-solid fa-file-shield text-success me-2"></i> Auditoria Contratual WebSaass</div>
+              <div class="text-muted" style="font-size: 0.78rem;">Apurado STS vs Declarado WebSaass com divergências e conformidade por unidade.</div>
+            </div>
+            <a href="{{ url_for('relatorios.auditoria_websass_xlsx') }}" class="btn btn-sm btn-outline-success shadow-sm flex-shrink-0">
+              <i class="fa-solid fa-download me-1"></i> Baixar .xlsx
+            </a>
+          </div>
+
+          <!-- Item 3: Matriz de Indicadores e Vínculos -->
+          <div class="export-card-item">
+            <div>
+              <div class="fw-bold text-dark small"><i class="fa-solid fa-list-check text-secondary me-2"></i> Matriz de Indicadores & Vínculos</div>
+              <div class="text-muted" style="font-size: 0.78rem;">Cadastro analítico de todos os indicadores, regras, procedimentos e CBOs vinculados.</div>
+            </div>
+            <a href="{{ url_for('relatorios.indicadores_xlsx') }}" class="btn btn-sm btn-outline-secondary shadow-sm flex-shrink-0">
+              <i class="fa-solid fa-download me-1"></i> Baixar .xlsx
+            </a>
+          </div>
+
+          <!-- Item 4: Metas Contratuais & Cobertura -->
+          <div class="export-card-item">
+            <div>
+              <div class="fw-bold text-dark small"><i class="fa-solid fa-bullseye text-warning me-2"></i> Metas Contratuais & Cobertura</div>
+              <div class="text-muted" style="font-size: 0.78rem;">Todas as metas por Termo Aditivo e diagnóstico de cobertura por unidade.</div>
+            </div>
+            <a href="{{ url_for('relatorios.metas_xlsx') }}" class="btn btn-sm btn-outline-secondary shadow-sm flex-shrink-0">
+              <i class="fa-solid fa-download me-1"></i> Baixar .xlsx
+            </a>
+          </div>
+        </div>
+
+        <!-- Modelos de Importação CSV -->
+        <div class="p-3 bg-light rounded-3 border">
+          <div class="fw-bold text-dark small mb-1">
+            <i class="fa-solid fa-file-csv text-primary me-1"></i> Modelos Oficiais de Planilha para Carga
+          </div>
+          <p class="text-muted small mb-2" style="font-size: 0.78rem;">
+            Faça download dos modelos padronizados para preencher e importar em lote:
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('importacao.baixar_modelo', nome='indicadores.csv') }}" class="btn btn-sm btn-white bg-white border text-dark shadow-sm">
+              <i class="fa-solid fa-download me-1 text-primary"></i> modelo_indicadores.csv
+            </a>
+            <a href="{{ url_for('importacao.baixar_modelo', nome='metas.csv') }}" class="btn btn-sm btn-white bg-white border text-dark shadow-sm">
+              <i class="fa-solid fa-download me-1 text-primary"></i> modelo_metas.csv
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Seção: Histórico de Importações Recentes -->
+<div class="card border-0 shadow-sm rounded-3">
+  <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center">
+      <i class="fa-solid fa-clock-rotate-left text-primary fs-5 me-2"></i>
+      <h2 class="h5 fw-bold mb-0 text-dark">Histórico de Importações</h2>
+      <span class="badge bg-light text-muted border ms-2">{{ importacoes|length }} recentes</span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <div class="input-group input-group-sm" style="max-width: 250px;">
+        <span class="input-group-text bg-light"><i class="fa-solid fa-magnifying-glass"></i></span>
+        <input type="text" id="filtroTabelaImportacoes" class="form-control" placeholder="Buscar no histórico...">
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="tabelaImportacoes">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3" style="width: 60px;">ID</th>
+            <th>Fonte</th>
+            <th>Arquivo Original</th>
+            <th class="text-center">Competência</th>
+            <th class="text-center">Status</th>
+            <th class="text-end">Linhas Ingeridas</th>
+            <th class="text-center">Data / Hora</th>
+            <th class="text-center pe-3" style="width: 90px;">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in importacoes %}
+          <tr>
+            <td class="ps-3 fw-bold text-muted">{{ i.id }}</td>
+            <td>
+              {% if i.fonte_nome == 'AT02' %}
+                <span class="badge badge-fonte-at02 px-2 py-1"><i class="fa-solid fa-file-waveform me-1"></i> AT-02</span>
+              {% elif i.fonte_nome == 'WEBSSAS' %}
+                <span class="badge badge-fonte-websass px-2 py-1"><i class="fa-solid fa-file-code me-1"></i> WebSaass</span>
+              {% elif i.fonte_nome == 'VISITA_DOMICILIAR' %}
+                <span class="badge badge-fonte-visita px-2 py-1"><i class="fa-solid fa-house-chimney-medical me-1"></i> Visita Dom.</span>
+              {% elif i.fonte_nome.startswith('AT') %}
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> {{ i.fonte_nome }}</span>
+              {% elif i.fonte_nome.startswith('DTIC') %}
+                <span class="badge badge-fonte-dtic px-2 py-1"><i class="fa-solid fa-file-lines me-1"></i> {{ i.fonte_nome }}</span>
+              {% elif i.fonte_nome == 'SISAD' %}
+                <span class="badge badge-fonte-sisad px-2 py-1"><i class="fa-solid fa-clipboard-question me-1"></i> SISAD</span>
+              {% else %}
+                <span class="badge badge-fonte-outro px-2 py-1">{{ i.fonte_nome }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex align-items-center text-truncate" style="max-width: 320px;" title="{{ i.nome_arquivo }}">
+                <i class="fa-regular fa-file me-2 text-secondary"></i>
+                <span class="fw-semibold text-dark text-truncate">{{ i.nome_arquivo }}</span>
+              </div>
+            </td>
+            <td class="text-center">
+              <span class="badge bg-light text-dark border font-monospace px-2 py-1">{{ i.periodo_referencia }}</span>
+            </td>
+            <td class="text-center">
+              {% if i.status == 'concluido' %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                  <i class="fa-solid fa-circle-check me-1"></i> Concluído
+                </span>
+              {% elif i.status == 'erro' %}
+                <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1">
+                  <i class="fa-solid fa-circle-xmark me-1"></i> Erro
+                </span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary px-2 py-1">{{ i.status }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end fw-semibold font-monospace">
+              {{ "{:,}".format(i.linhas_importadas).replace(",", ".") }}
+            </td>
+            <td class="text-center small text-muted">
+              {{ i.data_importacao }}
+            </td>
+            <td class="text-center pe-3">
+              <button type="button" class="btn btn-outline-danger btn-sm p-1 px-2 rounded" title="Excluir esta importação"
+                      onclick="confirmarExclusao('{{ i.id }}', '{{ i.nome_arquivo }}', '{{ i.periodo_referencia }}', '{{ i.fonte_nome }}')">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center py-5 text-muted">
+              <i class="fa-regular fa-folder-open fs-2 mb-2 d-block text-secondary"></i>
+              Nenhuma importação realizada ainda.<br>
+              <span class="small">Utilize a área de importação acima para enviar arquivos de competência.</span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmação de Exclusão Individual -->
+<div class="modal fade" id="modalExcluirImportacao" tabindex="-1" aria-labelledby="modalExcluirImportacaoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow rounded-4">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger" id="modalExcluirImportacaoLabel">
+          <i class="fa-solid fa-trash-can me-2"></i> Excluir Importação
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form id="formExcluirImportacao" method="POST" action="">
+        <div class="modal-body p-4">
+          <p class="text-dark mb-3">
+            Tem certeza de que deseja excluir a importação abaixo?
+          </p>
+          <div class="p-3 bg-light rounded-3 border mb-3 small">
+            <div><strong>ID:</strong> <span id="modalExcluirId">-</span></div>
+            <div><strong>Arquivo:</strong> <span id="modalExcluirNomeArquivo">-</span></div>
+            <div><strong>Fonte:</strong> <span id="modalExcluirFonte">-</span></div>
+            <div><strong>Competência:</strong> <span id="modalExcluirPeriodo">-</span></div>
+          </div>
+          <div class="alert alert-warning d-flex align-items-start small mb-0" role="alert">
+            <i class="fa-solid fa-triangle-exclamation me-2 mt-1 fs-6"></i>
+            <div>
+              Esta ação removerá todos os registros associados nas tabelas de <em>staging</em> e os dados de apuração gerados em <code>fato_apuracao</code>. Se houver outras importações na mesma competência, o período será recalculado.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-top-0 pt-0 justify-content-end pb-3">
+          <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger rounded-pill px-4 fw-semibold">
+            <i class="fa-solid fa-trash-can me-1"></i> Sim, Excluir Importação
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmação de Exclusão de Todas as Importações -->
+<div class="modal fade" id="modalExcluirTodas" tabindex="-1" aria-labelledby="modalExcluirTodasLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow rounded-4">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title fw-bold text-danger" id="modalExcluirTodasLabel">
+          <i class="fa-solid fa-triangle-exclamation me-2"></i> Excluir TODAS as Importações
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="POST" action="{{ url_for('importacao.excluir_todas_importacoes') }}">
+        <div class="modal-body p-4 text-center">
+          <div class="mb-3 text-danger" style="font-size: 3.5rem;">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+          </div>
+          <h5 class="fw-bold mb-2 text-danger">Atenção: Ação Irreversível!</h5>
+          <p class="text-muted small mb-3">
+            Esta operação irá apagar <strong>todas as importações</strong> realizadas, limpando integralmente as tabelas de <em>staging</em> (AT-02, WebSaass, DTIC, SISAD, etc.), os registros apurados de produção em <code>fato_apuracao</code> e o histórico de diagnósticos.
+          </p>
+          <div class="p-2 bg-success-subtle text-success border border-success-subtle rounded-3 small mb-3 text-start">
+            <i class="fa-solid fa-shield-check me-1"></i>
+            <strong>Fique tranquilo:</strong> Portarias, Termos Aditivos, Metas Contratuais, Indicadores, Unidades de Saúde, Procedimentos e CBOs <strong>NÃO</strong> serão afetados.
+          </div>
+          <div class="form-check text-start mb-0">
+            <input class="form-check-input" type="checkbox" id="chkConfirmarExcluirTodas" required onchange="document.getElementById('btnConfirmarExclusaoGeral').disabled = !this.checked;">
+            <label class="form-check-label small fw-semibold text-danger" for="chkConfirmarExcluirTodas">
+              Estou ciente e confirmo que desejo limpar todos os dados de importação e apuração.
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer border-top-0 pt-0 justify-content-center pb-4">
+          <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" id="btnConfirmarExclusaoGeral" class="btn btn-danger rounded-pill px-4 fw-bold" disabled>
+            <i class="fa-solid fa-trash-can me-1"></i> Sim, Excluir Tudo Definitivamente
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function processando(form) {
+  const btn = form.querySelector('button[type=submit]');
+  const aviso = form.querySelector('.aviso-processando');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Processando...';
+  }
+  if (aviso) {
+    aviso.classList.remove('d-none');
+    aviso.style.display = 'block';
+  }
+  return true;
+}
+
+function confirmarExclusao(id, nomeArquivo, periodo, fonte) {
+  const form = document.getElementById('formExcluirImportacao');
+  form.action = '/contratos/importar/' + id + '/excluir';
+  document.getElementById('modalExcluirId').textContent = '#' + id;
+  document.getElementById('modalExcluirNomeArquivo').textContent = nomeArquivo;
+  document.getElementById('modalExcluirPeriodo').textContent = periodo;
+  document.getElementById('modalExcluirFonte').textContent = fonte;
+
+  const modalEl = document.getElementById('modalExcluirImportacao');
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+}
+
+// Filtro rápido instantâneo na tabela de histórico
+document.addEventListener('DOMContentLoaded', function() {
+  const campoFiltro = document.getElementById('filtroTabelaImportacoes');
+  if (campoFiltro) {
+    campoFiltro.addEventListener('input', function() {
+      const termo = this.value.toLowerCase().trim();
+      const linhas = document.querySelectorAll('#tabelaImportacoes tbody tr');
+      linhas.forEach(linha => {
+        const texto = linha.textContent.toLowerCase();
+        linha.style.display = texto.includes(termo) ? '' : 'none';
+      });
+    });
+  }
+});
+</script>
+{% endblock %}

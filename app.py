@@ -30,10 +30,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 from database import db
 db.init_app(app)
 
+# Inicialização do Módulo de Contratos de Gestão
+try:
+    import contratos
+    contratos.init_app(app)
+except Exception as e:
+    print(f"[app] Aviso ao inicializar módulo de contratos: {e}")
+
 import models
 
 with app.app_context():
     db.create_all()
+
 
     admin_existente = models.Usuario.query.filter_by(username="admin").first()
     normal_existente = models.Usuario.query.filter_by(username="normal").first()

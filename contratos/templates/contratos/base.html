@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}{% block contrato_title %}Contrato de Gestão{% endblock %}{% endblock %}
+
+{% block content %}
+<!-- FontAwesome para Ícones do Módulo de Contratos -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+<!-- Estilos DataTables (Bootstrap 5) idênticos ao sistema de produção -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+<style>
+    /* =====================================================================
+       Design tokens e estilos do Módulo de Contrato de Gestão (STSPE)
+       ===================================================================== */
+    :root {
+        --stspe-primary: #30407B;
+        --stspe-hover: #3f51b5;
+        --stspe-bg-light: #f8f9fa;
+        --cor-texto: #212529;
+        --cor-texto-muted: #6c757d;
+        --cor-texto-sutil: #98a1ab;
+        --cor-fundo: #f4f5f7;
+        --cor-borda: #e1e4e8;
+        --cor-borda-forte: #c9ced6;
+        --cor-neutro: #6c757d;
+        --cor-neutro-bg: #eceff1;
+        --cor-perigo: #c0392b;
+        --cor-sucesso: #3f8f5f;
+        --raio: 8px;
+        --raio-sm: 4px;
+    }
+
+    .contratos-container h1 { font-size: 1.5rem; font-weight: 700; color: var(--stspe-primary); margin: 0 0 4px; }
+    .contratos-container h2 { font-size: 1.05rem; font-weight: 600; color: var(--cor-texto); margin: 0 0 12px; }
+    .contratos-container .subtitulo-pagina { color: var(--cor-texto-muted); margin: 0 0 18px; font-size: .92rem; }
+
+    .contratos-container form.card, .contratos-container div.card, .contratos-container section.card {
+        background: #fff; border: 1px solid var(--cor-borda); border-radius: var(--raio);
+        padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .contratos-container .card h2:first-child { margin-top: 0; }
+    .contratos-container .card-tint-blue { background: #eef1fb; border-color: #c9d3f2; }
+    .contratos-container .card-tint-amber { background: #fff8ec; border-color: #f0dca8; }
+
+    .contratos-container form.card label, .contratos-container .busca-resultados label { 
+        display: block; font-size: .78rem; font-weight: 600;
+        color: var(--cor-texto-muted); margin: 12px 0 4px; text-transform: uppercase; letter-spacing: .02em; 
+    }
+    .contratos-container form.card label:first-of-type { margin-top: 0; }
+    .contratos-container form.card input[type=text], .contratos-container form.card input[type=date], 
+    .contratos-container form.card input[type=file], .contratos-container form.card input[type=number], 
+    .contratos-container form.card select, .contratos-container form.card textarea {
+        width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--cor-borda-forte);
+        border-radius: var(--raio-sm); font-size: .92rem; font-family: inherit;
+    }
+    .contratos-container form.card > button[type=submit] { margin-top: 16px; }
+
+    .btn-stspe-primary { background: var(--stspe-primary); color: #fff; border: none; padding: 8px 16px;
+        border-radius: var(--raio-sm); font-weight: 600; font-size: .88rem; cursor: pointer; transition: background .15s ease; }
+    .btn-stspe-primary:hover { background: var(--stspe-hover); color: #fff; }
+
+    .contratos-container .btn-secondary { display: inline-block; background: #fff; color: var(--stspe-primary);
+        border: 1px solid var(--cor-borda-forte); padding: 8px 14px; border-radius: var(--raio-sm);
+        font-weight: 600; font-size: .88rem; text-decoration: none; cursor: pointer; }
+    .contratos-container .btn-secondary:hover { background: var(--cor-fundo); color: var(--stspe-primary); }
+
+    .contratos-container .btn-danger { background: var(--cor-perigo); color: #fff; border: none; padding: 8px 14px;
+        border-radius: var(--raio-sm); font-weight: 600; font-size: .88rem; cursor: pointer; }
+    .contratos-container .btn-danger:hover { background: #a93226; }
+
+    .contratos-container .table-card { background: #fff; border: 1px solid var(--cor-borda); border-radius: var(--raio);
+        overflow: hidden; margin-bottom: 20px; }
+    .contratos-container table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    .contratos-container th, .contratos-container td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--cor-borda); }
+    .contratos-container thead th { background: var(--cor-fundo); font-size: .72rem; text-transform: uppercase;
+        letter-spacing: .03em; color: var(--cor-texto-muted); font-weight: 700; }
+    .contratos-container tbody tr:hover { background: #fafbfc; }
+
+    .badge-cinza { background: var(--cor-neutro-bg); color: var(--cor-neutro); }
+    .badge-amarelo { background: #fef3d6; color: #8a6100; }
+    .badge-azul { background: #e3e8fb; color: var(--stspe-primary); }
+    .badge-vermelho { background: #fbe3e1; color: var(--cor-perigo); }
+    .badge-verde { background: #e3f5e9; color: var(--cor-sucesso); }
+
+    .contratos-container .highlights { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
+    .contratos-container .stat-card { flex: 1 1 180px; background: #fff; border: 1px solid var(--cor-borda);
+        border-radius: var(--raio); padding: 14px 16px; border-left: 4px solid var(--cor-borda-forte); }
+    .contratos-container .stat-card.tom-aviso { border-left-color: #e0a941; background: #fffaf0; }
+    .contratos-container .stat-card.tom-perigo { border-left-color: var(--cor-perigo); background: #fdf2f1; }
+    .contratos-container .stat-valor { font-size: 1.6rem; font-weight: 700; color: var(--cor-texto); }
+    .contratos-container .stat-card.tom-aviso .stat-valor { color: #8a6100; }
+    .contratos-container .stat-card.tom-perigo .stat-valor { color: var(--cor-perigo); }
+    .contratos-container .stat-rotulo { font-size: .78rem; color: var(--cor-texto-muted); margin-top: 4px; }
+
+    .contratos-container .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+        padding: 10px 14px; background: #fff; border: 1px solid var(--cor-borda); border-radius: var(--raio); }
+    .contratos-container .toolbar.card-tint-amber { background: #fff8ec; border-color: #f0dca8; }
+    .contratos-container .toolbar-texto { font-size: .85rem; color: var(--cor-texto-muted); }
+    .contratos-container .espaco { flex: 1; }
+
+    .contratos-container .painel-acao { display: none; margin-bottom: 16px; }
+    .contratos-container .painel-acao.aberto { display: block; }
+
+    /* Sub-navbar de Contratos */
+    .subnav-contratos {
+        background: linear-gradient(135deg, #1f2a52 0%, #30407B 100%);
+        border-radius: 12px;
+        padding: 10px 20px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(48, 64, 123, 0.15);
+    }
+    .subnav-contratos .nav-link {
+        color: #d1d9ff !important;
+        font-weight: 500;
+        padding: 6px 14px;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+    }
+    .subnav-contratos .nav-link:hover {
+        color: #ffffff !important;
+        background-color: rgba(255, 255, 255, 0.12);
+    }
+    .subnav-contratos .nav-link.active {
+        color: #ffffff !important;
+        background-color: rgba(255, 255, 255, 0.22);
+        font-weight: 700;
+    }
+    .btn-recalc-header {
+        background: #ffffff;
+        color: #30407B !important;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 6px 16px;
+        border: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+        transition: all 0.2s ease;
+    }
+    .btn-recalc-header:hover {
+        background: #eef1fb;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.18);
+    }
+
+    /* =========================================================
+       Filtros Estilo Excel nas Colunas do Módulo de Contratos
+       ========================================================= */
+    .contratos-container .header-excel-container {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 6px !important;
+        width: 100% !important;
+        padding-right: 14px !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+    }
+    .contratos-container .header-excel-container .header-text {
+        white-space: nowrap !important;
+        font-weight: 700 !important;
+        user-select: none !important;
+    }
+    .contratos-container .btn-excel-filter {
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        color: var(--cor-texto-muted, #6c757d) !important;
+        font-size: 0.82rem !important;
+        padding: 2px 4px !important;
+        border-radius: 4px !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        line-height: 1 !important;
+        flex-shrink: 0 !important;
+        transition: all 0.15s ease-in-out !important;
+    }
+    .contratos-container .btn-excel-filter:hover {
+        color: var(--stspe-primary, #0d6efd) !important;
+        background-color: rgba(0,0,0,0.06) !important;
+    }
+    .contratos-container .btn-excel-filter.btn-excel-filter-active {
+        color: #ffffff !important;
+        background-color: var(--stspe-primary, #0d6efd) !important;
+        border-color: var(--stspe-primary, #0d6efd) !important;
+        box-shadow: 0 1px 3px rgba(13, 110, 253, 0.4) !important;
+    }
+    .excel-filter-dropdown {
+        font-family: inherit;
+        font-size: 0.85rem;
+        background-color: #ffffff !important;
+        border: 1px solid #dee2e6 !important;
+        border-radius: 0.5rem !important;
+        box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2) !important;
+        animation: fadeInDown 0.15s ease-out;
+        flex-direction: column;
+        max-height: calc(100vh - 20px) !important;
+        box-sizing: border-box !important;
+    }
+    .excel-filter-dropdown[style*="display: none"],
+    .excel-filter-dropdown[style*="display:none"] {
+        display: none !important;
+    }
+    .excel-filter-dropdown .card-header {
+        flex-shrink: 0 !important;
+    }
+    .excel-filter-dropdown .card-body {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    .excel-filter-dropdown .card-footer {
+        flex-shrink: 0 !important;
+    }
+    @keyframes fadeInDown {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .excel-filter-dropdown .excel-filter-items-list {
+        scrollbar-width: thin;
+        scrollbar-color: #ced4da #f8f9fa;
+    }
+    .excel-filter-dropdown .excel-filter-items-list::-webkit-scrollbar {
+        width: 6px;
+    }
+    .excel-filter-dropdown .excel-filter-items-list::-webkit-scrollbar-track {
+        background: #f8f9fa;
+    }
+    .excel-filter-dropdown .excel-filter-items-list::-webkit-scrollbar-thumb {
+        background: #ced4da;
+        border-radius: 3px;
+    }
+    .excel-filter-dropdown .excel-item-row:hover {
+        background-color: #f8f9fa;
+        border-radius: 3px;
+    }
+    .excel-filter-dropdown .count-badge {
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+</style>
+
+<div class="container-fluid py-3 px-4 contratos-container">
+    <!-- Sub-Navbar de Navegação Interna de Contratos -->
+    <div class="subnav-contratos d-flex flex-wrap align-items-center justify-content-between">
+        <div class="d-flex align-items-center mb-2 mb-md-0">
+            <span class="text-white fw-bold me-3 fs-5 d-flex align-items-center">
+                <i class="fa-solid fa-chart-line me-2 text-warning"></i> Contrato de Gestão
+            </span>
+            <ul class="nav nav-pills">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path == '/contratos' or request.path == '/contratos/' %}active{% endif %}" href="{{ url_for('painel.index') }}">
+                        <i class="fa-solid fa-gauge me-1"></i> Painel
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path.startswith('/contratos/relatorios') %}active{% endif %}" href="{{ url_for('relatorios.index') }}">
+                        <i class="fa-solid fa-file-invoice me-1"></i> Relatórios
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path.startswith('/contratos/cadastros') %}active{% endif %}" href="{{ url_for('cadastros.administracao') }}">
+                        <i class="fa-solid fa-sliders me-1"></i> Administração
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path.startswith('/contratos/importar') %}active{% endif %}" href="{{ url_for('importacao.formulario') }}">
+                        <i class="fa-solid fa-file-arrow-up me-1"></i> Importações
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path.startswith('/contratos/vigencias') %}active{% endif %}" href="{{ url_for('vigencias.listar') }}">
+                        <i class="fa-solid fa-calendar-days me-1"></i> Vigências
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.path.startswith('/contratos/backup') %}active{% endif %}" href="{{ url_for('backup.index') }}">
+                        <i class="fa-solid fa-shield-halved me-1"></i> Backup
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <div class="d-flex align-items-center">
+            <button type="button" class="btn btn-recalc-header btn-sm d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#modalRecalcularPeriodo">
+                <i class="fa-solid fa-rotate me-1"></i> Recalcular Período
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal Recalcular Período -->
+    <div class="modal fade" id="modalRecalcularPeriodo" tabindex="-1" aria-labelledby="modalRecalcularPeriodoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow rounded-4">
+                <div class="modal-header text-white rounded-top-4" style="background-color: var(--stspe-primary);">
+                    <h5 class="modal-title fw-bold" id="modalRecalcularPeriodoLabel">
+                        <i class="fa-solid fa-rotate me-2"></i> Recalcular Período
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form action="{{ url_for('cadastros.recalcular') }}" method="POST">
+                    <div class="modal-body p-4">
+                        <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
+                            <i class="fa-solid fa-circle-info me-2 mt-1 fs-5"></i>
+                            <div class="small">
+                                O processo de recalcular atualiza os dados consolidados do período selecionado com base na fonte de dados especificada. Certifique-se de selecionar a competência correta.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="fonte_at02" class="form-label fw-bold">Seleção de Fonte AT-02</label>
+                            <select class="form-select" id="fonte_at02" name="fonte_at02" required>
+                                <option value="" selected disabled>Selecione a fonte...</option>
+                                <option value="AT-02_PADRAO">AT-02 Padrão Produção</option>
+                                <option value="AT-02_VIGENCIA">AT-02 Vigência Atual</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="competencia" class="form-label fw-bold">Competência (AAAAMM)</label>
+                            <input type="text" class="form-control" id="competencia" name="competencia" placeholder="Ex: 202601" maxlength="6" pattern="[0-9]{6}" required>
+                            <div class="form-text">Digite o ano e o mês no formato de 6 dígitos.</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light rounded-bottom-4">
+                        <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-stspe-primary rounded-pill px-4">
+                            <i class="fa-solid fa-check me-1"></i> Recalcular
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conteúdo Específico da Página de Contratos -->
+    {% block contrato_content %}{% endblock %}
+</div>
+
+<script>
+    function alternarPainel(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('aberto');
+    }
+
+    function marcarTodos(checkboxTodos, formId) {
+        document.querySelectorAll('input[type="checkbox"][form="' + formId + '"]').forEach(chk => {
+            chk.checked = checkboxTodos.checked;
+        });
+    }
+</script>
+{% endblock %}
+
+{% block scripts %}
+{% block extra_js %}{% endblock %}
+{% endblock %}

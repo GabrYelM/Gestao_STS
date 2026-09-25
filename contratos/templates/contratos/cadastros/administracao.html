@@ -1,0 +1,134 @@
+{% extends "contratos/base.html" %}
+
+{% block title %}Administração - STSPE PROD MONITOR{% endblock %}
+
+{% block contrato_content %}
+<div class="card border-0 shadow-sm rounded-3">
+    <div class="card-body p-4">
+        <h4 class="card-title fw-bold mb-4" style="color: var(--stspe-primary);">
+            <i class="fa-solid fa-sliders me-2"></i>Painel de Administração
+        </h4>
+
+        <!-- Navegação por Abas Horizontais -->
+        <ul class="nav nav-tabs nav-tabs-stspe mb-4" id="adminTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-estabelecimentos" data-bs-toggle="tab" data-bs-target="#estabelecimentos" type="button" role="tab" data-url="{{ url_for('cadastros.estabelecimentos_partial') }}">
+                    <i class="fa-solid fa-hospital me-1"></i> Estabelecimentos
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-cbo" data-bs-toggle="tab" data-bs-target="#cbo" type="button" role="tab" data-url="{{ url_for('cadastros.cbo_partial') }}">
+                    <i class="fa-solid fa-user-doctor me-1"></i> Categoria Profissional
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-procedimentos" data-bs-toggle="tab" data-bs-target="#procedimentos" type="button" role="tab" data-url="{{ url_for('cadastros.procedimentos_partial') }}">
+                    <i class="fa-solid fa-list-check me-1"></i> Procedimentos
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-profissionais" data-bs-toggle="tab" data-bs-target="#profissionais" type="button" role="tab" data-url="{{ url_for('cadastros.profissionais_partial') }}">
+                    <i class="fa-solid fa-user-nurse me-1"></i> Profissionais
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-portaria" data-bs-toggle="tab" data-bs-target="#portaria" type="button" role="tab" data-url="{{ url_for('cadastros.portaria_partial') }}">
+                    <i class="fa-solid fa-file-contract me-1"></i> Portaria/TA
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-importar" data-bs-toggle="tab" data-bs-target="#importar" type="button" role="tab" data-url="{{ url_for('importacao.formulario') }}">
+                    <i class="fa-solid fa-file-import me-1"></i> Importar base de dados
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-backup" data-bs-toggle="tab" data-bs-target="#backup" type="button" role="tab" data-url="/backup/">
+                    <i class="fa-solid fa-database me-1"></i> Backup
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-logs" data-bs-toggle="tab" data-bs-target="#logs" type="button" role="tab" data-url="{{ url_for('importacao.logs', periodo=periodo_logs) if periodo_logs else url_for('importacao.logs') }}">
+                    <i class="fa-solid fa-clock-rotate-left me-1"></i> Logs
+                </button>
+            </li>
+        </ul>
+
+        <!-- Áreas de Conteúdo das Abas -->
+        <div class="tab-content" id="adminTabsContent">
+            <div class="tab-pane fade show active" id="estabelecimentos" role="tabpanel">
+                <div class="tab-pane-loader text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="cbo" role="tabpanel"></div>
+            <div class="tab-pane fade" id="procedimentos" role="tabpanel"></div>
+            <div class="tab-pane fade" id="profissionais" role="tabpanel"></div>
+            <div class="tab-pane fade" id="portaria" role="tabpanel"></div>
+            <div class="tab-pane fade" id="importar" role="tabpanel"></div>
+            <div class="tab-pane fade" id="backup" role="tabpanel"></div>
+            <div class="tab-pane fade" id="logs" role="tabpanel"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const loadedTabs = new Set();
+
+    function loadTabContent(button) {
+        const targetSelector = button.getAttribute('data-bs-target');
+        const url = button.getAttribute('data-url');
+        const targetPane = document.querySelector(targetSelector);
+
+        if (url && !loadedTabs.has(targetSelector)) {
+            targetPane.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border" style="color: var(--stspe-primary)" role="status"></div>
+                    <p class="mt-2 text-muted">Carregando dados...</p>
+                </div>`;
+
+            const separador = url.includes('?') ? '&' : '?';
+            fetch(url + separador + 'partial=1')
+                .then(response => {
+                    if (!response.ok) throw new Error('Erro na requisição');
+                    return response.text();
+                })
+                .then(html => {
+                    targetPane.innerHTML = html;
+                    loadedTabs.add(targetSelector);
+                    // innerHTML não executa <script> - recria cada um para rodar de fato
+                    // (necessário para os buscadores/checkboxes "marcar todos" da aba)
+                    targetPane.querySelectorAll('script').forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
+                        newScript.textContent = oldScript.textContent;
+                        oldScript.replaceWith(newScript);
+                    });
+                })
+                .catch(err => {
+                    targetPane.innerHTML = `<div class="alert alert-warning m-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>Módulo não configurado ou rota indisponível.</div>`;
+                });
+        }
+    }
+
+    const tabButtons = document.querySelectorAll('#adminTabs button[data-bs-toggle="tab"]');
+    tabButtons.forEach(btn => {
+        btn.addEventListener('shown.bs.tab', function(event) {
+            loadTabContent(event.target);
+        });
+    });
+
+    // Aba pedida na URL (?aba=importar, ...): é assim que as telas voltam para cá depois
+    // de salvar/importar, mantendo o menu de abas do Painel de Administração visível.
+    const abaPedida = document.getElementById('tab-{{ aba_ativa|default("estabelecimentos") }}');
+    const activeTab = document.querySelector('#adminTabs .nav-link.active');
+    if (abaPedida && abaPedida !== activeTab) {
+        bootstrap.Tab.getOrCreateInstance(abaPedida).show();   // dispara shown.bs.tab -> carrega a aba
+    } else if (activeTab) {
+        loadTabContent(activeTab);
+    }
+});
+</script>
+{% endblock %}

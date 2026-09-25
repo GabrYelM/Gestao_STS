@@ -1,0 +1,46 @@
+{% extends "contratos/base.html" %}
+{% block title %}Relatórios - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Relatórios de conferência</h1>
+<p class="subtitulo-pagina">
+  Planilhas Excel com tudo o que está cadastrado no banco, incluindo os vínculos
+  (CBO e Procedimento) de cada indicador e os vínculos de cada meta. Use para
+  conferir se o cadastro bate com a Matriz de Avaliação de Produção e com os
+  Anexos da Portaria/TA.
+</p>
+
+<form class="card" method="get" action="{{ url_for('relatorios.indicadores_xlsx') }}">
+  <h2>Relatório de Indicadores + Vínculos</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:8px">
+    4 abas: Indicadores (resumo com fonte de dados e alerta para indicador
+    sem vínculo algum), Vínculos CBO e Vínculos Procedimento (já com a
+    coluna Subgrupo, quando houver) e Exceções (CBOs/estabelecimentos
+    excluídos por indicador).
+  </p>
+  <label>Filtrar por Portaria (opcional)</label>
+  <select name="portaria_id">
+    <option value="">Todas as portarias</option>
+    {% for p in portarias %}
+      <option value="{{ p.id }}">{{ p.numero }} ({{ p.periodo_inicio }} a {{ p.periodo_fim }})</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn-secondary">⬇ Baixar relatório de indicadores (.xlsx)</button>
+</form>
+
+<form class="card" method="get" action="{{ url_for('relatorios.metas_xlsx') }}">
+  <h2>Relatório de Metas + Cobertura</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:8px">
+    2 abas: Metas (uma linha por meta, com estabelecimento/indicador/CBO/valor)
+    e Resumo de cobertura (quantos estabelecimentos têm meta lançada por
+    indicador, com alerta de quantos ainda faltam).
+  </p>
+  <label>Filtrar por Termo Aditivo (opcional)</label>
+  <select name="ta_id">
+    <option value="">Todos os TAs</option>
+    {% for ta in tas %}
+      <option value="{{ ta.id }}">{{ ta.numero }} ({{ ta.periodo_inicio }} a {{ ta.periodo_fim }})</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn-secondary">⬇ Baixar relatório de metas (.xlsx)</button>
+</form>
+{% endblock %}

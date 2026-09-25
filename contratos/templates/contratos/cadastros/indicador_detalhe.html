@@ -1,0 +1,658 @@
+{% extends "contratos/base.html" %}
+{% block title %}Vínculos do indicador - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<p><a href="{{ url_for('cadastros.indicadores_da_portaria', portaria_id=indicador.portaria_id) }}">&larr; Voltar para a lista de indicadores</a></p>
+<h1>{{ indicador.codigo }} - {{ indicador.nome }}</h1>
+<p class="subtitulo-pagina">Tipo: {{ indicador.tipo }} | Complexidade: {{ indicador.complexidade or '-' }} | Serviço: {{ indicador.servico or '-' }}</p>
+
+<style>
+  .busca-wrap { position: relative; }
+  .busca-resultados {
+    position: absolute; z-index: 10; background: white; border: 1px solid var(--cor-borda-forte);
+    border-top: none; max-height: 260px; overflow-y: auto; width: 100%; box-sizing: border-box;
+    display: none; box-shadow: 0 4px 10px rgba(16,24,40,.1); border-radius: 0 0 var(--raio-sm) var(--raio-sm);
+  }
+  .busca-resultados label {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 13px;
+    cursor: pointer; margin: 0; width: auto;
+  }
+  .busca-resultados label:hover { background: var(--cor-fundo); }
+  .busca-resultados input[type=checkbox] { width: auto; margin: 0; }
+  .busca-resultados > div { padding: 6px 8px; font-size: 13px; cursor: pointer; }
+  .busca-resultados > div:hover { background: var(--cor-fundo); }
+  .carrinho { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .chip {
+    background: var(--cor-neutro-bg); border: 1px solid #c7d9f2; border-radius: 14px;
+    padding: 3px 8px 3px 10px; font-size: 12px; display: flex; align-items: center; gap: 6px;
+    color: var(--cor-neutro);
+  }
+  .chip button {
+    background: none; border: none; cursor: pointer; color: var(--cor-perigo); font-weight: bold;
+    padding: 0; margin: 0; font-size: 13px; line-height: 1;
+  }
+  .bloco-subgrupo { border: 1px solid var(--cor-borda); border-radius: var(--raio); padding: 16px; margin-bottom: 16px; background: #fbfbfa; }
+  .bloco-subgrupo-cabecalho { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .bloco-subgrupo-cabecalho h3 { margin: 0; text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--cor-texto); }
+</style>
+
+<!-- ===================================================================
+     VÍNCULOS GERAIS DO INDICADOR (sem subgrupo) - comportamento de sempre
+     =================================================================== -->
+<h2>Vínculo com CBO</h2>
+<p class="subtitulo-pagina" style="margin-bottom:8px">Se o indicador não tiver nenhum vínculo aqui, qualquer CBO é aceito no cálculo. Digite parte do código ou do nome para buscar.</p>
+<form class="card" method="post" action="{{ url_for('cadastros.add_vinculo_cbo', indicador_id=indicador.id) }}">
+  <label>CBO</label>
+  <div class="busca-wrap">
+    <input type="text" id="busca-cbo-geral" autocomplete="off" placeholder="Digite o código ou o nome do CBO...">
+    <div class="busca-resultados" id="resultados-cbo-geral"></div>
+  </div>
+  <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-geral">
+  <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" name="curinga" style="width:auto"> Aceitar qualquer CBO (curinga)</label>
+  <button type="submit">Adicionar vínculo</button>
+</form>
+<div class="toolbar">
+  <span class="toolbar-texto">Marque as linhas na tabela abaixo para excluir vários vínculos de CBO de uma vez:</span>
+  <span class="espaco"></span>
+  <button type="submit" form="form-bulk-cbo-geral" class="btn-danger"
+          onclick="return confirm('Excluir todos os vínculos de CBO marcados?')">
+    🗑 Excluir selecionados
+  </button>
+</div>
+<form method="post" action="{{ url_for('cadastros.bulk_excluir_vinculo_cbo', indicador_id=indicador.id) }}" id="form-bulk-cbo-geral"></form>
+
+<div class="table-card">
+<table>
+  <thead><tr><th><input type="checkbox" onclick="marcarTodos(this, 'form-bulk-cbo-geral')"></th><th>CBO</th><th>Curinga</th><th></th></tr></thead>
+  <tbody>
+    {% for v in vinculos_cbo %}
+    <tr>
+      <td><input type="checkbox" name="vinculo_ids" value="{{ v.id }}" form="form-bulk-cbo-geral"></td>
+      <td>{{ v.cbo_codigo or '-' }} {{ v.nome_categoria or '' }}</td>
+      <td>{{ 'Sim' if v.curinga else 'Não' }}</td>
+      <td>
+        <form method="post" action="{{ url_for('cadastros.remover_vinculo_cbo', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline">
+          <button type="submit" class="btn-link">Remover</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">Nenhum vínculo de CBO (qualquer CBO é aceito).</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<!-- ===================================================================
+     SEGMENTAÇÃO DE METAS POR PROFISSIONAL - critérios estruturados
+     (substitui a vinculação nominal que existia aqui antes)
+     =================================================================== -->
+<div class="card">
+  <h2>Segmentação de metas por profissional</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:12px">
+    Quando este indicador precisa de metas diferentes para grupos
+    diferentes de profissionais (ex.: RT vs. não-RT, ou profissionais do
+    PMMB), ligue o(s) critério(s) abaixo. A grade de metas (tela de Metas
+    de um TA) passa a gerar uma linha separada por valor de cada critério
+    ligado, além da combinação normal de estabelecimento × CBO. Nenhuma
+    lista de nomes é necessária - os grupos são determinados
+    automaticamente pelos atributos já cadastrados em cada profissional
+    (Administração &rarr; Profissionais).
+  </p>
+  <form method="post" action="{{ url_for('cadastros.atualizar_segmentacao_profissional', indicador_id=indicador.id) }}">
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;margin:0 0 10px">
+      <input type="checkbox" name="segmenta_metas_rt" value="1" class="chk-rt" {% if indicador.segmenta_metas_rt %}checked{% endif %}>
+      Segmentar por <strong>RT / não-RT</strong> (profissionais.rt)
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;margin:0 0 10px">
+      <input type="checkbox" name="segmenta_metas_tipo_equipe" value="1" class="chk-rt" {% if indicador.segmenta_metas_tipo_equipe %}checked{% endif %}>
+      Segmentar por <strong>tipo de equipe</strong> (profissionais.tipo_equipe)
+      {% if tipos_equipe_cadastrados %}
+        - valores hoje cadastrados: {{ tipos_equipe_cadastrados | join(', ') }}
+      {% else %}
+        <span style="color:var(--cor-perigo)">- nenhum profissional tem tipo de equipe preenchido ainda, cadastre antes de ligar isso</span>
+      {% endif %}
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:500;margin:0 0 14px">
+      <input type="checkbox" name="segmenta_metas_pmmb" value="1" class="chk-rt" {% if indicador.segmenta_metas_pmmb %}checked{% endif %}>
+      Segmentar por <strong>PMMB / não-PMMB</strong> (profissionais.pmmb)
+    </label>
+    <button type="submit" class="btn-secondary" style="margin-top:0">Salvar critérios</button>
+  </form>
+  <p class="subtitulo-pagina" style="margin:14px 0 0;font-size:12px">
+    Cadastral por enquanto: o cálculo automático do painel usa a meta
+    <strong>geral</strong> (sem segmentação) mesmo com isso ligado, porque a
+    apuração importada hoje não registra qual profissional gerou cada
+    lançamento. As metas segmentadas ficam cadastradas e visíveis na grade,
+    prontas para quando essa granularidade existir na apuração.
+  </p>
+</div>
+
+<!-- ===================================================================
+     CNES ALTERNATIVO POR ESTABELECIMENTO - só importa para fontes que
+     resolvem por CNES (hoje: Visita Domiciliar/P6). Indicadores movidos
+     por AT-02/Webssas (resolvidos por CMES) não usam isto.
+     =================================================================== -->
+<div class="card">
+  <h2>CNES alternativo por estabelecimento</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:12px">
+    Só se aplica a fontes que identificam a unidade pelo CNES (ex.: Visita
+    Domiciliar/P6) - não afeta indicadores alimentados por AT-02/Webssas
+    (que usam CMES). Use quando, para este indicador, uma unidade precisa
+    ser reconhecida por um CNES diferente do cadastrado em
+    Estabelecimentos - inclusive quando o CNES original bate com mais de
+    uma unidade e por isso hoje fica sem resolução (ambíguo).
+  </p>
+  <form method="post" action="{{ url_for('cadastros.add_cnes_alternativo', indicador_id=indicador.id) }}" style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+    <div class="busca-wrap" style="flex:1;min-width:220px">
+      <input type="text" id="busca-estab-cnesalt" autocomplete="off" placeholder="Buscar estabelecimento...">
+      <div class="busca-resultados" id="resultados-estab-cnesalt"></div>
+    </div>
+    <input type="hidden" name="estabelecimento_id" id="estabelecimento_id_hidden-cnesalt">
+    <input type="text" name="cnes_alternativo" placeholder="CNES alternativo" style="width:160px" required>
+    <button type="submit" class="btn-secondary" style="margin-top:0">Cadastrar CNES alternativo</button>
+  </form>
+  <ul style="padding-left:18px;margin:12px 0 0;font-size:13px">
+    {% for ca in cnes_alternativos %}
+    <li>
+      {{ ca.estabelecimento_nome }} &rarr; CNES <strong>{{ ca.cnes_alternativo }}</strong>
+      <form method="post" action="{{ url_for('cadastros.remover_cnes_alternativo', indicador_id=indicador.id, cnes_alt_id=ca.id) }}" style="display:inline">
+        <button type="submit" class="btn-link" style="font-size:12px">remover</button>
+      </form>
+    </li>
+    {% else %}
+    <li style="color:var(--cor-texto-muted);list-style:none;margin-left:-18px">Nenhum CNES alternativo cadastrado para este indicador.</li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% if vinculos_cbo | selectattr('curinga') | list %}
+<!-- ===================================================================
+     EXCEÇÕES (v7) - só fazem sentido quando o indicador aceita "qualquer
+     CBO" (curinga) acima; por isso só aparecem nesse caso.
+     =================================================================== -->
+<div class="card card-tint-amber">
+  <h2>Exceções (indicador aceita "qualquer CBO")</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:12px">
+    Como este indicador aceita qualquer CBO, a meta é geral da unidade, não
+    por profissional. Use as exceções abaixo para dizer "qualquer CBO/
+    estabelecimento, <strong>exceto</strong> estes" - a exceção vale para o
+    indicador inteiro, sem precisar repetir em cada procedimento vinculado.
+  </p>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div>
+      <h3 style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--cor-texto)">CBOs excluídos</h3>
+      <form method="post" action="{{ url_for('cadastros.add_excecao_cbo', indicador_id=indicador.id) }}" style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+        <div class="busca-wrap" style="flex:1;min-width:180px">
+          <input type="text" id="busca-cbo-excecao" autocomplete="off" placeholder="Buscar CBO para excluir...">
+          <div class="busca-resultados" id="resultados-cbo-excecao"></div>
+        </div>
+        <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-excecao">
+        <button type="submit" class="btn-secondary" style="margin-top:0">Excluir este CBO</button>
+      </form>
+      <ul style="padding-left:18px;margin:10px 0 0;font-size:13px">
+        {% for e in excecoes_cbo %}
+        <li>
+          {{ e.cbo_codigo }} {{ e.nome_categoria or '' }}
+          <form method="post" action="{{ url_for('cadastros.remover_excecao_cbo', indicador_id=indicador.id, excecao_id=e.id) }}" style="display:inline">
+            <button type="submit" class="btn-link" style="font-size:12px">remover</button>
+          </form>
+        </li>
+        {% else %}
+        <li style="color:var(--cor-texto-muted);list-style:none;margin-left:-18px">Nenhum CBO excluído.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div>
+      <h3 style="text-transform:none;letter-spacing:0;font-size:13px;color:var(--cor-texto)">Estabelecimentos excluídos</h3>
+      <form method="post" action="{{ url_for('cadastros.add_excecao_estabelecimento', indicador_id=indicador.id) }}" style="display:flex;gap:6px;align-items:flex-start;flex-wrap:wrap">
+        <div class="busca-wrap" style="flex:1;min-width:180px">
+          <input type="text" id="busca-estab-excecao" autocomplete="off" placeholder="Buscar estabelecimento para excluir...">
+          <div class="busca-resultados" id="resultados-estab-excecao"></div>
+        </div>
+        <input type="hidden" name="estabelecimento_id" id="estabelecimento_id_hidden-excecao">
+        <button type="submit" class="btn-secondary" style="margin-top:0">Excluir este estabelecimento</button>
+      </form>
+      <ul style="padding-left:18px;margin:10px 0 0;font-size:13px">
+        {% for e in excecoes_estabelecimento %}
+        <li>
+          {{ e.estabelecimento_nome }}
+          <form method="post" action="{{ url_for('cadastros.remover_excecao_estabelecimento', indicador_id=indicador.id, excecao_id=e.id) }}" style="display:inline">
+            <button type="submit" class="btn-link" style="font-size:12px">remover</button>
+          </form>
+        </li>
+        {% else %}
+        <li style="color:var(--cor-texto-muted);list-style:none;margin-left:-18px">Nenhum estabelecimento excluído.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<h2>Vínculo com procedimento</h2>
+<p class="subtitulo-pagina" style="margin-bottom:8px">
+  Busque por código ou nome e marque quantos procedimentos quiser antes de
+  adicionar - dá para pesquisar várias vezes (ex.: "consulta", depois
+  "curativo") e ir acumulando a seleção. Todos os selecionados entram com
+  o mesmo tipo de vínculo/categoria escolhidos abaixo.
+</p>
+<form class="card" method="post" action="{{ url_for('cadastros.add_vinculo_procedimento', indicador_id=indicador.id) }}" id="form-vinculo-procedimento-geral">
+  <label>Buscar procedimento</label>
+  <div class="busca-wrap">
+    <input type="text" id="busca-procedimento-geral" autocomplete="off" placeholder="Digite o código ou o nome do procedimento...">
+    <div class="busca-resultados" id="resultados-procedimento-geral"></div>
+  </div>
+
+  <div class="carrinho" id="carrinho-procedimento-geral"></div>
+  <p class="subtitulo-pagina" style="margin-bottom:8px" id="contador-texto-geral">Nenhum procedimento selecionado ainda.</p>
+
+  <label>Ou digite/cole um único código diretamente (opcional, se não usar a busca acima)</label>
+  <input type="text" name="procedimento_codigo" placeholder="ex: 0301010064">
+
+  <label>Tipo de vínculo</label>
+  <select name="tipo_vinculo">
+    <option value="inclusao">Inclusão</option>
+    <option value="exclusao">Exclusão</option>
+  </select>
+  <label>Categoria do estabelecimento (filtro negativo, opcional)</label>
+  <select name="categoria_estabelecimento_neg">
+    <option value="">-- nenhuma --</option>
+    {% for c in categorias_lista %}
+    <option value="{{ c.nome }}">{{ c.nome }}</option>
+    {% endfor %}
+  </select>
+  <label>Estabelecimento específico (id, opcional)</label>
+  <input type="text" name="estabelecimento_id">
+
+  <div id="hidden-lote-container-geral"></div>
+
+  <button type="submit" class="btn-secondary" formaction="{{ url_for('cadastros.add_vinculo_procedimento', indicador_id=indicador.id) }}">
+    Adicionar (código digitado acima)
+  </button>
+  <button type="submit" data-acao-lote="1"
+          formaction="{{ url_for('cadastros.add_vinculo_procedimento_lote', indicador_id=indicador.id) }}">
+    Adicionar selecionados (<span id="contador-selecionados-geral">0</span>)
+  </button>
+</form>
+
+<div class="toolbar">
+  <span class="toolbar-texto">Marque as linhas na tabela abaixo para excluir vários vínculos de uma vez:</span>
+  <span class="espaco"></span>
+  <button type="submit" form="form-bulk-proc-geral" class="btn-danger"
+          onclick="return confirm('Excluir todos os vínculos de procedimento marcados?')">
+    🗑 Excluir selecionados
+  </button>
+</div>
+<form method="post" action="{{ url_for('cadastros.bulk_excluir_vinculo_procedimento', indicador_id=indicador.id) }}" id="form-bulk-proc-geral"></form>
+
+<div class="table-card">
+<table>
+  <thead><tr><th><input type="checkbox" onclick="marcarTodos(this, 'form-bulk-proc-geral')"></th><th>Procedimento</th><th>Tipo</th><th>Categoria (-)</th><th>Estabelecimento (id)</th><th></th></tr></thead>
+  <tbody>
+    {% for v in vinculos_proc %}
+    <tr>
+      <td><input type="checkbox" name="vinculo_ids" value="{{ v.id }}" form="form-bulk-proc-geral"></td>
+      <td>{{ v.procedimento_codigo }} {{ v.procedimento_nome or '' }}</td>
+      <td colspan="3" style="padding:0">
+        <form method="post" action="{{ url_for('cadastros.editar_vinculo_procedimento', indicador_id=indicador.id, vinculo_id=v.id) }}"
+              style="display:flex;gap:4px;align-items:center;padding:6px">
+          <select name="tipo_vinculo" style="width:100px">
+            <option value="inclusao" {% if v.tipo_vinculo == 'inclusao' %}selected{% endif %}>Inclusão</option>
+            <option value="exclusao" {% if v.tipo_vinculo == 'exclusao' %}selected{% endif %}>Exclusão</option>
+          </select>
+          <select name="categoria_estabelecimento_neg" style="width:130px" title="Categoria (-)">
+            <option value="" {% if not v.categoria_estabelecimento_neg %}selected{% endif %}>Categoria (-): nenhuma</option>
+            {% for c in categorias_lista %}
+            <option value="{{ c.nome }}" {% if v.categoria_estabelecimento_neg == c.nome %}selected{% endif %}>{{ c.nome }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="estabelecimento_id" value="{{ v.estabelecimento_id or '' }}" placeholder="Estab. id" style="width:80px">
+          <button type="submit" class="btn-sm">Salvar</button>
+        </form>
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('cadastros.remover_vinculo_procedimento', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline">
+          <button type="submit" class="btn-link">Remover</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6">Nenhum procedimento vinculado ainda.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+
+<!-- ===================================================================
+     SUBGRUPOS (v7) - grupos de procedimentos vinculados a CBOs diferentes
+     dentro do mesmo indicador (ex.: P42 - CEO, uma especialidade por
+     subgrupo) ou só organizados por subitem (ex.: P44 - SADT).
+     =================================================================== -->
+<h2>Subgrupos</h2>
+<p class="subtitulo-pagina" style="margin-bottom:8px">
+  Use subgrupos quando o indicador tiver procedimentos vinculados a CBOs
+  diferentes dentro dele mesmo (ex.: <strong>P42</strong> - cada
+  especialidade do CEO só deve contar para o CBO daquela especialidade,
+  não para qualquer CBO do indicador), ou só para organizar por subitem
+  (ex.: <strong>P44</strong> - um subgrupo por tipo de exame). Cada
+  subgrupo tem seus próprios vínculos de CBO/procedimento, independentes
+  dos vínculos gerais do indicador acima. Se um subgrupo não tiver CBO
+  próprio, ele usa a regra geral do indicador (incluindo curinga/exceções).
+</p>
+
+<form class="card" method="post" action="{{ url_for('cadastros.novo_subgrupo', indicador_id=indicador.id) }}">
+  <label>Nome do novo subgrupo</label>
+  <input type="text" name="nome" placeholder="ex: Endodontia, Prótese, Ultrassonografia" required style="max-width:320px">
+  <button type="submit" class="btn-secondary">Criar subgrupo</button>
+</form>
+
+{% for sg in subgrupos %}
+<div class="bloco-subgrupo">
+  <div class="bloco-subgrupo-cabecalho">
+    <h3>📁 {{ sg.nome }}</h3>
+    <form method="post" action="{{ url_for('cadastros.renomear_subgrupo', indicador_id=indicador.id, subgrupo_id=sg.id) }}" style="display:flex;gap:4px;align-items:center">
+      <input type="text" name="nome" value="{{ sg.nome }}" class="btn-sm" style="padding:5px 8px;font-size:12px">
+      <button type="submit" class="btn-sm">Renomear</button>
+    </form>
+    <form method="post" action="{{ url_for('cadastros.excluir_subgrupo', indicador_id=indicador.id, subgrupo_id=sg.id) }}"
+          onsubmit="return confirm('Excluir o subgrupo {{ sg.nome }}, todos os vínculos e as METAS cadastradas só dentro dele?')">
+      <button type="submit" class="btn-danger btn-sm">Excluir subgrupo</button>
+    </form>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <h4 style="font-size:12px;color:var(--cor-texto-muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px">CBO deste subgrupo</h4>
+      <form method="post" action="{{ url_for('cadastros.add_vinculo_cbo', indicador_id=indicador.id) }}" style="margin-bottom:8px">
+        <input type="hidden" name="subgrupo_id" value="{{ sg.id }}">
+        <div class="busca-wrap">
+          <input type="text" id="busca-cbo-sg{{ sg.id }}" autocomplete="off" placeholder="Buscar CBO...">
+          <div class="busca-resultados" id="resultados-cbo-sg{{ sg.id }}"></div>
+        </div>
+        <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-sg{{ sg.id }}">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" name="curinga" style="width:auto"> Curinga (raro dentro de subgrupo)</label>
+        <button type="submit" class="btn-sm">Adicionar</button>
+      </form>
+      <ul style="padding-left:18px;margin:0 0 6px;font-size:13px;list-style:none">
+        {% for v in sg.vinculos_cbo %}
+        <li style="display:flex;align-items:center;gap:6px;padding:2px 0">
+          <input type="checkbox" name="vinculo_ids" value="{{ v.id }}" form="form-bulk-cbo-sg{{ sg.id }}">
+          <span>{{ v.cbo_codigo or 'curinga' }} {{ v.nome_categoria or '' }}</span>
+          <form method="post" action="{{ url_for('cadastros.remover_vinculo_cbo', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline">
+            <button type="submit" class="btn-link" style="font-size:12px">remover</button>
+          </form>
+        </li>
+        {% else %}
+        <li style="color:var(--cor-texto-muted)">Nenhum - usa a regra geral do indicador.</li>
+        {% endfor %}
+      </ul>
+      {% if sg.vinculos_cbo %}
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:4px;margin:0;font-weight:400">
+          <input type="checkbox" onclick="marcarTodos(this, 'form-bulk-cbo-sg{{ sg.id }}')"> marcar todos
+        </label>
+        <button type="submit" form="form-bulk-cbo-sg{{ sg.id }}" class="btn-link"
+                onclick="return confirm('Excluir os CBOs marcados deste subgrupo?')">
+          excluir selecionados
+        </button>
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('cadastros.bulk_excluir_vinculo_cbo', indicador_id=indicador.id) }}" id="form-bulk-cbo-sg{{ sg.id }}"></form>
+    </div>
+
+    <div>
+      <h4 style="font-size:12px;color:var(--cor-texto-muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px">Procedimentos deste subgrupo</h4>
+      <form method="post" action="{{ url_for('cadastros.add_vinculo_procedimento_lote', indicador_id=indicador.id) }}"
+            id="form-vinculo-procedimento-sg{{ sg.id }}" style="margin-bottom:8px">
+        <input type="hidden" name="subgrupo_id" value="{{ sg.id }}">
+        <input type="hidden" name="tipo_vinculo" value="inclusao">
+        <div class="busca-wrap">
+          <input type="text" id="busca-procedimento-sg{{ sg.id }}" autocomplete="off" placeholder="Buscar procedimento...">
+          <div class="busca-resultados" id="resultados-procedimento-sg{{ sg.id }}"></div>
+        </div>
+        <div class="carrinho" id="carrinho-procedimento-sg{{ sg.id }}"></div>
+        <p class="subtitulo-pagina" style="margin:4px 0 8px;font-size:12px" id="contador-texto-sg{{ sg.id }}">Nenhum selecionado ainda.</p>
+        <div id="hidden-lote-container-sg{{ sg.id }}"></div>
+        <button type="submit" data-acao-lote="1" class="btn-sm">
+          Adicionar selecionados (<span id="contador-selecionados-sg{{ sg.id }}">0</span>)
+        </button>
+      </form>
+      <ul style="padding-left:18px;margin:0 0 6px;font-size:13px;list-style:none">
+        {% for v in sg.vinculos_proc %}
+        <li style="display:flex;align-items:center;gap:6px;padding:2px 0">
+          <input type="checkbox" name="vinculo_ids" value="{{ v.id }}" form="form-bulk-proc-sg{{ sg.id }}">
+          <span>{{ v.procedimento_codigo }} {{ v.procedimento_nome or '' }} ({{ v.tipo_vinculo }})</span>
+          <form method="post" action="{{ url_for('cadastros.remover_vinculo_procedimento', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline">
+            <button type="submit" class="btn-link" style="font-size:12px">remover</button>
+          </form>
+        </li>
+        {% else %}
+        <li style="color:var(--cor-texto-muted)">Nenhum procedimento neste subgrupo ainda.</li>
+        {% endfor %}
+      </ul>
+      {% if sg.vinculos_proc %}
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+        <label style="display:flex;align-items:center;gap:4px;margin:0;font-weight:400">
+          <input type="checkbox" onclick="marcarTodos(this, 'form-bulk-proc-sg{{ sg.id }}')"> marcar todos
+        </label>
+        <button type="submit" form="form-bulk-proc-sg{{ sg.id }}" class="btn-link"
+                onclick="return confirm('Excluir os procedimentos marcados deste subgrupo?')">
+          excluir selecionados
+        </button>
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('cadastros.bulk_excluir_vinculo_procedimento', indicador_id=indicador.id) }}" id="form-bulk-proc-sg{{ sg.id }}"></form>
+    </div>
+  </div>
+</div>
+{% else %}
+<p class="subtitulo-pagina">Nenhum subgrupo criado - este indicador usa só os vínculos gerais acima (comportamento padrão).</p>
+{% endfor %}
+
+<script>
+// ---------------------------------------------------------------------
+// Busca de CBO com um único resultado (clique preenche o input escondido
+// que vai no <form>). Reutilizável para o vínculo geral, exceção de CBO,
+// e o CBO de cada subgrupo - basta um sufixo de id diferente por instância.
+// ---------------------------------------------------------------------
+function criarBuscaCbo(sufixo) {
+  const input = document.getElementById('busca-cbo-' + sufixo);
+  const resultados = document.getElementById('resultados-cbo-' + sufixo);
+  const hidden = document.getElementById('cbo_codigo_hidden-' + sufixo);
+  if (!input) return;
+  let timer = null;
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    const termo = input.value.trim();
+    timer = setTimeout(async () => {
+      const resp = await fetch('{{ url_for("cadastros.buscar_cbo_json") }}?q=' + encodeURIComponent(termo));
+      const itens = await resp.json();
+      resultados.innerHTML = '';
+      if (itens.length === 0) { resultados.style.display = 'none'; return; }
+      itens.forEach(item => {
+        const div = document.createElement('div');
+        div.textContent = item.codigo + ' - ' + item.nome_categoria;
+        div.addEventListener('click', () => {
+          input.value = item.codigo + ' - ' + item.nome_categoria;
+          hidden.value = item.codigo;
+          resultados.style.display = 'none';
+        });
+        resultados.appendChild(div);
+      });
+      resultados.style.display = 'block';
+    }, 200);
+  });
+  document.addEventListener('click', (e) => { if (e.target !== input) resultados.style.display = 'none'; });
+}
+
+// Mesma ideia, para buscar estabelecimento (usado só na exceção).
+function criarBuscaEstabelecimento(sufixo) {
+  const input = document.getElementById('busca-estab-' + sufixo);
+  const resultados = document.getElementById('resultados-estab-' + sufixo);
+  const hidden = document.getElementById('estabelecimento_id_hidden-' + sufixo);
+  if (!input) return;
+  let timer = null;
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    const termo = input.value.trim();
+    timer = setTimeout(async () => {
+      const resp = await fetch('{{ url_for("cadastros.buscar_estabelecimentos_json") }}?q=' + encodeURIComponent(termo));
+      const itens = await resp.json();
+      resultados.innerHTML = '';
+      if (itens.length === 0) { resultados.style.display = 'none'; return; }
+      itens.forEach(item => {
+        const div = document.createElement('div');
+        div.textContent = item.nome;
+        div.addEventListener('click', () => {
+          input.value = item.nome;
+          hidden.value = item.codigo;
+          resultados.style.display = 'none';
+        });
+        resultados.appendChild(div);
+      });
+      resultados.style.display = 'block';
+    }, 200);
+  });
+  document.addEventListener('click', (e) => { if (e.target !== input) resultados.style.display = 'none'; });
+}
+
+// Mesma ideia, para buscar profissional (nome ou CNS) - usada no vínculo
+// com profissionais.
+function criarBuscaProfissional(sufixo) {
+  const input = document.getElementById('busca-profissional-' + sufixo);
+  const resultados = document.getElementById('resultados-profissional-' + sufixo);
+  const hidden = document.getElementById('profissional_id_hidden-' + sufixo);
+  if (!input) return;
+  let timer = null;
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    const termo = input.value.trim();
+    timer = setTimeout(async () => {
+      const resp = await fetch('{{ url_for("cadastros.buscar_profissionais_json") }}?q=' + encodeURIComponent(termo));
+      const itens = await resp.json();
+      resultados.innerHTML = '';
+      if (itens.length === 0) { resultados.style.display = 'none'; return; }
+      itens.forEach(item => {
+        const div = document.createElement('div');
+        div.textContent = item.nome + (item.cns ? ' - CNS ' + item.cns : '') + (item.estabelecimento_nome ? ' (' + item.estabelecimento_nome + ')' : '');
+        div.addEventListener('click', () => {
+          input.value = item.nome;
+          hidden.value = item.codigo;
+          resultados.style.display = 'none';
+        });
+        resultados.appendChild(div);
+      });
+      resultados.style.display = 'block';
+    }, 200);
+  });
+  document.addEventListener('click', (e) => { if (e.target !== input) resultados.style.display = 'none'; });
+}
+
+// Busca de procedimento com seleção múltipla (carrinho acumulável entre
+// buscas). Reutilizável para o vínculo geral e para cada subgrupo.
+function criarBuscaProcedimento(sufixo) {
+  const selecionados = new Map();
+  const input = document.getElementById('busca-procedimento-' + sufixo);
+  const resultados = document.getElementById('resultados-procedimento-' + sufixo);
+  const carrinho = document.getElementById('carrinho-procedimento-' + sufixo);
+  const contadorTexto = document.getElementById('contador-texto-' + sufixo);
+  const contadorBotao = document.getElementById('contador-selecionados-' + sufixo);
+  const container = document.getElementById('hidden-lote-container-' + sufixo);
+  const form = document.getElementById('form-vinculo-procedimento-' + sufixo);
+  if (!input || !form) return;
+  let timer = null;
+
+  function renderizarCarrinho() {
+    carrinho.innerHTML = '';
+    selecionados.forEach((nome, codigo) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML = '<span>' + codigo + ' - ' + nome + '</span>';
+      const btnRemover = document.createElement('button');
+      btnRemover.type = 'button';
+      btnRemover.textContent = '×';
+      btnRemover.addEventListener('click', () => {
+        selecionados.delete(codigo);
+        renderizarCarrinho();
+        atualizarCheckboxesVisiveis();
+      });
+      chip.appendChild(btnRemover);
+      carrinho.appendChild(chip);
+    });
+    contadorBotao.textContent = selecionados.size;
+    contadorTexto.textContent = selecionados.size > 0
+      ? selecionados.size + ' procedimento(s) selecionado(s) - clique em "Adicionar selecionados" quando terminar de escolher.'
+      : 'Nenhum procedimento selecionado ainda.';
+  }
+  function atualizarCheckboxesVisiveis() {
+    resultados.querySelectorAll('input[type=checkbox]').forEach(chk => {
+      chk.checked = selecionados.has(chk.value);
+    });
+  }
+
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    const termo = input.value.trim();
+    timer = setTimeout(async () => {
+      const resp = await fetch('{{ url_for("cadastros.buscar_procedimentos_json") }}?q=' + encodeURIComponent(termo));
+      const itens = await resp.json();
+      resultados.innerHTML = '';
+      if (itens.length === 0) { resultados.style.display = 'none'; return; }
+      itens.forEach(item => {
+        const label = document.createElement('label');
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.value = item.codigo;
+        chk.checked = selecionados.has(item.codigo);
+        chk.addEventListener('change', () => {
+          if (chk.checked) selecionados.set(item.codigo, item.nome);
+          else selecionados.delete(item.codigo);
+          renderizarCarrinho();
+        });
+        label.appendChild(chk);
+        label.appendChild(document.createTextNode(item.codigo + ' - ' + item.nome));
+        resultados.appendChild(label);
+      });
+      resultados.style.display = 'block';
+    }, 200);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target !== input && !resultados.contains(e.target)) resultados.style.display = 'none';
+  });
+
+  form.addEventListener('submit', function (e) {
+    const clicado = e.submitter;
+    if (clicado && clicado.dataset.acaoLote === '1') {
+      container.innerHTML = '';
+      if (selecionados.size === 0) {
+        e.preventDefault();
+        alert('Selecione ao menos um procedimento na busca antes de clicar em "Adicionar selecionados".');
+        return;
+      }
+      selecionados.forEach((nome, codigo) => {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden';
+        hidden.name = 'procedimento_codigos';
+        hidden.value = codigo;
+        container.appendChild(hidden);
+      });
+    }
+  });
+}
+
+// Instâncias: vínculo geral do indicador, exceções, e um par por subgrupo
+criarBuscaCbo('geral');
+criarBuscaProcedimento('geral');
+criarBuscaCbo('excecao');
+criarBuscaEstabelecimento('excecao');
+criarBuscaEstabelecimento('cnesalt');
+{% for sg in subgrupos %}
+criarBuscaCbo('sg{{ sg.id }}');
+criarBuscaProcedimento('sg{{ sg.id }}');
+{% endfor %}
+</script>
+{% endblock %}

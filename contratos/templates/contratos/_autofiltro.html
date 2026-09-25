@@ -1,0 +1,470 @@
+{#
+  Autofiltro e Ordenação por Coluna estilo Microsoft Excel para as tabelas do Módulo de Contratos.
+  Comportamento e design 100% idênticos ao sistema de produção:
+  - Cabeçalho com .header-excel-container, botão .btn-excel-filter e ordenação DataTables padrão no th
+  - Ordenação Alfanumérica Natural (A-Z e Z-A) ao clicar no cabeçalho th (classes .sorting, .sorting_asc, .sorting_desc)
+  - Dropdown flutuante em card (.excel-filter-dropdown.card.shadow-lg)
+  - Busca em tempo real com lupa e "(Selecionar resultados da pesquisa)"
+  - Badges com contagem exata de ocorrências (.count-badge)
+  - Botões Limpar, Cancelar e Aplicar
+#}
+<script>
+(function () {
+  if (window.AutoFiltro) return;
+
+  const MAX_ITENS_LISTA = 500;
+  const estados = new Map();     // id da tabela -> Map(coluna -> Set de valores permitidos)
+  const ordenacaoTabelas = new Map(); // id da tabela -> { col: number, asc: boolean }
+  let dd = null;
+  let ctx = null;
+
+  function compararAlfanumerico(aStr, bStr, asc = true) {
+    if (aStr === undefined || aStr === null) aStr = '';
+    if (bStr === undefined || bStr === null) bStr = '';
+
+    aStr = String(aStr).trim();
+    bStr = String(bStr).trim();
+
+    if (aStr === '' && bStr === '') return 0;
+    if (aStr === '' || aStr === '-') return 1;
+    if (bStr === '' || bStr === '-') return -1;
+
+    // Normaliza números formatados em pt-BR (ex: "1.234,50" -> 1234.50, "95,4%" -> 95.4)
+    const limpoA = aStr.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+    const limpoB = bStr.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+
+    const numA = parseFloat(limpoA);
+    const numB = parseFloat(limpoB);
+
+    const temLetraA = /[a-zA-Z]/.test(aStr.replace(/^(R\$|%)/g, ''));
+    const temLetraB = /[a-zA-Z]/.test(bStr.replace(/^(R\$|%)/g, ''));
+
+    let res;
+    if (!temLetraA && !temLetraB && !isNaN(numA) && !isNaN(numB) && limpoA.length > 0 && limpoB.length > 0) {
+      res = numA - numB;
+    } else {
+      res = aStr.localeCompare(bStr, 'pt-BR', { numeric: true, sensitivity: 'base' });
+    }
+
+    return asc ? res : -res;
+  }
+
+  function valorCelula(td) {
+    if (!td) return '';
+    const sel = td.querySelector('select');
+    if (sel) return sel.value === '' ? '' : (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text.trim() : '');
+    const txt = td.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio])');
+    if (txt) return (txt.value || '').trim();
+    const chk = td.querySelector('input[type=checkbox]');
+    if (chk) return chk.checked ? 'Sim' : 'Não';
+    return (td.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function linhasDados(tabela) {
+    const corpo = tabela.tBodies[0];
+    if (!corpo) return [];
+    return Array.from(corpo.rows).filter(tr => !(tr.cells.length === 1 && tr.cells[0].colSpan > 1) && !tr.hasAttribute('data-sem-filtro'));
+  }
+
+  function estadoDe(tabela) {
+    if (!estados.has(tabela.id)) estados.set(tabela.id, new Map());
+    return estados.get(tabela.id);
+  }
+
+  function ordenarTabela(tabela, colIdx, asc = true) {
+    const corpo = tabela.tBodies[0];
+    if (!corpo) return;
+
+    ordenacaoTabelas.set(tabela.id, { col: colIdx, asc });
+
+    const linhas = linhasDados(tabela);
+    const itens = linhas.map(tr => ({ tr, val: valorCelula(tr.cells[colIdx]) }));
+
+    itens.sort((a, b) => compararAlfanumerico(a.val, b.val, asc));
+
+    const irmao = corpo.nextSibling;
+    tabela.removeChild(corpo);
+
+    itens.forEach(item => corpo.appendChild(item.tr));
+
+    tabela.insertBefore(corpo, irmao);
+
+    // Atualiza classes idênticas ao DataTables de produção nos cabeçalhos
+    tabela.querySelectorAll('thead th[data-filtro]').forEach(th => {
+      const btn = th.querySelector('.btn-excel-filter');
+      const idx = btn ? parseInt(btn.dataset.col, 10) : th.cellIndex;
+      th.classList.remove('sorting_asc', 'sorting_desc');
+      if (idx === colIdx) {
+        th.classList.add(asc ? 'sorting_asc' : 'sorting_desc');
+      } else {
+        th.classList.add('sorting');
+      }
+    });
+  }
+
+  function aplicar(tabela) {
+    const filtros = estadoDe(tabela);
+    const linhas = linhasDados(tabela);
+    let visiveis = 0;
+
+    const corpo = tabela.tBodies[0];
+    const irmao = corpo ? corpo.nextSibling : null;
+    if (corpo) tabela.removeChild(corpo);
+
+    linhas.forEach(tr => {
+      let ok = true;
+      for (const [col, permitidos] of filtros) {
+        const val = valorCelula(tr.cells[col]);
+        if (!permitidos.has(val)) { ok = false; break; }
+      }
+      tr.style.display = ok ? '' : 'none';
+      if (ok) {
+        visiveis++;
+      } else {
+        const chk = tr.querySelector('.chk-linha');
+        if (chk && chk.checked) chk.checked = false;
+      }
+    });
+
+    if (corpo) tabela.insertBefore(corpo, irmao);
+
+    // Atualiza estado visual de cada botão de filtro
+    tabela.querySelectorAll('.btn-excel-filter').forEach(b => {
+      const colIdx = parseInt(b.dataset.col, 10);
+      const ativo = filtros.has(colIdx);
+      b.classList.toggle('btn-excel-filter-active', ativo);
+      const icon = b.querySelector('.filter-icon');
+      if (icon) {
+        if (ativo) {
+          icon.classList.remove('bi-funnel');
+          icon.classList.add('bi-funnel-fill');
+        } else {
+          icon.classList.remove('bi-funnel-fill');
+          icon.classList.add('bi-funnel');
+        }
+      }
+    });
+
+    document.querySelectorAll('[data-autofiltro-contador="' + tabela.id + '"]').forEach(el => {
+      el.textContent = filtros.size
+        ? 'Mostrando ' + visiveis + ' de ' + linhas.length + ' (filtrado)'
+        : linhas.length + ' registro(s)';
+    });
+
+    const todos = tabela.querySelector('.chk-todos');
+    if (todos) todos.checked = false;
+  }
+
+  function fechar() {
+    if (dd) dd.style.setProperty('display', 'none', 'important');
+    ctx = null;
+  }
+
+  function criarDropdown() {
+    dd = document.createElement('div');
+    dd.className = 'excel-filter-dropdown card shadow-lg';
+    dd.style.display = 'none';
+    dd.style.position = 'fixed';
+    dd.style.zIndex = '9999';
+    dd.style.width = '300px';
+
+    dd.innerHTML = `
+      <div class="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3">
+        <strong class="small text-truncate me-2">
+          <i class="bi bi-funnel text-primary me-1"></i> <span class="af-titulo-coluna">Filtrar</span>
+        </strong>
+        <button type="button" class="btn-close btn-sm btn-fechar"></button>
+      </div>
+
+      <div class="card-body p-2">
+        <div class="input-group input-group-sm mb-2">
+          <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+          <input type="text" class="form-control excel-search-input af-busca" placeholder="Pesquisar..." autofocus>
+        </div>
+        <div class="form-check form-check-sm mb-1 pb-1 border-bottom">
+          <input class="form-check-input chk-select-all af-chk-todos" type="checkbox" id="af_chk_all">
+          <label class="form-check-label fw-bold small lbl-select-all af-lbl-todos" for="af_chk_all">
+            (Selecionar Tudo)
+          </label>
+        </div>
+        <div class="excel-filter-items-list af-lista" style="max-height: 200px; overflow-y: auto;"></div>
+        <div class="af-nota small text-muted mt-1 px-1"></div>
+      </div>
+      <div class="card-footer bg-light py-2 px-3 d-flex justify-content-between gap-1">
+        <button type="button" class="btn btn-sm btn-outline-secondary af-limpar">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Limpar
+        </button>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-light af-cancelar">Cancelar</button>
+          <button type="button" class="btn btn-sm btn-primary af-aplicar fw-bold px-3">
+            <i class="bi bi-check2 me-1"></i>Aplicar
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dd);
+
+    const inputBusca = dd.querySelector('.af-busca');
+    const chkTodos = dd.querySelector('.af-chk-todos');
+
+    inputBusca.addEventListener('input', desenhar);
+
+    chkTodos.addEventListener('change', function () {
+      const alvo = alvoAtual();
+      itensVisiveis().forEach(v => this.checked ? alvo.add(v) : alvo.delete(v));
+      desenhar();
+    });
+
+    dd.querySelector('.af-lista').addEventListener('change', function (e) {
+      if (!e.target.matches('input[type=checkbox]')) return;
+      const alvo = alvoAtual();
+      const v = e.target.dataset.v;
+      e.target.checked ? alvo.add(v) : alvo.delete(v);
+      atualizarTodos();
+    });
+
+    dd.querySelectorAll('.btn-fechar, .af-cancelar').forEach(b => b.addEventListener('click', fechar));
+
+    dd.querySelector('.af-limpar').addEventListener('click', function () {
+      if (!ctx) return;
+      estadoDe(ctx.tabela).delete(ctx.col);
+      aplicar(ctx.tabela);
+      fechar();
+    });
+
+    dd.querySelector('.af-aplicar').addEventListener('click', function () {
+      if (!ctx) return;
+      const termo = buscaAtual();
+      const checkboxes = Array.from(dd.querySelectorAll('.af-lista .chk-item'));
+
+      let marcados;
+      if (termo !== '') {
+        const visiveis = Array.from(dd.querySelectorAll('.af-lista .excel-item-row:not([style*="none"]) .chk-item'));
+        marcados = visiveis.filter(c => c.checked).map(c => c.dataset.v);
+      } else {
+        marcados = checkboxes.filter(c => c.checked).map(c => c.dataset.v);
+      }
+
+      const filtros = estadoDe(ctx.tabela);
+      if (marcados.length === 0) {
+        filtros.set(ctx.col, new Set(['__NENHUM_VALOR_MARCADO__']));
+      } else if (marcados.length === ctx.todosValores.length && termo === '') {
+        filtros.delete(ctx.col);
+      } else {
+        filtros.set(ctx.col, new Set(marcados));
+      }
+
+      aplicar(ctx.tabela);
+      fechar();
+    });
+
+    document.addEventListener('mousedown', function (e) {
+      if (dd && dd.style.display !== 'none' && window.getComputedStyle(dd).display !== 'none' && !dd.contains(e.target) && !e.target.closest('.btn-excel-filter')) {
+        fechar();
+      }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') fechar();
+    });
+  }
+
+  const buscaAtual = () => dd ? dd.querySelector('.af-busca').value.trim().toLowerCase() : '';
+  const alvoAtual = () => (buscaAtual() ? ctx.marcadosBusca : ctx.marcados);
+
+  function rotulo(v) { return v === '' ? '(Vazio)' : v; }
+
+  function itensVisiveis() {
+    const b = buscaAtual();
+    return b ? ctx.todosValores.filter(v => rotulo(v).toLowerCase().includes(b)) : ctx.todosValores;
+  }
+
+  function atualizarTodos() {
+    const alvo = alvoAtual();
+    const vis = itensVisiveis();
+    const marcados = vis.filter(v => alvo.has(v)).length;
+    const chk = dd.querySelector('.af-chk-todos');
+    chk.checked = vis.length > 0 && marcados === vis.length;
+    chk.indeterminate = marcados > 0 && marcados < vis.length;
+  }
+
+  function desenhar() {
+    const b = buscaAtual();
+    const lblTodos = dd.querySelector('.af-lbl-todos');
+    if (b) {
+      lblTodos.textContent = '(Selecionar resultados da pesquisa)';
+      if (ctx.buscaAnterior !== b) {
+        ctx.marcadosBusca = new Set(itensVisiveis());
+      }
+    } else {
+      lblTodos.textContent = '(Selecionar Tudo)';
+    }
+    ctx.buscaAnterior = b;
+
+    const alvo = alvoAtual();
+    const vis = itensVisiveis();
+    const lista = dd.querySelector('.af-lista');
+    lista.textContent = '';
+
+    vis.slice(0, MAX_ITENS_LISTA).forEach((v, idx) => {
+      const row = document.createElement('div');
+      row.className = 'form-check form-check-sm excel-item-row py-1';
+
+      const chk = document.createElement('input');
+      chk.className = 'form-check-input chk-item';
+      chk.type = 'checkbox';
+      chk.id = 'af_item_' + ctx.col + '_' + idx;
+      chk.dataset.v = v;
+      chk.checked = alvo.has(v);
+
+      const label = document.createElement('label');
+      label.className = 'form-check-label small d-flex justify-content-between text-truncate';
+      label.htmlFor = chk.id;
+      label.title = rotulo(v);
+
+      const spanText = document.createElement('span');
+      spanText.className = 'text-truncate';
+      spanText.textContent = rotulo(v);
+
+      const badgeCount = document.createElement('span');
+      badgeCount.className = 'badge bg-light text-secondary ms-1 count-badge';
+      badgeCount.textContent = ctx.contagens[v] || 0;
+
+      label.appendChild(spanText);
+      label.appendChild(badgeCount);
+      row.appendChild(chk);
+      row.appendChild(label);
+      lista.appendChild(row);
+    });
+
+    dd.querySelector('.af-nota').textContent = vis.length > MAX_ITENS_LISTA
+      ? 'Mostrando ' + MAX_ITENS_LISTA + ' de ' + vis.length + ' valores. Use a busca para afunilar.'
+      : (vis.length === 0 ? 'Nenhum valor encontrado.' : '');
+
+    atualizarTodos();
+  }
+
+  function abrir(botao, tabela) {
+    if (!dd) criarDropdown();
+    const col = parseInt(botao.dataset.col, 10);
+    if (ctx && ctx.botao === botao && dd.style.display !== 'none' && window.getComputedStyle(dd).display !== 'none') {
+      fechar();
+      return;
+    }
+
+    const colHeader = botao.closest('th');
+    const headerTitleEl = colHeader ? colHeader.querySelector('.header-text') : null;
+    const colTitle = headerTitleEl ? headerTitleEl.textContent.trim() : (colHeader ? colHeader.textContent.trim() : 'Filtrar');
+
+    dd.querySelector('.af-titulo-coluna').textContent = colTitle;
+
+    const contagens = {};
+    linhasDados(tabela).forEach(tr => {
+      const val = valorCelula(tr.cells[col]);
+      contagens[val] = (contagens[val] || 0) + 1;
+    });
+
+    const todosValores = Object.keys(contagens).sort((a, b) => compararAlfanumerico(a, b, true));
+
+    const atual = estadoDe(tabela).get(col);
+    ctx = {
+      tabela, col, botao, todosValores, contagens,
+      marcados: atual ? new Set(atual) : new Set(todosValores),
+      marcadosBusca: new Set(), buscaAnterior: '',
+    };
+
+    dd.querySelector('.af-busca').value = '';
+    const lista = dd.querySelector('.af-lista');
+    const maxListaHeight = Math.min(220, Math.max(90, window.innerHeight - 210));
+    lista.style.maxHeight = maxListaHeight + 'px';
+
+    desenhar();
+
+    dd.style.setProperty('display', 'flex', 'important');
+    dd.style.setProperty('flex-direction', 'column', 'important');
+
+    const r = botao.getBoundingClientRect();
+    const dropHeight = dd.offsetHeight;
+    const dropWidth = dd.offsetWidth || 300;
+
+    // Ajuste horizontal (X)
+    let leftPos = r.left;
+    if (leftPos + dropWidth > window.innerWidth - 10) {
+      leftPos = Math.max(10, window.innerWidth - dropWidth - 15);
+    }
+
+    // Ajuste vertical (Y) inteligente para garantir que os botões do rodapé NUNCA fiquem ocultos
+    let topPos;
+    if (r.bottom + 4 + dropHeight <= window.innerHeight - 10) {
+      topPos = r.bottom + 4;
+    } else if (r.top - 4 - dropHeight >= 10) {
+      topPos = r.top - dropHeight - 4;
+    } else {
+      topPos = Math.max(10, window.innerHeight - dropHeight - 12);
+    }
+
+    dd.style.left = leftPos + 'px';
+    dd.style.top = topPos + 'px';
+
+    setTimeout(() => {
+      const input = dd.querySelector('.af-busca');
+      if (input) input.focus();
+    }, 50);
+  }
+
+  function iniciar(idTabela) {
+    const tabela = document.getElementById(idTabela);
+    if (!tabela || tabela.dataset.autofiltro) return;
+    tabela.dataset.autofiltro = '1';
+    tabela.classList.add('dataTable');
+
+    tabela.querySelectorAll('thead th[data-filtro]').forEach(th => {
+      const rawText = th.textContent.trim();
+      const colIdx = th.cellIndex;
+
+      th.classList.add('sorting');
+      th.innerHTML = `
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">${rawText}</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col="${colIdx}">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      `;
+
+      th.addEventListener('click', function (e) {
+        if (e.target.closest('.btn-excel-filter')) return;
+        const ord = ordenacaoTabelas.get(idTabela);
+        const novoAsc = (ord && ord.col === colIdx) ? !ord.asc : true;
+        ordenarTabela(tabela, colIdx, novoAsc);
+      });
+
+      const btn = th.querySelector('.btn-excel-filter');
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        abrir(btn, tabela);
+      });
+    });
+
+    // "marcar todos" só das linhas visíveis
+    tabela.addEventListener('change', function (e) {
+      if (!e.target.classList || !e.target.classList.contains('chk-todos')) return;
+      linhasDados(tabela).forEach(tr => {
+        const chk = tr.querySelector('.chk-linha');
+        if (chk) chk.checked = e.target.checked && tr.style.display !== 'none';
+      });
+    });
+
+    document.querySelectorAll('[data-autofiltro-limpar="' + idTabela + '"]').forEach(btn => {
+      btn.addEventListener('click', function () {
+        estadoDe(tabela).clear();
+        aplicar(tabela);
+      });
+    });
+
+    aplicar(tabela);
+  }
+
+  window.AutoFiltro = { iniciar: iniciar, aplicar: aplicar, ordenar: ordenarTabela };
+})();
+</script>

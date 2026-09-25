@@ -1,0 +1,17 @@
+{% extends "contratos/base.html" %}
+{% block title %}Editar Termo Aditivo - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Editar Termo Aditivo</h1>
+<form class="card" method="post" action="{{ url_for('vigencias.editar_ta', ta_id=ta.id) }}">
+  <label>Número</label>
+  <input type="text" name="numero" value="{{ ta.numero }}" required>
+  <label>Período início</label>
+  <input type="date" name="periodo_inicio" value="{{ ta.periodo_inicio }}" required>
+  <label>Período fim</label>
+  <input type="date" name="periodo_fim" value="{{ ta.periodo_fim }}" required>
+  <label>Observações</label>
+  <input type="text" name="observacoes" value="{{ ta.observacoes or '' }}">
+  <button type="submit">Salvar</button>
+</form>
+<a href="{{ url_for('vigencias.listar') }}">&larr; Voltar</a>
+{% endblock %}

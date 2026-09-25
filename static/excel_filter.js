@@ -238,18 +238,36 @@ window.initExcelFilters = function(dtApi, colIndices) {
 
         $('body').append($dropdown);
 
-        // Posicionamento absoluto do Dropdown sob o botão
+        var $itemsList = $dropdown.find('.excel-filter-items-list');
+        var maxListaHeight = Math.min(220, Math.max(90, $(window).height() - 210));
+        $itemsList.css('max-height', maxListaHeight + 'px');
+
+        // Posicionamento inteligente do Dropdown para nunca cortar o rodapé
         var offset = $btn.offset();
-        var dropWidth = 300;
+        var dropWidth = $dropdown.outerWidth() || 300;
+        var dropHeight = $dropdown.outerHeight();
         var leftPos = offset.left;
         
         // Ajusta se passar do limite direito da tela
-        if (leftPos + dropWidth > $(window).width()) {
-            leftPos = $(window).width() - dropWidth - 15;
+        if (leftPos + dropWidth > $(window).width() - 10) {
+            leftPos = Math.max(10, $(window).width() - dropWidth - 15);
+        }
+
+        var windowBottom = $(window).scrollTop() + $(window).height();
+        var spaceBelow = windowBottom - (offset.top + $btn.outerHeight());
+        var spaceAbove = offset.top - $(window).scrollTop();
+        var topPos;
+
+        if (spaceBelow >= dropHeight + 10) {
+            topPos = offset.top + $btn.outerHeight() + 4;
+        } else if (spaceAbove >= dropHeight + 10) {
+            topPos = offset.top - dropHeight - 4;
+        } else {
+            topPos = Math.max($(window).scrollTop() + 10, windowBottom - dropHeight - 12);
         }
 
         $dropdown.css({
-            top: (offset.top + $btn.outerHeight() + 5) + 'px',
+            top: topPos + 'px',
             left: leftPos + 'px',
             width: dropWidth + 'px',
             position: 'absolute',

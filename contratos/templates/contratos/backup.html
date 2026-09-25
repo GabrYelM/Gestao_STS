@@ -1,0 +1,68 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Backup - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Backup do banco de dados</h1>
+
+<div class="card">
+  <h2>Situação atual</h2>
+  <p class="subtitulo-pagina" style="margin:4px 0">
+    <strong>Arquivo:</strong> {{ db_path }}<br>
+    <strong>Tamanho:</strong> {{ db_tamanho_mb }} MB<br>
+    <strong>Última modificação:</strong> {{ db_modificado }}
+  </p>
+</div>
+
+<div class="card">
+  <h2>Criar backup</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:12px">
+    Recomendado: sempre que terminar de cadastrar um lote de indicadores ou
+    metas, crie um backup. O arquivo gerado é uma cópia completa e consistente
+    do banco (mesmo com o sistema em uso) - se algo der errado depois, basta
+    voltar para essa cópia.
+  </p>
+  <form method="post" action="{{ url_for('backup.criar') }}" style="display:inline-block;margin-right:10px">
+    <button type="submit">Criar backup no servidor (pasta backups/)</button>
+  </form>
+  <a class="btn btn-secondary" href="{{ url_for('backup.baixar_agora') }}">
+    Baixar backup agora (sem salvar no servidor)
+  </a>
+  <p class="subtitulo-pagina" style="margin-top:10px;margin-bottom:0">
+    Pasta de backups no servidor: {{ backup_folder }}
+  </p>
+</div>
+
+<div class="table-card">
+  <div style="padding:14px 16px 0"><h2>Backups salvos no servidor</h2></div>
+  <table>
+    <thead><tr><th>Arquivo</th><th>Tamanho</th><th>Criado em</th><th></th></tr></thead>
+    <tbody>
+      {% for b in backups %}
+      <tr>
+        <td>{{ b.nome }}</td>
+        <td>{{ b.tamanho_mb }} MB</td>
+        <td>{{ b.criado_em }}</td>
+        <td>
+          <a href="{{ url_for('backup.baixar', nome_arquivo=b.nome) }}">baixar</a> ·
+          <form method="post" action="{{ url_for('backup.excluir', nome_arquivo=b.nome) }}" style="display:inline" onsubmit="return confirm('Excluir este backup?')">
+            <button type="submit" class="btn-link">excluir</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="4">Nenhum backup salvo ainda.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card card-tint-blue">
+  <h2>Automatizar (opcional)</h2>
+  <p class="subtitulo-pagina" style="margin:4px 0 0">
+    Para não depender de lembrar de clicar no botão, é possível agendar uma
+    cópia automática do arquivo do banco (<code>{{ db_path }}</code>) todo
+    dia, usando o Agendador de Tarefas do Windows com um comando simples de
+    cópia (ex.: <code>copy</code> ou <code>robocopy</code>) para uma pasta
+    diferente (outro disco, pasta sincronizada com nuvem, etc.). Isso é um
+    complemento ao backup manual acima, não um substituto - o ideal é sempre
+    gerar um backup manual logo após um cadastro importante.
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Procedimentos - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Procedimentos</h1>
+
+<div class="toolbar">
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-proc')">📤 Importar CSV em lote</button>
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-novo-proc')">＋ Incluir novo</button>
+  <a class="btn btn-secondary" href="{{ url_for('cadastros.exportar_procedimentos_csv') }}">⬇ Exportar</a>
+  <span class="espaco"></span>
+  <span class="toolbar-texto" data-autofiltro-contador="tabela-procedimentos"></span>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-autofiltro-limpar="tabela-procedimentos"><i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros</button>
+</div>
+
+<div id="painel-importar-proc" class="painel-acao">
+  <form class="card card-tint-blue" method="post" action="{{ url_for('cadastros.importar_procedimentos_csv') }}" enctype="multipart/form-data">
+    <h2>Importar CSV em lote</h2>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Cabeçalho esperado (separador ; ou ,): <code>codigo;nome</code>. Upsert pelo código.
+    </p>
+    <input type="file" name="arquivo" accept=".csv" required>
+    <button type="submit" class="btn-secondary">Importar CSV</button>
+  </form>
+</div>
+
+<div id="painel-novo-proc" class="painel-acao">
+  <form class="card" method="post" action="{{ url_for('cadastros.novo_procedimento') }}">
+    <h2>Novo procedimento</h2>
+    <label>Código</label>
+    <input type="text" name="codigo" required>
+    <label>Nome</label>
+    <input type="text" name="nome" required>
+    <button type="submit">Cadastrar</button>
+  </form>
+</div>
+
+<div class="toolbar card-tint-amber">
+  <span class="toolbar-texto">Marque linhas na tabela abaixo para excluir em massa:</span>
+  <span class="espaco"></span>
+  <button type="submit" form="form-bulk-proc" class="btn-danger"
+          onclick="return confirm('Excluir todos os procedimentos marcados? Essa ação não pode ser desfeita.')">
+    🗑 Excluir selecionados
+  </button>
+</div>
+
+<form method="post" action="{{ url_for('cadastros.bulk_excluir_procedimentos') }}" id="form-bulk-proc"></form>
+
+<div class="table-card">
+{# ~5 mil linhas: em vez de 2 <form> por linha (HTML enorme), a linha só tem botões e dois
+   formulários compartilhados (abaixo) enviam a edição/exclusão - ver script no fim. #}
+<table id="tabela-procedimentos">
+  <thead><tr><th><input type="checkbox" class="chk-todos" title="Marcar todas as linhas visíveis"></th><th data-filtro>Código</th><th data-filtro>Nome</th><th></th></tr></thead>
+  <tbody>
+    {% for p in itens %}
+    <tr data-cod="{{ p.codigo }}">
+      <td><input type="checkbox" name="selecionados" value="{{ p.codigo }}" form="form-bulk-proc" class="chk-linha"></td>
+      <td>{{ p.codigo }}</td>
+      <td style="display:flex;gap:6px;align-items:center">
+        <input type="text" value="{{ p.nome }}" style="flex:1" class="proc-nome">
+        <button type="button" class="btn-sm" data-acao="salvar">Salvar</button>
+      </td>
+      <td><button type="button" class="btn-link" data-acao="excluir">excluir</button></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">Nenhum procedimento cadastrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="subtitulo-pagina">Use o funil (▼) no cabeçalho de cada coluna para filtrar - o filtro roda na hora, sobre todos os procedimentos.</p>
+
+<form method="post" id="form-proc-editar" hidden><input type="hidden" name="nome"></form>
+<form method="post" id="form-proc-excluir" hidden></form>
+
+{% include "contratos/_autofiltro.html" %}
+<script>
+AutoFiltro.iniciar('tabela-procedimentos');
+(function () {
+  const tabela = document.getElementById('tabela-procedimentos');
+  const urlEditar = {{ url_for('cadastros.editar_procedimento', codigo='__COD__') | tojson }};
+  const urlExcluir = {{ url_for('cadastros.excluir_procedimento', codigo='__COD__') | tojson }};
+  function salvar(tr) {
+    const f = document.getElementById('form-proc-editar');
+    f.action = urlEditar.replace('__COD__', encodeURIComponent(tr.dataset.cod));
+    f.elements['nome'].value = tr.querySelector('.proc-nome').value;
+    f.submit();
+  }
+  tabela.addEventListener('click', function (e) {
+    const b = e.target.closest('button[data-acao]');
+    if (!b) return;
+    const tr = b.closest('tr');
+    if (b.dataset.acao === 'salvar') { salvar(tr); return; }
+    if (b.dataset.acao === 'excluir' && confirm('Excluir este procedimento?')) {
+      const f = document.getElementById('form-proc-excluir');
+      f.action = urlExcluir.replace('__COD__', encodeURIComponent(tr.dataset.cod));
+      f.submit();
+    }
+  });
+  tabela.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && e.target.classList.contains('proc-nome')) { e.preventDefault(); salvar(e.target.closest('tr')); }
+  });
+})();
+</script>
+{% endblock %}

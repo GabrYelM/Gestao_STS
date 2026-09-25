@@ -1,0 +1,1121 @@
+{% extends "contratos/base.html" %}
+{% block title %}Painel - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Painel de resumo</h1>
+<p class="subtitulo-pagina">Visão geral dos indicadores apurados e alertas de cadastro incompleto.</p>
+
+{% set qtd_pend = pendencias.estabelecimentos | length + pendencias.cbos | length %}
+{% if qtd_pend %}
+<div class="card card-tint-amber" style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+  <div style="flex:1;min-width:280px">
+    <strong>⚠ Existem {{ pendencias.estabelecimentos | length }} unidade(s) e {{ pendencias.cbos | length }} CBO(s) no arquivo importado que não estão cadastrados na base.</strong>
+    <div style="font-size:13px;margin-top:4px">
+      A produção dessas unidades/CBOs não entra no Painel enquanto não forem cadastradas.
+      {% if pendencias.estabelecimentos %}Unidades: {% for e in pendencias.estabelecimentos[:5] %}{{ e.nome or e.cod_cmes }} (CMES {{ e.cod_cmes }}){% if not loop.last %}, {% endif %}{% endfor %}{% if pendencias.estabelecimentos | length > 5 %} e mais {{ pendencias.estabelecimentos | length - 5 }}{% endif %}.{% endif %}
+      {% if pendencias.cbos %}CBOs: {% for c in pendencias.cbos[:5] %}{{ c.codigo }}{% if not loop.last %}, {% endif %}{% endfor %}{% if pendencias.cbos | length > 5 %} e mais {{ pendencias.cbos | length - 5 }}{% endif %}.{% endif %}
+      Unidades novas entram sem tipo de serviço/complexidade - complete depois em Administração › Estabelecimentos.
+    </div>
+  </div>
+  <form method="post" action="{{ url_for('importacao.cadastrar_e_recalcular') }}" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='⏳ Cadastrando e recalculando...'">
+    <button type="submit">Clique aqui para cadastrar pendentes e recalcular</button>
+  </form>
+</div>
+{% elif sem_fatos %}
+<div class="card card-tint-blue" style="margin-bottom:16px">
+  <strong>Nenhum dado apurado/calculado ainda.</strong>
+  <div style="font-size:13px;margin-top:4px">
+    Importe os arquivos da fonte (AT-02, Webssas...) ou execute o <em>Recálculo do Período</em> na aba Importação
+    (Administração › Importar). Confira também se há indicadores com procedimentos vinculados, se o Serviço do indicador
+    bate com o tipo de serviço do estabelecimento e se a Fonte de dados do indicador é a base que você importou.
+  </div>
+</div>
+{% elif pendencias.sem_servico %}
+<div class="card card-tint-blue" style="margin-bottom:16px;font-size:13px">
+  {{ pendencias.sem_servico }} estabelecimento(s) com produção estão sem tipo de serviço: indicadores que exigem Serviço
+  não os contam. Complete em Administração › Estabelecimentos (edição em massa) e recalcule.
+</div>
+{% endif %}
+
+<div class="seletor-modos-painel">
+  <button type="button" class="btn-modo ativo" id="btn-modo-producao" onclick="alternarModoPainel('producao')">
+    <span class="icone-modo">📊</span> <strong>Modo Produção (Metas)</strong>
+  </button>
+  <button type="button" class="btn-modo" id="btn-modo-auditoria" onclick="alternarModoPainel('auditoria')">
+    <span class="icone-modo">🔍</span> <strong>Modo Auditoria (Websaass)</strong>
+  </button>
+</div>
+
+<!-- CARDS MODO PRODUÇÃO (Metas Contratuais & Apuração STS) -->
+<div class="highlights cards-producao">
+  <div class="stat-card tom-sucesso" role="button" tabindex="0" onclick="filtrarPorStatusMeta('Acima de 100%')" title="Clique para filtrar apenas metas atingidas">
+    <div class="stat-valor">{{ alertas.metas_atingidas }}</div>
+    <div class="stat-rotulo">🎯 Metas Atingidas (≥ 100%)</div>
+  </div>
+  <div class="stat-card tom-info" role="button" tabindex="0" onclick="filtrarPorStatusMeta('Entre 90-100%')" title="Clique para filtrar metas em andamento">
+    <div class="stat-valor">{{ alertas.metas_andamento }}</div>
+    <div class="stat-rotulo">⏱️ Em Andamento (90 a 100%)</div>
+  </div>
+  <div class="stat-card tom-perigo" role="button" tabindex="0" onclick="filtrarPorStatusMeta('Abaixo de 90%')" title="Clique para filtrar metas críticas">
+    <div class="stat-valor">{{ alertas.metas_abaixo }}</div>
+    <div class="stat-rotulo">⚠️ Abaixo da Meta (&lt; 90%)</div>
+  </div>
+  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="filtrarPorStatusMeta('Sem meta')" title="Clique para filtrar indicadores de acompanhamento">
+    <div class="stat-valor">{{ alertas.sem_meta_linhas }}</div>
+    <div class="stat-rotulo">📋 Sem Meta (Acompanhamento)</div>
+  </div>
+  <div class="stat-card tom-destaque" role="button" tabindex="0" onclick="limparFiltrosColuna()" title="Clique para limpar filtros e ver toda a produção">
+    <div class="stat-valor">{{ "{:,}".format(alertas.total_apurado_geral).replace(",", ".") }}</div>
+    <div class="stat-rotulo">📈 Total Apurado STS (Procedimentos)</div>
+  </div>
+</div>
+
+<!-- AVISOS COMPACTOS DE CONFIGURAÇÃO (Modo Produção) -->
+{% set qtd_alertas_cad = alertas.sem_cbo + alertas.sem_estabelecimento + alertas.sem_procedimento + alertas.metas_sem_painel %}
+{% if qtd_alertas_cad > 0 %}
+<div class="aviso-cadastros-pendentes cards-producao" style="font-size:12.5px;color:var(--cor-texto-muted);margin:-8px 0 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+  <span><strong>Avisos de configuração contratual:</strong></span>
+  {% if alertas.sem_cbo %}<a href="#" onclick="abrirDetalheAlerta('sem_cbo', 'Indicadores sem CBO'); return false;" style="color:#b45309">⚠️ {{ alertas.sem_cbo }} sem CBO</a>{% endif %}
+  {% if alertas.sem_estabelecimento %}<a href="#" onclick="abrirDetalheAlerta('sem_estabelecimento', 'Indicadores sem estabelecimento'); return false;" style="color:#b45309">⚠️ {{ alertas.sem_estabelecimento }} sem unidade</a>{% endif %}
+  {% if alertas.sem_procedimento %}<a href="#" onclick="abrirDetalheAlerta('sem_procedimento', 'Indicadores sem procedimentos'); return false;" style="color:#b45309">⚠️ {{ alertas.sem_procedimento }} sem procedimentos</a>{% endif %}
+  {% if alertas.metas_sem_painel %}<a href="{{ url_for('cadastros.administracao', aba='logs') }}#diagnostico-metas" style="color:#b45309">⚠️ {{ alertas.metas_sem_painel }} metas órfãs</a>{% endif %}
+</div>
+{% endif %}
+
+<!-- CARDS MODO AUDITORIA (Comparação com Declarado Websaass) -->
+<div class="highlights cards-auditoria" style="display:none">
+  <div class="stat-card tom-sucesso" role="button" tabindex="0" onclick="abrirDetalheAlerta('auditoria_conformes', 'Conformes na Auditoria Websaass (Apurado = Declarado)')">
+    <div class="stat-valor">{{ alertas.auditoria_conformes }}</div>
+    <div class="stat-rotulo">Conformes (Auditoria Websaass)</div>
+  </div>
+  <div class="stat-card tom-perigo" role="button" tabindex="0" onclick="abrirDetalheAlerta('auditoria_divergentes', 'Divergentes na Auditoria Websaass (Apurado ≠ Declarado)')">
+    <div class="stat-valor">{{ alertas.auditoria_divergentes }}</div>
+    <div class="stat-rotulo">Divergentes (Auditoria Websaass)</div>
+  </div>
+  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_cbo', 'Indicadores sem CBO vinculado')">
+    <div class="stat-valor">{{ alertas.sem_cbo }}</div>
+    <div class="stat-rotulo">Indicadores sem CBO vinculado</div>
+  </div>
+  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_estabelecimento', 'Indicadores sem estabelecimento vinculado')">
+    <div class="stat-valor">{{ alertas.sem_estabelecimento }}</div>
+    <div class="stat-rotulo">Indicadores sem estabelecimento vinculado</div>
+  </div>
+  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_procedimento', 'Indicadores sem procedimentos vinculados')">
+    <div class="stat-valor">{{ alertas.sem_procedimento }}</div>
+    <div class="stat-rotulo">Indicadores sem procedimentos vinculados</div>
+  </div>
+  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_meta', 'Indicadores sem meta registrada')">
+    <div class="stat-valor">{{ alertas.sem_meta }}</div>
+    <div class="stat-rotulo">Indicadores sem meta registrada</div>
+  </div>
+  <div class="stat-card tom-perigo" role="button" tabindex="0" onclick="abrirDetalheAlerta('abaixo_da_meta', 'Indicadores abaixo da meta')">
+    <div class="stat-valor">{{ alertas.abaixo_da_meta }}</div>
+    <div class="stat-rotulo">Indicadores abaixo da meta</div>
+  </div>
+  {% if alertas.metas_sem_painel %}
+  <a class="stat-card tom-aviso" style="text-decoration:none" href="{{ url_for('cadastros.administracao', aba='logs') }}#diagnostico-metas"
+     title="Metas cadastradas que nenhuma linha do Painel usa: veja o motivo em Administração > Logs">
+    <div class="stat-valor">{{ alertas.metas_sem_painel }}</div>
+    <div class="stat-rotulo">Metas que não aparecem no Painel (ver motivo)</div>
+  </a>
+  {% endif %}
+</div>
+
+<!-- Modal com o detalhe de cada card de alerta -->
+<div class="modal fade" id="modal-detalhe-alerta" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modal-detalhe-alerta-titulo">Detalhe</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-detalhe-alerta-corpo">
+          <p style="color:var(--cor-texto-muted)">Carregando...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .stat-card[role="button"] { cursor: pointer; transition: box-shadow .15s ease, transform .1s ease; }
+  .stat-card[role="button"]:hover { box-shadow: 0 2px 8px rgba(16,24,40,.12); transform: translateY(-1px); }
+  .contratos-container .stat-card.tom-sucesso { border-left-color: var(--cor-sucesso); background: #f0fdf4; }
+  .contratos-container .stat-card.tom-sucesso .stat-valor { color: var(--cor-sucesso); }
+  .contratos-container .stat-card.tom-info { border-left-color: #2563eb; background: #eff6ff; }
+  .contratos-container .stat-card.tom-info .stat-valor { color: #1d4ed8; }
+  .contratos-container .stat-card.tom-destaque { border-left-color: #0891b2; background: #f0fdfa; }
+  .contratos-container .stat-card.tom-destaque .stat-valor { color: #0e7490; }
+
+  /* Seletor de Modo no Topo */
+  .seletor-modos-painel {
+    display: inline-flex;
+    background: #f1f5f9;
+    padding: 3px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    margin-bottom: 16px;
+    gap: 4px;
+  }
+  .btn-modo {
+    border: none;
+    background: transparent;
+    padding: 7px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #475569;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-modo:hover {
+    color: #0f172a;
+    background: rgba(255,255,255,0.6);
+  }
+  .btn-modo.ativo {
+    background: #ffffff;
+    color: var(--stspe-primary, #0284c7);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    font-weight: 600;
+  }
+
+  /* Controle de visibilidade das colunas de auditoria */
+  .modo-producao .col-auditoria {
+    display: none !important;
+  }
+
+  /* Barra de progresso visual da meta */
+  .barra-meta-container {
+    min-width: 90px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .barra-meta-valor {
+    font-weight: 600;
+    font-size: 12.5px;
+  }
+  .barra-meta-bg {
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .barra-meta-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+  }
+  .barra-meta-fill.badge-verde, .barra-meta-fill.badge-amarelo {
+    background-color: var(--cor-sucesso, #16a34a);
+  }
+  .barra-meta-fill.badge-azul {
+    background-color: #2563eb;
+  }
+  .barra-meta-fill.badge-vermelho {
+    background-color: var(--cor-perigo, #dc2626);
+  }
+  .barra-meta-fill.badge-cinza {
+    background-color: #94a3b8;
+  }
+</style>
+
+<script>
+async function abrirDetalheAlerta(tipo, titulo) {
+  document.getElementById('modal-detalhe-alerta-titulo').textContent = titulo;
+  const corpo = document.getElementById('modal-detalhe-alerta-corpo');
+  corpo.innerHTML = '<p style="color:var(--cor-texto-muted)">Carregando...</p>';
+  const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('modal-detalhe-alerta'));
+  modal.show();
+
+  try {
+    const resp = await fetch('{{ url_for("painel.alerta_detalhe") }}?tipo=' + encodeURIComponent(tipo));
+    const dados = await resp.json();
+
+    if (dados.itens.length === 0) {
+      corpo.innerHTML = '<p style="color:var(--cor-texto-muted)">Nenhum item encontrado.</p>';
+      return;
+    }
+
+    let html = `<p class="subtitulo-pagina" style="margin-bottom:10px">${dados.itens.length} registro(s) encontrado(s).</p>`;
+    html += '<table><thead><tr>';
+    dados.colunas.forEach(c => { html += `<th>${c}</th>`; });
+    html += '</tr></thead><tbody>';
+    dados.itens.forEach(item => {
+      html += '<tr>';
+      item.celulas.forEach(c => { html += `<td>${c === null || c === undefined ? '-' : c}</td>`; });
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    corpo.innerHTML = html;
+  } catch (err) {
+    corpo.innerHTML = '<p style="color:var(--cor-perigo)">Não foi possível carregar o detalhe.</p>';
+  }
+}
+</script>
+
+<div class="toolbar d-flex align-items-center gap-2 flex-wrap mb-3 p-2 bg-white border rounded">
+  <button type="button" id="btn-expandir-tudo" class="btn btn-outline-secondary btn-sm" onclick="expandirTudo()">
+    <i class="bi bi-plus-circle me-1"></i> Expandir tudo
+  </button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="recolherTudo()">
+    <i class="bi bi-dash-circle me-1"></i> Recolher tudo
+  </button>
+  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosColuna()">
+    <i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros da tabela
+  </button>
+  <span class="toolbar-texto small text-muted ms-2" title="A consolidação por CNES é definida por indicador (Administração > Indicadores). Nos indicadores marcados, o Painel mostra só o estabelecimento principal do CNES e soma os demais CMES do mesmo CNES.">
+    <i class="bi bi-info-circle me-1"></i> Consolidação por CNES: {{ qtd_indicadores_cnes }} indicador(es)
+  </span>
+  <div class="ms-auto d-flex align-items-center gap-2">
+    <a class="btn btn-outline-success btn-sm fw-semibold" href="{{ url_for('relatorios.auditoria_websass_xlsx') }}" title="Planilha completa comparando Apurado STS vs Declarado Websaass">
+      <i class="bi bi-file-earmark-excel me-1"></i> Exportar Auditoria (Websaass)
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('painel.exportar_excel', formato='resumido') }}">
+      <i class="bi bi-file-earmark-excel me-1"></i> Exportar Excel (resumido)
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('painel.exportar_excel', formato='expandido') }}">
+      <i class="bi bi-file-earmark-excel me-1"></i> Exportar (expandido)
+    </a>
+  </div>
+</div>
+
+<div class="table-card modo-producao" id="tabela-painel-wrap">
+<table id="tabela-painel" class="table-hover dataTable">
+  <thead>
+    <tr>
+      <th style="width: 32px;" class="sorting_disabled"></th>
+      <th class="sorting" data-col-index="1">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Indicador</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="1">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="2">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Estabelecimento</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="2">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="3">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">CBO</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="3">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="4">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Período</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="4">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="5">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Apurado STS</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="5">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="col-auditoria sorting" data-col-index="6">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Declarado Websaass</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="6">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="col-auditoria sorting" data-col-index="7">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Divergência</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="7">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="8">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Meta</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="8">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="9">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">% Atingido</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="9">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="sorting" data-col-index="10">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Status Meta</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="10">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+      <th class="col-auditoria sorting" data-col-index="11">
+        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="header-text text-nowrap">Auditoria Websaass</span>
+          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="11">
+            <i class="bi bi-funnel filter-icon"></i>
+          </button>
+        </div>
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in resultados %}
+    <tr class="linha-resumo" data-indicador-id="{{ r.indicador_id }}" data-estabelecimento-id="{{ r.estabelecimento_id }}"
+        data-estabelecimento-ids="{{ r.estabelecimento_ids | join(',') }}" data-subgrupo-id="{{ r.subgrupo_id or '' }}"
+        data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}">
+      <td><button type="button" class="btn-expandir" onclick="alternarLinha(this)" title="Ver procedimentos e profissionais">+</button></td>
+      <td>
+        <div class="celula-indicador-principal">{{ r.indicador_codigo }} - {{ r.indicador_nome }}{% if r.subgrupo_nome %} · Subgrupo: {{ r.subgrupo_nome }}{% endif %}</div>
+        <div class="celula-indicador-secundaria">{{ r.indicador_tipo }}{% if r.complexidade %} · {{ r.complexidade }}{% endif %}{% if r.servico %} · {{ r.servico }}{% endif %}</div>
+        {% if r.fonte_dados %}<div class="celula-indicador-secundaria" title="Fonte de dados oficial (Portaria)">📊 {{ r.fonte_dados }}</div>{% endif %}
+      </td>
+      <td>{{ r.estabelecimento_nome }}{% if r.grupo_cnes %} · CNES {{ r.grupo_cnes }} ({{ r.qtd_cmes }} CMES){% endif %}</td>
+      <td>{{ (r.cbo_codigo + ' - ' + r.cbo_nome) if r.cbo_codigo else 'Curinga / Geral' }}</td>
+      <td>{{ r.periodo }}</td>
+      <td><strong>{{ "{:,}".format(r.valor_apurado).replace(",", ".") }}</strong></td>
+      <td class="col-auditoria">{{ "{:,}".format(r.valor_declarado).replace(",", ".") if r.valor_declarado is not none else "-" }}</td>
+      <td class="col-auditoria">
+        {% if r.divergencia == 0 %}
+          <span style="color:var(--cor-sucesso);font-weight:600">0</span>
+        {% elif r.divergencia > 0 %}
+          <span style="color:#8a6100;font-weight:600">+{{ r.divergencia }}</span>
+        {% else %}
+          <span style="color:var(--cor-perigo);font-weight:600">{{ r.divergencia }}</span>
+        {% endif %}
+      </td>
+      <td>{{ "{:,}".format(r.valor_meta).replace(",", ".") if r.valor_meta is not none else '-' }}</td>
+      <td>
+        {% if r.percentual_meta is not none %}
+          <div class="barra-meta-container">
+            <span class="barra-meta-valor">{{ r.percentual_meta }}%</span>
+            <div class="barra-meta-bg">
+              <div class="barra-meta-fill {{ r.status_classe }}" style="width: {{ [r.percentual_meta, 100] | min }}%"></div>
+            </div>
+          </div>
+        {% else %}
+          <span style="color:var(--cor-texto-muted)">-</span>
+        {% endif %}
+      </td>
+      <td><span class="badge {{ r.status_classe }}">{{ r.status_rotulo }}</span></td>
+      <td class="col-auditoria"><span class="badge {{ r.auditoria_classe }}">{{ r.auditoria_rotulo }}</span></td>
+    </tr>
+    <tr class="linha-detalhe" style="display:none">
+      <td></td>
+      <td colspan="11" class="conteudo-detalhe">
+        <em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="12">Nenhum resultado ainda. Importe dados e cadastre indicadores/metas.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+
+<!-- Dropdown flutuante estilo Microsoft Excel (Bootstrap 5) -->
+<div id="filtro-dropdown" class="excel-filter-dropdown card shadow-lg" style="display:none; position:fixed; z-index:9999; width:300px;">
+  <div class="card-header bg-light d-flex justify-content-between align-items-center py-2 px-3">
+    <strong class="small text-truncate me-2">
+      <i class="bi bi-funnel text-primary me-1"></i> <span id="filtro-dropdown-coluna-titulo">Filtrar</span>
+    </strong>
+    <button type="button" class="btn-close btn-sm btn-fechar" onclick="fecharFiltroDropdown()"></button>
+  </div>
+
+  <div class="card-body p-2">
+    <!-- Campo de Busca -->
+    <div class="input-group input-group-sm mb-2">
+      <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+      <input type="text" id="filtro-dropdown-busca" class="form-control excel-search-input" placeholder="Pesquisar..." autofocus>
+    </div>
+
+    <!-- Selecionar Tudo -->
+    <div class="form-check form-check-sm mb-1 pb-1 border-bottom">
+      <input class="form-check-input chk-select-all" type="checkbox" id="filtro-dropdown-marcar-todos" checked>
+      <label class="form-check-label fw-bold small lbl-select-all" for="filtro-dropdown-marcar-todos" id="filtro-dropdown-marcar-todos-lbl">
+        (Selecionar Tudo)
+      </label>
+    </div>
+
+    <!-- Lista de Checkboxes com contadores -->
+    <div id="filtro-dropdown-lista" class="excel-filter-items-list" style="max-height: 220px; overflow-y: auto;"></div>
+    <div id="filtro-dropdown-nota" class="small text-muted mt-1 px-1"></div>
+  </div>
+  <div class="card-footer bg-light py-2 px-3 d-flex justify-content-between gap-1">
+    <button type="button" class="btn btn-sm btn-outline-secondary btn-limpar-filtro" onclick="limparFiltroColunaAtual()">
+      <i class="bi bi-arrow-counterclockwise me-1"></i>Limpar
+    </button>
+    <div class="d-flex gap-1">
+      <button type="button" class="btn btn-sm btn-light btn-fechar" onclick="fecharFiltroDropdown()">Cancelar</button>
+      <button type="button" class="btn btn-sm btn-primary btn-aplicar fw-bold px-3" onclick="aplicarFiltroColunaAtual()">
+        <i class="bi bi-check2 me-1"></i>Aplicar
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .btn-expandir {
+    width: 22px; height: 22px; border-radius: var(--raio-sm); border: 1px solid var(--cor-borda-forte);
+    background: white; cursor: pointer; font-weight: bold; padding: 0; line-height: 1; margin: 0;
+    color: var(--cor-texto-muted);
+  }
+  .btn-expandir:hover { background: var(--cor-fundo); border-color: var(--cor-borda-forte); }
+  .linha-detalhe td { background: #fafaf9; }
+  .conteudo-detalhe table { margin: 6px 0; font-size: 12px; }
+  .conteudo-detalhe h4 { margin: 8px 0 4px; font-size: 12px; color: var(--cor-texto-muted); }
+
+  .celula-indicador-principal { font-weight: 500; }
+  .celula-indicador-secundaria { font-size: 11.5px; color: var(--cor-texto-sutil); margin-top: 1px; }
+
+  /* Autofiltro estilo Excel moderno idêntico ao da produção */
+  #tabela-painel thead th { white-space: nowrap; }
+  .header-excel-container {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    white-space: nowrap !important;
+  }
+  .header-excel-container .header-text {
+    white-space: nowrap !important;
+    font-weight: 700;
+  }
+  .btn-excel-filter {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    color: var(--cor-texto-muted, #6c757d) !important;
+    font-size: 0.82rem !important;
+    padding: 2px 4px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    flex-shrink: 0 !important;
+    transition: all 0.15s ease-in-out !important;
+  }
+  .btn-excel-filter:hover {
+    color: var(--stspe-primary, #0d6efd) !important;
+    background-color: rgba(0,0,0,0.06) !important;
+  }
+  .btn-excel-filter.btn-excel-filter-active {
+    color: #ffffff !important;
+    background-color: var(--stspe-primary, #0d6efd) !important;
+    border-color: var(--stspe-primary, #0d6efd) !important;
+    box-shadow: 0 1px 3px rgba(13, 110, 253, 0.4) !important;
+  }
+  .excel-filter-dropdown {
+    animation: fadeInDown 0.15s ease-out;
+  }
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Cabeçalho fixo: a tabela do painel ganha sua própria área de rolagem
+     (como uma planilha), então o cabeçalho gruda no topo DESSA área via
+     CSS puro - não depende de calcular a altura da navbar em JS nem
+     interfere no scroll da página, então não tem como sobrepor o resto
+     do layout. */
+  #tabela-painel-wrap {
+    max-height: 70vh;
+    overflow-y: auto;
+    overflow-x: auto;
+  }
+  #tabela-painel thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    box-shadow: 0 1px 0 var(--cor-borda);
+  }
+</style>
+
+<script>
+const cacheDetalhe = new Map();
+const cacheProfissional = new Map();
+
+function chaveLinha(tr) {
+  return [tr.dataset.indicadorId, tr.dataset.estabelecimentoIds, tr.dataset.subgrupoId, tr.dataset.cboCodigo, tr.dataset.periodo].join('|');
+}
+
+function montarHtmlProfissionais(dados, idPrefixo) {
+  if (dados.profissionais.length === 0) {
+    return '<p style="font-size:12px;color:var(--cor-texto-muted);margin:0">Nenhum profissional encontrado (ou a linha é de uma fonte sem detalhe por profissional, como o Webssas).</p>';
+  }
+  let html = '<table><thead><tr><th></th><th>Profissional</th><th>CBO</th><th>Apurado STS</th></tr></thead><tbody>';
+  dados.profissionais.forEach((p, i) => {
+    const idLinha = idPrefixo + '-prof-' + i;
+    const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+    html += `<tr>
+      <td><button type="button" class="btn-expandir" onclick="alternarProfissional(this, '${encodeURIComponent(p.nome_profissional)}', '${encodeURIComponent(p.cbo_codigo || '')}')" title="Ver procedimentos">+</button></td>
+      <td><strong>${p.nome_profissional}</strong></td>
+      <td>${p.cbo_codigo ? (p.cbo_nome ? p.cbo_codigo + ' - ' + p.cbo_nome : p.cbo_codigo) : ''}</td>
+      <td><strong>${qtdFormatada}</strong></td>
+    </tr>
+    <tr class="linha-detalhe-profissional" id="${idLinha}" style="display:none">
+      <td></td>
+      <td colspan="3" class="conteudo-detalhe-profissional"><em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function montarHtmlProcedimentos(dados) {
+  if (dados.procedimentos.length === 0) {
+    return '<p style="font-size:12px;color:var(--cor-texto-muted);margin:0">Nenhum procedimento encontrado.</p>';
+  }
+  let html = '<table><thead><tr><th>Código</th><th>Procedimento</th><th>Origem</th><th>Apurado STS</th></tr></thead><tbody>';
+  dados.procedimentos.forEach(p => {
+    const badge = p.municipal
+      ? '<span class="badge badge-amarelo" style="font-size:10px;font-weight:600">SMS-SP Municipal</span>'
+      : '<span class="badge badge-cinza" style="font-size:10px">SIGTAP Federal</span>';
+    const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+    html += `<tr>
+      <td><code>${p.codigo || '-'}</code></td>
+      <td>${p.nome}</td>
+      <td>${badge}</td>
+      <td><strong>${qtdFormatada}</strong></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+async function carregarDetalhe(trResumo) {
+  const chave = chaveLinha(trResumo);
+  if (cacheDetalhe.has(chave)) {
+    return cacheDetalhe.get(chave);
+  }
+  const params = new URLSearchParams({
+    indicador_id: trResumo.dataset.indicadorId,
+    estabelecimento_ids: trResumo.dataset.estabelecimentoIds,
+    subgrupo_id: trResumo.dataset.subgrupoId,
+    cbo_codigo: trResumo.dataset.cboCodigo,
+    periodo: trResumo.dataset.periodo,
+  });
+  const resp = await fetch('{{ url_for("painel.linha_detalhe") }}?' + params.toString());
+  const dados = await resp.json();
+  cacheDetalhe.set(chave, dados);
+  return dados;
+}
+
+async function alternarLinha(botao) {
+  const trResumo = botao.closest('tr');
+  const trDetalhe = trResumo.nextElementSibling;
+  const aberto = trDetalhe.style.display !== 'none';
+
+  if (aberto) {
+    trDetalhe.style.display = 'none';
+    botao.textContent = '+';
+    return;
+  }
+
+  botao.textContent = '−';
+  trDetalhe.style.display = '';
+  const celula = trDetalhe.querySelector('.conteudo-detalhe');
+  if (!celula.dataset.carregado) {
+    const dados = await carregarDetalhe(trResumo);
+    const idPrefixo = 'l' + Array.from(document.querySelectorAll('.linha-resumo')).indexOf(trResumo);
+    celula.innerHTML = montarHtmlProfissionais(dados, idPrefixo);
+    celula.dataset.carregado = '1';
+    // guarda o contexto da linha-pai em cada botão de profissional recém-criado
+    celula.querySelectorAll('.btn-expandir').forEach(b => {
+      b.dataset.indicadorId = trResumo.dataset.indicadorId;
+      b.dataset.estabelecimentoIds = trResumo.dataset.estabelecimentoIds;
+      b.dataset.subgrupoId = trResumo.dataset.subgrupoId;
+      b.dataset.cboCodigo = trResumo.dataset.cboCodigo;
+      b.dataset.periodo = trResumo.dataset.periodo;
+    });
+  }
+}
+
+async function alternarProfissional(botao, profissionalCodificado, cboProfissionalCodificado) {
+  const trDetalhe = botao.closest('tr').nextElementSibling;
+  const aberto = trDetalhe.style.display !== 'none';
+
+  if (aberto) {
+    trDetalhe.style.display = 'none';
+    botao.textContent = '+';
+    return;
+  }
+
+  botao.textContent = '−';
+  trDetalhe.style.display = '';
+  const celula = trDetalhe.querySelector('.conteudo-detalhe-profissional');
+  if (!celula.dataset.carregado) {
+    const profissional = decodeURIComponent(profissionalCodificado);
+    const cboProfissional = decodeURIComponent(cboProfissionalCodificado || '');
+    const chave = [botao.dataset.indicadorId, botao.dataset.estabelecimentoIds, botao.dataset.subgrupoId, botao.dataset.cboCodigo, botao.dataset.periodo, profissional, cboProfissional].join('|');
+    let dados = cacheProfissional.get(chave);
+    if (!dados) {
+      const params = new URLSearchParams({
+        indicador_id: botao.dataset.indicadorId,
+        estabelecimento_ids: botao.dataset.estabelecimentoIds,
+        subgrupo_id: botao.dataset.subgrupoId,
+        cbo_codigo: botao.dataset.cboCodigo,
+        periodo: botao.dataset.periodo,
+        profissional: profissional,
+        cbo_profissional: cboProfissional,
+      });
+      const resp = await fetch('{{ url_for("painel.profissional_detalhe") }}?' + params.toString());
+      dados = await resp.json();
+      cacheProfissional.set(chave, dados);
+    }
+    celula.innerHTML = montarHtmlProcedimentos(dados);
+    celula.dataset.carregado = '1';
+  }
+}
+
+let operacaoExpansaoAtual = 0;
+
+async function expandirTudo() {
+  const minhaOperacao = ++operacaoExpansaoAtual;
+  const botaoExpandir = document.getElementById('btn-expandir-tudo');
+  if (botaoExpandir) botaoExpandir.disabled = true;
+  try {
+    const botoes = document.querySelectorAll('.linha-resumo .btn-expandir');
+    for (const botao of botoes) {
+      // se "Recolher tudo" (ou um novo "Expandir tudo") começou depois de mim,
+      // essa chamada antiga para aqui em vez de continuar reabrindo linhas
+      if (operacaoExpansaoAtual !== minhaOperacao) return;
+      const trDetalhe = botao.closest('tr').nextElementSibling;
+      if (trDetalhe.style.display === 'none') {
+        await alternarLinha(botao);
+      }
+    }
+  } finally {
+    if (operacaoExpansaoAtual === minhaOperacao && botaoExpandir) botaoExpandir.disabled = false;
+  }
+}
+
+function recolherTudo() {
+  operacaoExpansaoAtual++; // cancela qualquer "Expandir tudo" que ainda esteja em andamento
+  const botaoExpandir = document.getElementById('btn-expandir-tudo');
+  if (botaoExpandir) botaoExpandir.disabled = false;
+  document.querySelectorAll('.linha-detalhe, .linha-detalhe-profissional').forEach(tr => tr.style.display = 'none');
+  document.querySelectorAll('.btn-expandir').forEach(b => b.textContent = '+');
+}
+
+// ---------------------------------------------------------------------
+// Autofiltro por coluna, estilo Excel: cada cabeçalho tem um botão de
+// funil que abre um painel com os valores únicos daquela coluna (entre as
+// linhas atualmente na tabela) para marcar/desmarcar. Uma linha só fica
+// visível se, para TODAS as colunas com filtro ativo, o valor da célula
+// estiver marcado - igual ao autofiltro combinado do Excel.
+const filtrosAtivos = {}; // { colIndex: Set(valoresMarcados) }
+let colunaFiltroAberta = null;
+let contagensColunaAtual = {};
+let valoresOrdenadosColunaAtual = [];
+let ordenacaoAtualPainel = { colIdx: null, asc: true };
+
+function compararAlfanumerico(aStr, bStr, asc = true) {
+  if (aStr === undefined || aStr === null) aStr = '';
+  if (bStr === undefined || bStr === null) bStr = '';
+
+  aStr = String(aStr).trim();
+  bStr = String(bStr).trim();
+
+  if (aStr === '' && bStr === '') return 0;
+  if (aStr === '' || aStr === '-') return 1;
+  if (bStr === '' || bStr === '-') return -1;
+
+  // Normaliza números formatados em pt-BR (ex: "1.234,50" -> 1234.50, "95,4%" -> 95.4)
+  const limpoA = aStr.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+  const limpoB = bStr.replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+
+  const numA = parseFloat(limpoA);
+  const numB = parseFloat(limpoB);
+
+  const temLetraA = /[a-zA-Z]/.test(aStr.replace(/^(R\$|%)/g, ''));
+  const temLetraB = /[a-zA-Z]/.test(bStr.replace(/^(R\$|%)/g, ''));
+
+  let res;
+  if (!temLetraA && !temLetraB && !isNaN(numA) && !isNaN(numB) && limpoA.length > 0 && limpoB.length > 0) {
+    res = numA - numB;
+  } else {
+    // Alfanumérico natural inteligente (ex: P02 antes de P10)
+    res = aStr.localeCompare(bStr, 'pt-BR', { numeric: true, sensitivity: 'base' });
+  }
+
+  return asc ? res : -res;
+}
+
+function ordenarTabelaPainel(colIdx, asc = true) {
+  const tbody = document.querySelector('#tabela-painel > tbody');
+  if (!tbody) return;
+
+  ordenacaoAtualPainel = { colIdx, asc };
+
+  // Agrupa os pares [linha-resumo, linha-detalhe] para manter a hierarquia intacta
+  const linhasResumo = Array.from(tbody.querySelectorAll('tr.linha-resumo'));
+  const pares = linhasResumo.map(trResumo => {
+    const trDetalhe = trResumo.nextElementSibling && trResumo.nextElementSibling.classList.contains('linha-detalhe')
+      ? trResumo.nextElementSibling
+      : null;
+    const celula = trResumo.children[colIdx];
+    const val = celula ? celula.textContent.trim().replace(/\s+/g, ' ') : '';
+    return { trResumo, trDetalhe, val };
+  });
+
+  pares.sort((a, b) => compararAlfanumerico(a.val, b.val, asc));
+
+  const irmao = tbody.nextSibling;
+  const tabela = tbody.parentNode;
+  tabela.removeChild(tbody);
+
+  pares.forEach(par => {
+    tbody.appendChild(par.trResumo);
+    if (par.trDetalhe) {
+      tbody.appendChild(par.trDetalhe);
+    }
+  });
+
+  tabela.insertBefore(tbody, irmao);
+
+  // Atualiza classes idênticas ao DataTables de produção nos cabeçalhos
+  document.querySelectorAll('#tabela-painel thead th[data-col-index]').forEach(th => {
+    const idx = parseInt(th.dataset.colIndex, 10);
+    th.classList.remove('sorting_asc', 'sorting_desc');
+    if (idx === colIdx) {
+      th.classList.add(asc ? 'sorting_asc' : 'sorting_desc');
+    } else {
+      th.classList.add('sorting');
+    }
+  });
+}
+
+function alternarOrdenacaoPainel(colIdx) {
+  const novoAsc = (ordenacaoAtualPainel.colIdx === colIdx) ? !ordenacaoAtualPainel.asc : true;
+  ordenarTabelaPainel(colIdx, novoAsc);
+}
+
+function rotuloFormatado(v) {
+  return v === '' ? '(Vazio)' : v;
+}
+
+function valoresUnicosDaColuna(idx) {
+  const contagens = {};
+  document.querySelectorAll('#tabela-painel > tbody > tr.linha-resumo').forEach(tr => {
+    const celula = tr.children[idx];
+    let val = celula ? celula.textContent.trim() : '';
+    val = val.replace(/\s+/g, ' ');
+    contagens[val] = (contagens[val] || 0) + 1;
+  });
+
+  const ordenados = Object.keys(contagens).sort((a, b) => compararAlfanumerico(a, b, true));
+
+  return { ordenados, contagens };
+}
+
+function abrirFiltroColuna(botao) {
+  const idx = parseInt(botao.dataset.colIndex, 10);
+  const painelEl = document.getElementById('filtro-dropdown');
+  const estaAberto = painelEl && window.getComputedStyle(painelEl).display !== 'none';
+  if (colunaFiltroAberta === idx && estaAberto) {
+    fecharFiltroDropdown();
+    return;
+  }
+  colunaFiltroAberta = idx;
+
+  const th = botao.closest('th');
+  const tituloEl = th ? th.querySelector('.header-text') : null;
+  const colTitulo = tituloEl ? tituloEl.textContent.trim() : 'Filtrar';
+  document.getElementById('filtro-dropdown-coluna-titulo').textContent = colTitulo;
+
+  const { ordenados, contagens } = valoresUnicosDaColuna(idx);
+  valoresOrdenadosColunaAtual = ordenados;
+  contagensColunaAtual = contagens;
+
+  const selecionados = filtrosAtivos[idx]; // undefined = tudo selecionado
+  const lista = document.getElementById('filtro-dropdown-lista');
+  lista.innerHTML = '';
+
+  ordenados.forEach((valor, itemIdx) => {
+    const row = document.createElement('div');
+    row.className = 'form-check form-check-sm excel-item-row py-1';
+
+    const chk = document.createElement('input');
+    chk.className = 'form-check-input chk-item';
+    chk.type = 'checkbox';
+    chk.id = 'chk_painel_' + idx + '_' + itemIdx;
+    chk.value = valor;
+    chk.checked = !selecionados || selecionados.has(valor);
+    chk.addEventListener('change', atualizarMarcarTodosDropdown);
+
+    const label = document.createElement('label');
+    label.className = 'form-check-label small d-flex justify-content-between text-truncate';
+    label.htmlFor = chk.id;
+    label.title = rotuloFormatado(valor);
+
+    const spanText = document.createElement('span');
+    spanText.className = 'text-truncate';
+    spanText.textContent = rotuloFormatado(valor);
+
+    const badgeCount = document.createElement('span');
+    badgeCount.className = 'badge bg-light text-secondary ms-1 count-badge';
+    badgeCount.textContent = contagens[valor] || 0;
+
+    label.appendChild(spanText);
+    label.appendChild(badgeCount);
+    row.appendChild(chk);
+    row.appendChild(label);
+    lista.appendChild(row);
+  });
+
+  const busca = document.getElementById('filtro-dropdown-busca');
+  busca.value = '';
+  document.getElementById('filtro-dropdown-marcar-todos-lbl').textContent = '(Selecionar Tudo)';
+  atualizarMarcarTodosDropdown();
+
+  const painel = document.getElementById('filtro-dropdown');
+  const maxListaHeight = Math.min(220, Math.max(90, window.innerHeight - 210));
+  lista.style.maxHeight = maxListaHeight + 'px';
+
+  painel.style.setProperty('display', 'flex', 'important');
+  painel.style.setProperty('flex-direction', 'column', 'important');
+
+  const rect = botao.getBoundingClientRect();
+  const dropHeight = painel.offsetHeight;
+  const dropWidth = painel.offsetWidth || 300;
+
+  // Ajuste horizontal (X)
+  let leftPos = rect.left;
+  if (leftPos + dropWidth > window.innerWidth - 10) {
+    leftPos = Math.max(10, window.innerWidth - dropWidth - 15);
+  }
+
+  // Ajuste vertical (Y) inteligente para garantir que os botões do rodapé NUNCA fiquem ocultos
+  let topPos;
+  if (rect.bottom + 4 + dropHeight <= window.innerHeight - 10) {
+    topPos = rect.bottom + 4;
+  } else if (rect.top - 4 - dropHeight >= 10) {
+    topPos = rect.top - dropHeight - 4;
+  } else {
+    topPos = Math.max(10, window.innerHeight - dropHeight - 12);
+  }
+
+  painel.style.left = leftPos + 'px';
+  painel.style.top = topPos + 'px';
+
+  setTimeout(() => busca.focus(), 50);
+}
+
+function filtrarListaDropdown() {
+  const termo = document.getElementById('filtro-dropdown-busca').value.trim().toLowerCase();
+  const lblTodos = document.getElementById('filtro-dropdown-marcar-todos-lbl');
+  
+  if (termo === '') {
+    lblTodos.textContent = '(Selecionar Tudo)';
+  } else {
+    lblTodos.textContent = '(Selecionar resultados da pesquisa)';
+  }
+
+  let visiveis = 0;
+  document.querySelectorAll('#filtro-dropdown-lista .excel-item-row').forEach(row => {
+    const texto = row.querySelector('label').textContent.trim().toLowerCase();
+    const vis = texto.includes(termo);
+    row.style.display = vis ? '' : 'none';
+    if (vis) visiveis++;
+  });
+
+  const nota = document.getElementById('filtro-dropdown-nota');
+  nota.textContent = visiveis === 0 ? 'Nenhum resultado encontrado.' : '';
+  atualizarMarcarTodosDropdown();
+}
+
+function atualizarMarcarTodosDropdown() {
+  const checkboxesVisiveis = Array.from(document.querySelectorAll('#filtro-dropdown-lista .excel-item-row:not([style*="none"]) .chk-item'));
+  const todosMarcados = checkboxesVisiveis.length > 0 && checkboxesVisiveis.every(c => c.checked);
+  const chkTodos = document.getElementById('filtro-dropdown-marcar-todos');
+  chkTodos.checked = todosMarcados;
+  chkTodos.indeterminate = !todosMarcados && checkboxesVisiveis.some(c => c.checked);
+}
+
+document.getElementById('filtro-dropdown-busca').addEventListener('input', filtrarListaDropdown);
+document.getElementById('filtro-dropdown-marcar-todos').addEventListener('change', function () {
+  const marcar = this.checked;
+  document.querySelectorAll('#filtro-dropdown-lista .excel-item-row:not([style*="none"]) .chk-item').forEach(c => {
+    c.checked = marcar;
+  });
+});
+
+function aplicarFiltroColunaAtual() {
+  if (colunaFiltroAberta === null) return;
+  const termo = document.getElementById('filtro-dropdown-busca').value.trim();
+  const checkboxes = Array.from(document.querySelectorAll('#filtro-dropdown-lista .chk-item'));
+  
+  let marcados;
+  if (termo !== '') {
+    // Se estava pesquisando, aplica apenas os checkboxes visíveis marcados
+    const visiveis = Array.from(document.querySelectorAll('#filtro-dropdown-lista .excel-item-row:not([style*="none"]) .chk-item'));
+    marcados = visiveis.filter(c => c.checked).map(c => c.value);
+  } else {
+    marcados = checkboxes.filter(c => c.checked).map(c => c.value);
+  }
+
+  if (marcados.length === 0) {
+    filtrosAtivos[colunaFiltroAberta] = new Set(['__NENHUM_VALOR_MARCADO__']);
+  } else if (marcados.length === checkboxes.length && termo === '') {
+    delete filtrosAtivos[colunaFiltroAberta];
+  } else {
+    filtrosAtivos[colunaFiltroAberta] = new Set(marcados);
+  }
+
+  fecharFiltroDropdown();
+  atualizarIconesFunil();
+  aplicarFiltrosColuna();
+}
+
+function limparFiltroColunaAtual() {
+  if (colunaFiltroAberta === null) return;
+  delete filtrosAtivos[colunaFiltroAberta];
+  fecharFiltroDropdown();
+  atualizarIconesFunil();
+  aplicarFiltrosColuna();
+}
+
+function fecharFiltroDropdown() {
+  const painel = document.getElementById('filtro-dropdown');
+  if (painel) {
+    painel.style.setProperty('display', 'none', 'important');
+  }
+  colunaFiltroAberta = null;
+}
+
+document.addEventListener('click', function (e) {
+  const painel = document.getElementById('filtro-dropdown');
+  if (!painel || painel.style.display === 'none' || window.getComputedStyle(painel).display === 'none') return;
+  if (painel.contains(e.target) || e.target.closest('.btn-excel-filter')) return;
+  fecharFiltroDropdown();
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') fecharFiltroDropdown();
+});
+
+function atualizarIconesFunil() {
+  document.querySelectorAll('#tabela-painel .btn-excel-filter').forEach(botao => {
+    const idx = parseInt(botao.dataset.colIndex, 10);
+    const ativo = filtrosAtivos.hasOwnProperty(idx);
+    botao.classList.toggle('btn-excel-filter-active', ativo);
+    const icon = botao.querySelector('.filter-icon');
+    if (icon) {
+      if (ativo) {
+        icon.classList.remove('bi-funnel');
+        icon.classList.add('bi-funnel-fill');
+      } else {
+        icon.classList.remove('bi-funnel-fill');
+        icon.classList.add('bi-funnel');
+      }
+    }
+  });
+}
+
+function aplicarFiltrosColuna() {
+  const colunas = Object.keys(filtrosAtivos).map(Number);
+
+  document.querySelectorAll('#tabela-painel > tbody > tr.linha-resumo').forEach(tr => {
+    const celulas = tr.children;
+    const visivel = colunas.every(idx => {
+      let texto = (celulas[idx] ? celulas[idx].textContent : '').trim();
+      texto = texto.replace(/\s+/g, ' ');
+      return filtrosAtivos[idx].has(texto);
+    });
+    tr.style.display = visivel ? '' : 'none';
+
+    const trDetalhe = tr.nextElementSibling;
+    if (!visivel && trDetalhe && trDetalhe.classList.contains('linha-detalhe')) {
+      trDetalhe.style.display = 'none';
+      const botao = tr.querySelector('.btn-expandir');
+      if (botao) botao.textContent = '+';
+    }
+  });
+}
+
+function limparFiltrosColuna() {
+  Object.keys(filtrosAtivos).forEach(k => delete filtrosAtivos[k]);
+  atualizarIconesFunil();
+  aplicarFiltrosColuna();
+}
+
+function filtrarPorStatusMeta(statusTexto) {
+  filtrosAtivos[10] = new Set([statusTexto]);
+  atualizarIconesFunil();
+  aplicarFiltrosColuna();
+}
+
+function alternarModoPainel(modo) {
+  const painelWrap = document.getElementById('tabela-painel-wrap');
+  const btnProd = document.getElementById('btn-modo-producao');
+  const btnAud = document.getElementById('btn-modo-auditoria');
+  const cardsProd = document.querySelectorAll('.cards-producao');
+  const cardsAud = document.querySelectorAll('.cards-auditoria');
+
+  if (modo === 'auditoria') {
+    painelWrap.classList.remove('modo-producao');
+    painelWrap.classList.add('modo-auditoria');
+    if (btnProd) btnProd.classList.remove('ativo');
+    if (btnAud) btnAud.classList.add('ativo');
+    cardsProd.forEach(el => el.style.display = 'none');
+    cardsAud.forEach(el => el.style.display = '');
+    localStorage.setItem('contratos_modo_painel', 'auditoria');
+  } else {
+    painelWrap.classList.remove('modo-auditoria');
+    painelWrap.classList.add('modo-producao');
+    if (btnAud) btnAud.classList.remove('ativo');
+    if (btnProd) btnProd.classList.add('ativo');
+    cardsAud.forEach(el => el.style.display = 'none');
+    cardsProd.forEach(el => el.style.display = '');
+    localStorage.setItem('contratos_modo_painel', 'producao');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  const modoSalvo = localStorage.getItem('contratos_modo_painel') || 'producao';
+  alternarModoPainel(modoSalvo);
+
+  // Ordenação nativa ao clicar no cabeçalho <th> (idêntico ao DataTables do sistema de produção)
+  document.querySelectorAll('#tabela-painel thead th[data-col-index]').forEach(th => {
+    th.addEventListener('click', function (e) {
+      if (e.target.closest('.btn-excel-filter')) return;
+      const colIdx = parseInt(this.dataset.colIndex, 10);
+      alternarOrdenacaoPainel(colIdx);
+    });
+  });
+
+  // Botão de filtro do Excel: abre o popup sem acionar a ordenação do DataTables
+  document.querySelectorAll('#tabela-painel thead .btn-excel-filter').forEach(btn => {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      abrirFiltroColuna(this);
+    });
+  });
+});
+</script>
+{% endblock %}

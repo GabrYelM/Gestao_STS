@@ -1,0 +1,246 @@
+{% extends "contratos/base.html" %}
+{% block title %}Metas - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<p><a href="{{ url_for('vigencias.listar') }}">&larr; Voltar para Termos Aditivos / Portarias</a></p>
+<h1>Metas - TA {{ ta.numero if ta else '' }}</h1>
+
+<p class="subtitulo-pagina">
+  Todos os indicadores do TA aparecem <strong>recolhidos</strong>. Clique em <strong>Editar</strong> para abrir um
+  indicador: ele mostra <strong>todos os subgrupos e estabelecimentos</strong> daquele indicador, cada subgrupo com o seu
+  botão <strong>💾 Salvar</strong> (e um <strong>💾 Salvar indicador</strong> para o indicador inteiro), sem recarregar a
+  página. Campos <span class="meta-legenda">alterados</span> ficam destacados até você salvar; a barra fixa do rodapé salva
+  tudo o que estiver pendente (ou Ctrl+S). <strong>Campo vazio remove a meta</strong> ao salvar.
+</p>
+
+{% if qtd_indicadores_cnes %}
+<p class="subtitulo-pagina card-tint-blue" style="padding:10px 14px;border-radius:var(--raio-sm)">
+  <strong>Consolidação por CNES ativa em {{ qtd_indicadores_cnes }} indicador(es):</strong> nesses indicadores, cadastros que compartilham o mesmo CNES aparecem numa única linha
+  (nome do cadastro principal · CNES · quantidade de CMES) e a meta digitada vale para o CNES inteiro. Cadastros
+  marcados como "só CMES", CNES com contratos distintos e cadastros sem CNES continuam em linhas próprias.
+  Para voltar a uma meta por estabelecimento, desmarque "Consolidar por CNES" no indicador (Administração &rarr; Indicadores).
+</p>
+{% endif %}
+<p class="subtitulo-pagina" style="padding:0 2px">
+  Indicadores com <strong>subgrupos</strong> (ex.: P42, P44) ganham a coluna <strong>Subgrupo</strong>: cada
+  combinação Estabelecimento &times; Subgrupo tem a sua própria meta. A linha "Geral (sem subgrupo)" só aparece quando o
+  indicador tem procedimentos vinculados fora de qualquer subgrupo (ou já tem uma meta antiga sem subgrupo).
+  Indicadores sem subgrupos não mudam.
+</p>
+
+<p class="subtitulo-pagina card-tint-amber" style="padding:10px 14px;border-radius:var(--raio-sm)">
+  <strong>Indicador parecido aparecendo mais de uma vez?</strong> Cada
+  grupo abaixo mostra de qual Portaria o indicador vem (ex.: clones feitos
+  para CBOs diferentes, ou indicadores de portarias distintas com nome
+  parecido, aparecem como grupos separados de propósito). Use o link
+  "editar indicador" no cabeçalho do grupo para corrigir nome/vínculos ou
+  excluir o indicador errado direto na tela de origem, sem perder o que já
+  preencheu aqui.
+</p>
+
+<div class="toolbar">
+  <label style="margin:0">Buscar indicador:</label>
+  <input type="text" id="filtro-indicadores" placeholder="código ou nome..." style="min-width:260px">
+  <label style="display:inline-flex;gap:6px;align-items:center;margin:0;text-transform:none;font-weight:500">
+    <input type="checkbox" id="so-pendentes" style="width:auto"> só com metas a preencher
+  </label>
+  <span class="espaco"></span>
+  <span class="info-grupo-meta">{{ resumo_indicadores | length }} indicador(es) neste TA</span>
+</div>
+
+{% for r in resumo_indicadores %}
+<details class="table-card grupo-meta" style="padding:0" data-url="{{ url_for('cadastros.metas_bloco', ta_id=ta.id, indicador_id=r.indicador_id) }}"
+         data-busca="{{ (r.codigo ~ ' ' ~ r.nome) | lower }}" data-pendente="{{ 1 if r.com_meta < r.total else 0 }}">
+  <summary class="resumo-grupo-meta">
+    <span class="seta-resumo">▸</span>
+    <span><strong>{{ r.codigo }}</strong> - {{ r.nome }}</span>
+    <span class="tag-portaria">{{ r.portaria }}</span>
+    {% if r.tem_subgrupos %}<span class="tag-portaria" style="background:#e3f5e9;color:var(--cor-sucesso)">com subgrupos</span>{% endif %}
+    {% if r.consolida_cnes %}<span class="tag-portaria" style="background:#e3e8fb;color:var(--stspe-primary)">por CNES</span>{% endif %}
+    <span class="info-grupo-meta"><strong class="qtd-com-meta">{{ r.com_meta }}</strong> de {{ r.total }} com meta</span>
+    <button type="button" class="btn-editar-ind btn-secondary" style="margin-left:auto">Editar</button>
+  </summary>
+  <div class="corpo-bloco" style="padding:8px 12px"></div>
+</details>
+{% else %}
+<p class="subtitulo-pagina">Nenhum indicador cadastrado ainda - cadastre indicadores em uma Portaria primeiro.</p>
+{% endfor %}
+
+<div style="height:80px"></div>
+<div class="barra-salvar" id="barra-salvar">
+  <span id="contador-alteracoes" class="contador-alteracoes">Nenhuma alteração</span>
+  <span class="espaco"></span>
+  <button type="button" class="btn-secondary" id="btn-descartar" disabled>Descartar</button>
+  <button type="button" id="btn-salvar" disabled>💾 Salvar alterações</button>
+</div>
+
+<div id="toast-metas" class="toast-metas" hidden role="status"></div>
+
+<style>
+  .resumo-grupo-meta {
+    padding: 12px 16px; cursor: pointer; font-weight: 600; list-style: none;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .resumo-grupo-meta::-webkit-details-marker { display: none; }
+  .seta-resumo { display: inline-block; transition: transform .15s; color: var(--cor-texto-muted); font-weight: 400; }
+  details[open] > .resumo-grupo-meta .seta-resumo { transform: rotate(90deg); }
+  .tag-portaria {
+    font-size: 11px; font-weight: 600; color: var(--cor-neutro); background: var(--cor-neutro-bg);
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .info-grupo-meta { font-weight: 400; color: var(--cor-texto-muted); font-size: 12px; }
+  .resumo-grupo-meta a { font-size: 12px; margin-left: auto; white-space: nowrap; }
+  .resumo-subgrupo { display:flex; align-items:center; gap:10px; padding:8px 4px; cursor:pointer; list-style:none; background:#f4f6fb; border-radius:6px; margin:6px 0; }
+  .resumo-subgrupo::-webkit-details-marker { display:none; }
+  details[open] > .resumo-subgrupo .seta-resumo { transform: rotate(90deg); }
+  .resumo-subgrupo .btn-salvar-bloco { margin-left:auto; }
+  .barra-salvar .espaco { flex:1; }
+  .meta-legenda { background:#fff3bf; border:1px solid #f0b429; padding:0 6px; border-radius:4px; }
+  .meta-input { width:110px; }
+  .meta-input.alterada { background:#fff3bf; border-color:#f0b429; box-shadow:0 0 0 2px rgba(240,180,41,.35); }
+  .meta-input.alterada.remocao { background:#fde8e8; border-color:#d9534f; box-shadow:0 0 0 2px rgba(217,83,79,.25); }
+  .meta-input.salva { background:#e3f5e9; border-color:#3f8f5f; transition: background 1.2s; }
+  .meta-input.erro { background:#fde8e8; border-color:#d9534f; }
+  .barra-salvar { position:fixed; left:0; right:0; bottom:0; z-index:1030; display:flex; gap:12px; align-items:center;
+                  padding:10px 24px; background:#fff; border-top:1px solid #cfd6e4; box-shadow:0 -4px 14px rgba(0,0,0,.12); }
+  .contador-alteracoes { font-weight:600; }
+  .contador-alteracoes.pendente { color:#8a6100; }
+  .toast-metas { position:fixed; right:24px; bottom:76px; z-index:1100; padding:12px 18px; border-radius:8px; color:#fff;
+                 font-weight:600; box-shadow:0 6px 18px rgba(0,0,0,.25); max-width:420px; }
+  .toast-metas.ok { background:#3f8f5f; } .toast-metas.erro { background:#c0392b; }
+</style>
+
+<script>
+// ---- lista de indicadores: busca e "só pendentes"
+(function () {
+  const campo = document.getElementById('filtro-indicadores'), pend = document.getElementById('so-pendentes');
+  function filtrar() {
+    const t = campo.value.trim().toLowerCase();
+    document.querySelectorAll('details.grupo-meta').forEach(d => {
+      const ok = (!t || d.dataset.busca.includes(t)) && (!pend.checked || d.dataset.pendente === '1');
+      d.style.display = ok ? '' : 'none';
+    });
+  }
+  campo.addEventListener('input', filtrar); pend.addEventListener('change', filtrar);
+})();
+
+// ---- Editar: abre o indicador e carrega (uma vez) todos os subgrupos/estabelecimentos dele
+document.querySelectorAll('details.grupo-meta').forEach(det => {
+  const corpo = det.querySelector('.corpo-bloco');
+  let carregado = false;
+  async function carregar() {
+    if (carregado) return;
+    corpo.innerHTML = '<em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em>';
+    try {
+      const resp = await fetch(det.dataset.url);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      corpo.innerHTML = await resp.text();
+      carregado = true;
+      atualizarBarra();
+    } catch (e) { corpo.innerHTML = '<span style="color:var(--cor-perigo)">Não foi possível carregar o indicador (' + e.message + ').</span>'; }
+  }
+  det.addEventListener('toggle', () => { if (det.open) carregar(); });
+  det.querySelector('.btn-editar-ind').addEventListener('click', e => {
+    e.preventDefault(); e.stopPropagation();
+    det.open = !det.open;
+    e.target.textContent = det.open ? 'Fechar' : 'Editar';
+  });
+  // clicar na linha do resumo (fora do botão) também abre/fecha, com o texto do botão em dia
+  det.addEventListener('toggle', () => { det.querySelector('.btn-editar-ind').textContent = det.open ? 'Fechar' : 'Editar'; });
+});
+
+// ---- filtro de linhas dentro de um indicador aberto (delegado - o conteúdo vem por fetch)
+document.addEventListener('input', e => {
+  if (!e.target.classList || !e.target.classList.contains('filtro-linhas')) return;
+  const bloco = e.target.closest('.bloco-metas'), termo = e.target.value.trim().toLowerCase();
+  bloco.querySelectorAll('details.secao-subgrupo tbody tr').forEach(tr => {
+    tr.style.display = (!termo || tr.textContent.toLowerCase().includes(termo)) ? '' : 'none';
+  });
+});
+
+// ---- edição: destaque das alterações, barra fixa e salvamento por fetch (só o que mudou)
+const URL_SALVAR = {{ url_for('cadastros.salvar_metas_ajax', ta_id=ta.id) | tojson }};
+const btnSalvar = document.getElementById('btn-salvar'), btnDescartar = document.getElementById('btn-descartar');
+const contador = document.getElementById('contador-alteracoes'), toast = document.getElementById('toast-metas');
+let salvando = false, toastTimer = null;
+const todosInputs = () => Array.from(document.querySelectorAll('.meta-input'));
+const orig = i => i.dataset.original === undefined ? '' : i.dataset.original;
+const num = v => { const t = String(v == null ? '' : v).trim().replace(',', '.'); return t === '' ? null : parseFloat(t); };
+const mudou = i => { const a = num(orig(i)), b = num(i.value); return !(a === b || (Number.isNaN(a) && Number.isNaN(b))); };
+const sujos = (raiz) => Array.from((raiz || document).querySelectorAll('.meta-input.alterada'));
+
+function atualizarBarra() {
+  const n = sujos().length;
+  contador.textContent = n ? n + ' alteração(ões) não salva(s)' : 'Nenhuma alteração';
+  contador.classList.toggle('pendente', n > 0);
+  btnSalvar.disabled = btnDescartar.disabled = n === 0 || salvando;
+  document.querySelectorAll('.btn-salvar-bloco').forEach(b => {
+    const raiz = b.dataset.escopo === 'secao' ? b.closest('details.secao-subgrupo') : b.closest('.bloco-metas');
+    const q = raiz ? sujos(raiz).length : 0;
+    b.disabled = q === 0 || salvando;
+    b.dataset.pendentes = q;
+  });
+}
+function marcar(i) {
+  const m = mudou(i);
+  i.classList.remove('salva', 'erro'); i.title = '';
+  i.classList.toggle('alterada', m);
+  i.classList.toggle('remocao', m && String(i.value).trim() === '' && String(orig(i)).trim() !== '');
+  atualizarBarra();
+}
+function mostrarToast(texto, tipo) {
+  toast.textContent = texto; toast.className = 'toast-metas ' + tipo; toast.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, tipo === 'ok' ? 4000 : 9000);
+}
+document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('meta-input')) marcar(e.target); });
+document.addEventListener('click', e => {
+  const limpar = e.target.closest && e.target.closest('.btn-limpar-meta');
+  if (limpar) { const i = limpar.closest('tr').querySelector('.meta-input'); i.value = ''; marcar(i); return; }
+  const bloco = e.target.closest && e.target.closest('.btn-salvar-bloco');
+  if (bloco) e.preventDefault();   // botão dentro do <summary>: não recolher a seção
+  if (bloco && !bloco.disabled) {
+    const raiz = bloco.dataset.escopo === 'secao' ? bloco.closest('details.secao-subgrupo') : bloco.closest('.bloco-metas');
+    salvar(sujos(raiz));
+  }
+});
+btnDescartar.addEventListener('click', () => { sujos().forEach(i => { i.value = orig(i); marcar(i); }); });
+
+async function salvar(lista) {
+  if (!lista.length || salvando) return;
+  salvando = true; btnSalvar.textContent = 'Salvando...'; atualizarBarra();
+  const itens = lista.map(i => { const sec = i.closest('details.secao-subgrupo'); return {
+    indicador_id: sec.dataset.ind, estabelecimento_id: i.dataset.est, subgrupo_id: sec.dataset.sg,
+    cbo_codigo: i.dataset.cbo || '', rt: i.dataset.rt || '', tipo_equipe: i.dataset.eq || '', pmmb: i.dataset.pmmb || '', valor: i.value }; });
+  try {
+    const resp = await fetch(URL_SALVAR, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itens }) });
+    const dados = await resp.json();
+    if (!resp.ok && !dados.resultados) { mostrarToast(dados.mensagem || 'Erro ao salvar as metas.', 'erro'); return; }
+    (dados.resultados || []).forEach(r => {
+      const i = lista[r.indice];
+      if (!i) return;
+      if (r.status === 'erro') { i.classList.add('erro'); i.title = r.mensagem || 'valor inválido'; return; }
+      i.dataset.original = (r.status === 'salvo') ? String(i.value).trim() : '';
+      if (r.status !== 'salvo') i.value = '';
+      i.classList.remove('alterada', 'remocao'); i.classList.add('salva');
+    });
+    document.querySelectorAll('details.secao-subgrupo').forEach(sec => {
+      const q = sec.querySelector('.qtd-sec-com-meta');
+      if (q) q.textContent = Array.from(sec.querySelectorAll('.meta-input')).filter(x => String(orig(x)).trim() !== '').length;
+    });
+    document.querySelectorAll('details.grupo-meta').forEach(g => {
+      const q = g.querySelector('.qtd-com-meta'), campos = g.querySelectorAll('.meta-input');
+      if (q && campos.length) q.textContent = Array.from(campos).filter(x => String(orig(x)).trim() !== '').length;
+    });
+    if (dados.ok) mostrarToast('Metas salvas com sucesso!' + (dados.removidos ? ' (' + dados.removidos + ' removida(s))' : ''), 'ok');
+    else mostrarToast((dados.erros || []).length + ' linha(s) com valor inválido - corrija os campos em vermelho. As demais foram salvas.', 'erro');
+  } catch (e) {
+    mostrarToast('Não foi possível salvar (' + e.message + '). Nada foi perdido: suas alterações continuam na tela.', 'erro');
+  } finally {
+    salvando = false; btnSalvar.textContent = '💾 Salvar alterações'; atualizarBarra();
+  }
+}
+btnSalvar.addEventListener('click', () => salvar(sujos()));
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); salvar(sujos()); } });
+window.addEventListener('beforeunload', e => { if (sujos().length) { e.preventDefault(); e.returnValue = ''; } });
+atualizarBarra();
+</script>
+{% endblock %}

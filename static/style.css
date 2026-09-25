@@ -214,7 +214,6 @@ table.dataTable thead > tr > th.sorting_desc {
     box-shadow: 0 0 5px rgba(255, 193, 7, 0.6) !important;
 }
 
-/* Dropdown Popup do Filtro Excel */
 .excel-filter-dropdown {
     font-family: inherit;
     font-size: 0.85rem;
@@ -223,6 +222,30 @@ table.dataTable thead > tr > th.sorting_desc {
     border-radius: 0.5rem !important;
     box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.2) !important;
     animation: fadeInDown 0.15s ease-out;
+    flex-direction: column;
+    max-height: calc(100vh - 20px) !important;
+    box-sizing: border-box !important;
+}
+
+.excel-filter-dropdown[style*="display: none"],
+.excel-filter-dropdown[style*="display:none"] {
+    display: none !important;
+}
+
+.excel-filter-dropdown .card-header {
+    flex-shrink: 0 !important;
+}
+
+.excel-filter-dropdown .card-body {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.excel-filter-dropdown .card-footer {
+    flex-shrink: 0 !important;
 }
 
 @keyframes fadeInDown {

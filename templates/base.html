@@ -31,12 +31,20 @@
                             <i class="bi bi-table me-1"></i> Relatórios de Produção
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path.startswith('/contratos') %}active fw-semibold text-primary{% endif %}" href="/contratos/">
+                            <i class="bi bi-file-earmark-check me-1 text-primary"></i> Contrato de Gestão (Metas & Apuração)
+                        </a>
+                    </li>
                     {% if session.get("is_admin") %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle text-dark fw-semibold" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                             <i class="bi bi-sliders me-1 text-primary"></i> Gestão de Dados
                         </a>
                         <ul class="dropdown-menu shadow border-0">
+                            <li><a class="dropdown-item py-2" href="/contratos/"><i class="bi bi-speedometer2 me-2 text-primary"></i> Painel de Metas & Contratos</a></li>
+                            <li><a class="dropdown-item py-2" href="/contratos/importar/"><i class="bi bi-cloud-arrow-up me-2 text-primary"></i> Importação Contratual (ZIPs / Fontes)</a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item py-2" href="/bi_producao"><i class="bi bi-robot me-2 text-info"></i> Extração de Dados (BI e Monitoramento)</a></li>
                             <li><a class="dropdown-item py-2" href="/upload_zip"><i class="bi bi-file-earmark-zip me-2 text-warning"></i> Importação de Arquivos (ZIP / BPA / RAAS)</a></li>
                             <li><hr class="dropdown-divider"></li>
@@ -104,8 +112,8 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else (category if category in ['success', 'warning', 'info'] else 'primary') }} alert-dismissible fade show shadow-sm" role="alert">
-                        <i class="bi bi-info-circle me-1"></i> {{ message }}
+                    <div class="alert alert-{{ 'danger' if category in ['error', 'erro', 'danger'] else ('success' if category in ['success', 'sucesso'] else ('warning' if category in ['warning', 'aviso'] else (category if category in ['info', 'primary'] else 'primary'))) }} alert-dismissible fade show shadow-sm" role="alert">
+                        <i class="bi bi-info-circle me-1"></i> {{ message | replace('\n', '<br>') | safe }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
                 {% endfor %}

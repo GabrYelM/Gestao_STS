@@ -1,0 +1,77 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}CBO - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Categorias profissionais (CBO)</h1>
+
+<div class="toolbar">
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-cbo')">📤 Importar CSV em lote</button>
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-novo-cbo')">＋ Incluir novo</button>
+  <a class="btn btn-secondary" href="{{ url_for('cadastros.exportar_cbo_csv') }}">⬇ Exportar</a>
+  <span class="espaco"></span>
+  <span class="toolbar-texto" data-autofiltro-contador="tabela-cbo"></span>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-autofiltro-limpar="tabela-cbo"><i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros</button>
+</div>
+
+<div id="painel-importar-cbo" class="painel-acao">
+  <form class="card card-tint-blue" method="post" action="{{ url_for('cadastros.importar_cbo_csv') }}" enctype="multipart/form-data">
+    <h2>Importar CSV em lote</h2>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Cabeçalho esperado (separador ; ou ,): <code>codigo;nome_categoria</code>. Upsert pelo código.
+    </p>
+    <input type="file" name="arquivo" accept=".csv" required>
+    <button type="submit" class="btn-secondary">Importar CSV</button>
+  </form>
+</div>
+
+<div id="painel-novo-cbo" class="painel-acao">
+  <form class="card" method="post" action="{{ url_for('cadastros.novo_cbo') }}">
+    <h2>Novo CBO</h2>
+    <label>Código CBO</label>
+    <input type="text" name="codigo" required>
+    <label>Nome da categoria</label>
+    <input type="text" name="nome_categoria" required placeholder="deve bater com Nome_CBO1 do AT-02">
+    <button type="submit">Cadastrar</button>
+  </form>
+</div>
+
+<div class="toolbar card-tint-amber">
+  <span class="toolbar-texto">Marque linhas na tabela abaixo para excluir em massa:</span>
+  <span class="espaco"></span>
+  <button type="submit" form="form-bulk-cbo" class="btn-danger"
+          onclick="return confirm('Excluir todos os CBOs marcados? Essa ação não pode ser desfeita.')">
+    🗑 Excluir selecionados
+  </button>
+</div>
+
+<form method="post" action="{{ url_for('cadastros.bulk_excluir_cbo') }}" id="form-bulk-cbo"></form>
+
+<div class="table-card">
+<table id="tabela-cbo">
+  <thead><tr><th><input type="checkbox" class="chk-todos" title="Marcar todas as linhas visíveis"></th><th data-filtro>Código</th><th data-filtro>Categoria</th><th></th></tr></thead>
+  <tbody>
+    {% for c in itens %}
+    <tr>
+      <td><input type="checkbox" name="selecionados" value="{{ c.codigo }}" form="form-bulk-cbo" class="chk-linha"></td>
+      <td>{{ c.codigo }}</td>
+      <td>
+        <form method="post" action="{{ url_for('cadastros.editar_cbo', codigo=c.codigo) }}" style="display:flex;gap:6px;align-items:center">
+          <input type="text" name="nome_categoria" value="{{ c.nome_categoria }}" style="flex:1">
+          <button type="submit" class="btn-sm">Salvar</button>
+        </form>
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('cadastros.excluir_cbo', codigo=c.codigo) }}" onsubmit="return confirm('Excluir este CBO?')">
+          <button type="submit" class="btn-link">excluir</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">Nenhum CBO cadastrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% include "contratos/_autofiltro.html" %}
+<script>AutoFiltro.iniciar('tabela-cbo');</script>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Logs - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Logs de importação / recálculo</h1>
+<p class="subtitulo-pagina">
+  Diagnóstico completo de cada importação e recálculo (sem o limite de 5
+  itens que aparece na mensagem de tela). Use para investigar por que uma
+  linha não apareceu no painel.
+</p>
+
+<div class="card" id="diagnostico-metas">
+  <h2>Metas cadastradas que não aparecem no Painel</h2>
+  {% if not problemas_metas %}
+  <p class="subtitulo-pagina" style="margin:0">Nenhum problema encontrado: toda meta cadastrada é usada por alguma linha do Painel.</p>
+  {% else %}
+  <p class="subtitulo-pagina">
+    {{ problemas_metas | length }} meta(s) cadastrada(s) não estão sendo usadas pelo Painel. O Painel só mostra linha onde há
+    produção calculada e a meta é encontrada por Indicador + Estabelecimento + Subgrupo + CBO + vigência do TA.
+    {% for codigo, n in resumo_problemas_metas.items() %}<span class="badge-cinza" style="margin-right:4px">{{ {'sem_producao':'sem produção','fora_vigencia':'fora da vigência do TA','subgrupo':'divergência de subgrupo','cbo':'divergência de CBO','substituida':'substituída por outro TA'}[codigo] }}: {{ n }}</span>{% endfor %}
+  </p>
+  <details open>
+    <summary>Ver as {{ [problemas_metas | length, 200] | min }} primeiras</summary>
+    <table>
+      <thead><tr><th>TA</th><th>Indicador</th><th>Estabelecimento</th><th>Subgrupo</th><th>CBO</th><th>Meta</th><th>Motivo</th><th>O que fazer</th></tr></thead>
+      <tbody>
+        {% for p in problemas_metas[:200] %}
+        <tr>
+          <td>{{ p.ta_numero }}</td><td>{{ p.indicador }}</td><td>{{ p.estabelecimento }}</td><td>{{ p.subgrupo or '-' }}</td>
+          <td>{{ p.cbo }}{% if p.segmento %} ({{ p.segmento }}){% endif %}</td><td>{{ p.valor_meta }}</td>
+          <td>{{ p.motivo }}</td><td style="font-size:12px;color:var(--cor-texto-muted)">{{ p.acao }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+</div>
+
+<form class="card" method="get">
+  <label>Filtrar por competência (AAAAMM)</label>
+  <input type="text" name="periodo" value="{{ periodo_filtro or '' }}">
+  <button type="submit" class="btn-secondary">Filtrar</button>
+</form>
+
+{% for log in logs %}
+<div class="card">
+  <h2>{{ log.fonte }} - competência {{ log.periodo }} - {{ log.criado_em }}</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:12px">
+    {{ log.total_linhas }} linhas processadas | vinculadas: {{ log.vinculadas }} |
+    sem estabelecimento: {{ log.sem_estabelecimento }} | sem indicador: {{ log.sem_indicador }}
+  </p>
+
+  {% if log.fonte == 'AT02' %}
+    {% if log.detalhes.cmes_nao_encontrados %}
+    <details>
+      <summary>CMES não cadastrados ({{ log.detalhes.cmes_nao_encontrados | length }})</summary>
+      <table><thead><tr><th>CMES</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for cmes, n in log.detalhes.cmes_nao_encontrados %}
+        <tr><td>{{ cmes }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+
+    {% if log.detalhes.cbo_nao_cadastrados %}
+    <details>
+      <summary>CBOs não cadastrados ({{ log.detalhes.cbo_nao_cadastrados | length }})</summary>
+      <table><thead><tr><th>Nome do CBO no arquivo</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for cbo, n in log.detalhes.cbo_nao_cadastrados %}
+        <tr><td>{{ cbo }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+
+    {% if log.detalhes.procedimentos_sem_indicador %}
+    <details>
+      <summary>Procedimentos sem NENHUM vínculo de indicador ({{ log.detalhes.procedimentos_sem_indicador | length }})</summary>
+      <table><thead><tr><th>Procedimento</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for p, n in log.detalhes.procedimentos_sem_indicador %}
+        <tr><td>{{ p }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+
+    {% if log.detalhes.cbo_removeu_indicador %}
+    <details>
+      <summary>Procedimento tem indicador, mas o CBO não está autorizado ({{ log.detalhes.cbo_removeu_indicador | length }})</summary>
+      <table><thead><tr><th>CBO (procedimento)</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for c, n in log.detalhes.cbo_removeu_indicador %}
+        <tr><td>{{ c }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+
+    {% if log.detalhes.servico_removeu_indicador %}
+    <details>
+      <summary>Procedimento/CBO batem, mas o serviço da unidade não é o exigido pelo indicador ({{ log.detalhes.servico_removeu_indicador | length }})</summary>
+      <table><thead><tr><th>Unidade (procedimento)</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for u, n in log.detalhes.servico_removeu_indicador %}
+        <tr><td>{{ u }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+  {% else %}
+    {% if log.detalhes.unidades_nao_encontradas %}
+    <details>
+      <summary>Unidades não cadastradas ({{ log.detalhes.unidades_nao_encontradas | length }})</summary>
+      <table><thead><tr><th>Unidade</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for u, n in log.detalhes.unidades_nao_encontradas %}
+        <tr><td>{{ u }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+    {% if log.detalhes.producoes_nao_encontradas %}
+    <details>
+      <summary>Produções sem indicador correspondente ({{ log.detalhes.producoes_nao_encontradas | length }})</summary>
+      <table><thead><tr><th>Produção</th><th>Ocorrências</th></tr></thead><tbody>
+        {% for p, n in log.detalhes.producoes_nao_encontradas %}
+        <tr><td>{{ p }}</td><td>{{ n }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+    </details>
+    {% endif %}
+  {% endif %}
+</div>
+{% else %}
+<p class="subtitulo-pagina">Nenhum log registrado ainda - importe ou recalcule alguma competência.</p>
+{% endfor %}
+{% endblock %}

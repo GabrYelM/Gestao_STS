@@ -1,0 +1,17 @@
+{% extends "contratos/base.html" %}
+{% block title %}Editar Portaria - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Editar Portaria</h1>
+<form class="card" method="post" action="{{ url_for('vigencias.editar_portaria', portaria_id=portaria.id) }}">
+  <label>Número</label>
+  <input type="text" name="numero" value="{{ portaria.numero }}" required>
+  <label>Período início</label>
+  <input type="date" name="periodo_inicio" value="{{ portaria.periodo_inicio }}" required>
+  <label>Período fim</label>
+  <input type="date" name="periodo_fim" value="{{ portaria.periodo_fim }}" required>
+  <label>Observações</label>
+  <input type="text" name="observacoes" value="{{ portaria.observacoes or '' }}">
+  <button type="submit">Salvar</button>
+</form>
+<a href="{{ url_for('vigencias.listar') }}">&larr; Voltar</a>
+{% endblock %}

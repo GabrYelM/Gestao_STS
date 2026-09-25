@@ -1,0 +1,119 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Termos Aditivos e Portarias - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Termos Aditivos e Portarias</h1>
+
+<form class="card" method="post" action="{{ url_for('vigencias.salvar_consolidacao') }}" style="margin-bottom:20px">
+  <h2>Consolidação da produção por CNES</h2>
+  <p style="font-size:13px;color:var(--cor-texto-muted);margin-top:0">
+    A consolidação é definida <strong>por indicador</strong> (Administração &rsaquo; Indicadores &rsaquo; caixa
+    <em>Consolidar por CNES</em>): só os indicadores marcados somam, no <strong>Painel</strong> e na <strong>grade de Metas</strong>,
+    os cadastros que compartilham o mesmo CNES (hoje: {{ resumo_consolidacao.grupos }} CNES com
+    {{ resumo_consolidacao.cmes_agrupados }} cadastros) numa única unidade - o estabelecimento principal do CNES.
+    Os demais continuam por <strong>CMES</strong>. Ficam <em>sempre por CMES</em>, mesmo nos indicadores marcados: cadastros
+    marcados <em>só CMES</em> em Estabelecimentos ({{ resumo_consolidacao.excecoes_manuais }}), CNES cujos cadastros têm
+    categorias de contrato distintas ({{ resumo_consolidacao.cnes_ambiguos }}) e cadastros sem CNES. Vale na hora - não precisa recalcular.
+  </p>
+  <p style="font-size:13px"><strong>{{ qtd_indicadores_cnes }}</strong> de {{ qtd_indicadores }} indicador(es) consolidam por CNES hoje.
+    Atalho em massa (também vale para os indicadores criados depois):</p>
+  <button type="submit" name="modo" value="CNES" class="btn-secondary" onclick="return confirm('Marcar TODOS os indicadores para consolidar por CNES?')">Todos por CNES</button>
+  <button type="submit" name="modo" value="CMES" class="btn-secondary" onclick="return confirm('Voltar TODOS os indicadores para CMES?')">Todos por CMES</button>
+</form>
+
+<style>
+  /* duas colunas lado a lado: Portarias à esquerda, Termos Aditivos
+     (metas) à direita - empilha em telas estreitas */
+  .colunas-vigencias { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 980px) { .colunas-vigencias { grid-template-columns: 1fr; } }
+  .titulo-coluna { display: flex; align-items: baseline; gap: 6px; }
+  .titulo-coluna .subtitulo-coluna { font-size: 12px; font-weight: 400; color: var(--cor-texto-muted); text-transform: none; letter-spacing: 0; }
+</style>
+
+<div class="colunas-vigencias">
+
+  <section class="coluna-vigencia">
+    <h3 class="titulo-coluna">Portarias <span class="subtitulo-coluna">- cadastro e acompanhamento dos indicadores</span></h3>
+
+    <form class="card" method="post" action="{{ url_for('vigencias.nova_portaria') }}">
+      <h2>Nova Portaria</h2>
+      <label>Número da Portaria</label>
+      <input type="text" name="numero" required>
+      <label>Período início</label>
+      <input type="date" name="periodo_inicio" required>
+      <label>Período fim</label>
+      <input type="date" name="periodo_fim" required>
+      <label>Clonar indicadores da Portaria (opcional)</label>
+      <select name="portaria_origem_id">
+        <option value="">Nenhuma - cadastro do zero</option>
+        {% for p in portarias %}
+          <option value="{{ p.id }}">{{ p.numero }} ({{ p.periodo_inicio }} a {{ p.periodo_fim }})</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Criar Portaria</button>
+    </form>
+
+    <div class="table-card">
+    <table>
+      <thead><tr><th>ID</th><th>Número</th><th>Início</th><th>Fim</th><th>Origem</th><th></th></tr></thead>
+      <tbody>
+        {% for p in portarias %}
+        <tr>
+          <td>{{ p.id }}</td><td>{{ p.numero }}</td><td>{{ p.periodo_inicio }}</td><td>{{ p.periodo_fim }}</td><td>{{ p.portaria_origem_id or '-' }}</td>
+          <td style="white-space:nowrap">
+            <a href="{{ url_for('cadastros.indicadores_da_portaria', portaria_id=p.id) }}">indicadores</a> ·
+            <a href="{{ url_for('vigencias.form_editar_portaria', portaria_id=p.id) }}">editar</a> ·
+            <form method="post" action="{{ url_for('vigencias.excluir_portaria', portaria_id=p.id) }}" style="display:inline" onsubmit="return confirm('Excluir esta Portaria e TUDO que depende dela: indicadores, vínculos de procedimento/CBO, subgrupos, metas e a apuração (fato_apuracao) desses indicadores? Não dá para desfazer.')">
+              <button type="submit" class="btn-link">excluir</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}<tr><td colspan="6">Nenhuma portaria cadastrada.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <section class="coluna-vigencia">
+    <h3 class="titulo-coluna">Termos Aditivos <span class="subtitulo-coluna">- cadastro e acompanhamento das metas</span></h3>
+
+    <form class="card" method="post" action="{{ url_for('vigencias.novo_ta') }}">
+      <h2>Novo Termo Aditivo</h2>
+      <label>Número do TA</label>
+      <input type="text" name="numero" required>
+      <label>Período início</label>
+      <input type="date" name="periodo_inicio" required>
+      <label>Período fim</label>
+      <input type="date" name="periodo_fim" required>
+      <label>Clonar metas do TA (opcional)</label>
+      <select name="ta_origem_id">
+        <option value="">Nenhum - cadastro do zero</option>
+        {% for ta in tas %}
+          <option value="{{ ta.id }}">{{ ta.numero }} ({{ ta.periodo_inicio }} a {{ ta.periodo_fim }})</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Criar Termo Aditivo</button>
+    </form>
+
+    <div class="table-card">
+    <table>
+      <thead><tr><th>ID</th><th>Número</th><th>Início</th><th>Fim</th><th>Origem</th><th></th></tr></thead>
+      <tbody>
+        {% for ta in tas %}
+        <tr>
+          <td>{{ ta.id }}</td><td>{{ ta.numero }}</td><td>{{ ta.periodo_inicio }}</td><td>{{ ta.periodo_fim }}</td><td>{{ ta.ta_origem_id or '-' }}</td>
+          <td style="white-space:nowrap">
+            <a href="{{ url_for('cadastros.metas_do_ta', ta_id=ta.id) }}">metas</a> ·
+            <a href="{{ url_for('vigencias.form_editar_ta', ta_id=ta.id) }}">editar</a> ·
+            <form method="post" action="{{ url_for('vigencias.excluir_ta', ta_id=ta.id) }}" style="display:inline" onsubmit="return confirm('Excluir este Termo Aditivo e suas metas?')">
+              <button type="submit" class="btn-link">excluir</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}<tr><td colspan="6">Nenhum TA cadastrado.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

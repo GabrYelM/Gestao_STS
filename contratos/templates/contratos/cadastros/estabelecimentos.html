@@ -1,0 +1,155 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Estabelecimentos - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Estabelecimentos</h1>
+
+<div class="toolbar">
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-estab')">📤 Importar CSV em lote</button>
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-novo-estab')">＋ Incluir novo</button>
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-nova-categoria')">＋ Nova categoria</button>
+  <a class="btn btn-secondary" href="{{ url_for('cadastros.exportar_estabelecimentos_csv') }}">⬇ Exportar</a>
+  <span class="espaco"></span>
+  <span class="toolbar-texto" data-autofiltro-contador="tabela-estabelecimentos"></span>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-autofiltro-limpar="tabela-estabelecimentos"><i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros</button>
+</div>
+
+<div id="painel-importar-estab" class="painel-acao">
+  <form class="card card-tint-blue" method="post" action="{{ url_for('cadastros.importar_estabelecimentos_csv') }}" enctype="multipart/form-data">
+    <h2>Importar CSV em lote</h2>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Cabeçalho esperado (separador ; ou ,): <code>nome;cod_cnes;cod_cmes;tipo_servico;complexidade;categoria_contrato</code>.
+      Apenas <code>nome</code> e <code>cod_cmes</code> são obrigatórios. Para mais de um tipo de serviço, separe com <code>|</code> (ex.: <code>UBS|AMA</code>).
+      Se o CMES já existir, o registro é atualizado; caso contrário, é criado.
+    </p>
+    <input type="file" name="arquivo" accept=".csv" required>
+    <button type="submit" class="btn-secondary">Importar CSV</button>
+  </form>
+</div>
+
+<div id="painel-novo-estab" class="painel-acao">
+  <form class="card" method="post" action="{{ url_for('cadastros.novo_estabelecimento') }}">
+    <h2>Novo estabelecimento</h2>
+    <label>Nome</label>
+    <input type="text" name="nome" required>
+    <label>Código CNES</label>
+    <input type="text" name="cod_cnes">
+    <label>Código CMES</label>
+    <input type="text" name="cod_cmes">
+    <label>Tipo(s) de serviço</label>
+    <input type="text" name="tipo_servico" placeholder="ex: UBS|AMA (separe mais de um com |)">
+    <label>Complexidade</label>
+    <input type="text" name="complexidade" placeholder="ex: ATENCAO_BASICA, MEDIA, ALTA">
+    <label>Categoria de contrato</label>
+    <select name="categoria_contrato">
+      <option value="">-- não informado --</option>
+      {% for c in categorias_lista %}
+      <option value="{{ c.nome }}">{{ c.nome }}</option>
+      {% endfor %}
+    </select>
+    <button type="button" class="btn-link" onclick="alternarPainel('painel-nova-categoria')" style="margin-left:8px">+ nova categoria</button>
+    <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:500"
+           title="Nunca agrupar este cadastro por CNES na consolidação (ver Portaria/TA)">
+      <input type="checkbox" name="exige_cmes" value="1" style="width:auto"> Só CMES (exceção da consolidação por CNES)
+    </label>
+    <button type="submit">Cadastrar</button>
+  </form>
+</div>
+
+<div id="painel-nova-categoria" class="painel-acao">
+  <form class="card card-tint-blue" method="post" action="{{ url_for('cadastros.nova_categoria_estabelecimento') }}">
+    <h2>Nova categoria de contrato</h2>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Passa a ficar disponível aqui (categoria de contrato do estabelecimento) e no
+      "Filtro negativo" do vínculo de procedimento de um indicador.
+    </p>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Já cadastradas:
+      {% for c in categorias_lista %}<span class="badge-cinza" style="margin-right:4px">{{ c.nome }}</span>{% else %}nenhuma{% endfor %}
+    </p>
+    <label>Nome da categoria</label>
+    <input type="text" name="nome" required placeholder="ex: PARCERIA_ESPECIAL">
+    <button type="submit" class="btn-secondary">Adicionar</button>
+  </form>
+</div>
+
+<!-- Um <form> vazio por linha, fora do form-bulk (forms não podem ser
+     aninhados em HTML) - os campos de cada linha da tabela abaixo se
+     associam a este form pelo atributo form="form-editar-ID". -->
+{% for e in itens %}
+<form id="form-editar-{{ e.id }}" method="post" action="{{ url_for('cadastros.editar_estabelecimento', id=e.id) }}"></form>
+{% endfor %}
+
+<form method="post" action="{{ url_for('cadastros.bulk_editar_estabelecimentos') }}" id="form-bulk">
+<div class="card card-tint-amber">
+  <h2>Editar em massa os selecionados</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:8px">
+    Marque as linhas na tabela abaixo (coluna da esquerda) e preencha só os
+    campos que quer alterar em todas elas de uma vez - campos deixados em
+    branco não são alterados.
+  </p>
+  <label>Tipo(s) de serviço</label>
+  <input type="text" name="bulk_tipo_servico" placeholder="ex: UBS|AMA">
+  <label>Complexidade</label>
+  <input type="text" name="bulk_complexidade">
+  <label>Categoria de contrato</label>
+  <select name="bulk_categoria_contrato">
+    <option value="">-- não alterar --</option>
+    {% for c in categorias_lista %}
+    <option value="{{ c.nome }}">{{ c.nome }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn-secondary">Aplicar aos selecionados</button>
+  <button type="submit" formaction="{{ url_for('cadastros.bulk_excluir_estabelecimentos') }}" formnovalidate
+          onclick="return confirm('Excluir todos os estabelecimentos marcados? Essa ação não pode ser desfeita.')"
+          class="btn-danger">
+    🗑 Excluir selecionados
+  </button>
+</div>
+
+<div class="table-card">
+<table id="tabela-estabelecimentos">
+  <thead>
+    <tr>
+      <th><input type="checkbox" class="chk-todos" title="Marcar todas as linhas visíveis"></th>
+      <th data-filtro>Nome</th><th data-filtro>CNES</th><th data-filtro>CMES</th><th data-filtro>Tipo(s) de serviço</th>
+      <th data-filtro>Complexidade</th><th data-filtro>Categoria contrato</th>
+      <th data-filtro title="Exceção manual da consolidação por CNES: este cadastro sempre fica individual (por CMES)">Só CMES</th>
+      <th data-filtro title="O que acontece com este cadastro quando a consolidação é por CNES (Portaria/TA)">Consolidação por CNES</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in itens %}
+    <tr>
+      <td><input type="checkbox" name="selecionados" value="{{ e.id }}" form="form-bulk" class="chk-linha"></td>
+      <td><input type="text" name="nome" value="{{ e.nome }}" form="form-editar-{{ e.id }}" required style="width:100%"></td>
+      <td><input type="text" name="cod_cnes" value="{{ e.cod_cnes or '' }}" form="form-editar-{{ e.id }}" style="width:100%"></td>
+      <td><input type="text" name="cod_cmes" value="{{ e.cod_cmes or '' }}" form="form-editar-{{ e.id }}" style="width:100%"></td>
+      <td><input type="text" name="tipo_servico" value="{{ e.tipos_servico or '' }}" form="form-editar-{{ e.id }}" placeholder="UBS|AMA" style="width:100%"></td>
+      <td><input type="text" name="complexidade" value="{{ e.complexidade or '' }}" form="form-editar-{{ e.id }}" style="width:100%"></td>
+      <td>
+        <select name="categoria_contrato" form="form-editar-{{ e.id }}" style="width:100%">
+          <option value="" {% if not e.categoria_contrato %}selected{% endif %}>-</option>
+          {% for c in categorias_lista %}
+          <option value="{{ c.nome }}" {% if e.categoria_contrato == c.nome %}selected{% endif %}>{{ c.nome }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td style="text-align:center">
+        <input type="checkbox" name="exige_cmes" value="1" form="form-editar-{{ e.id }}" style="width:auto" {% if e.exige_cmes %}checked{% endif %}>
+      </td>
+      <td style="font-size:12px;color:var(--cor-texto-muted)">{% set info = consolidacao_cnes.get(e.id) %}{{ info.motivo if info else '' }}</td>
+      <td>
+        <button type="submit" form="form-editar-{{ e.id }}" class="btn-sm" style="white-space:nowrap">Salvar</button>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10">Nenhum estabelecimento cadastrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+</form>
+
+{% include "contratos/_autofiltro.html" %}
+<script>AutoFiltro.iniciar('tabela-estabelecimentos');</script>
+{% endblock %}

@@ -1,0 +1,86 @@
+{% extends "contratos/base.html" %}
+{% block title %}Indicadores - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<p><a href="{{ url_for('vigencias.listar') }}">&larr; Voltar para Termos Aditivos / Portarias</a></p>
+<h1>Indicadores - Portaria {{ portaria.numero if portaria else '' }}</h1>
+
+<form class="card" method="post" action="{{ url_for('cadastros.novo_indicador', portaria_id=portaria.id) }}">
+  <h2>Novo indicador</h2>
+  <label>Código (ex: P1)</label>
+  <input type="text" name="codigo" required>
+  <label>Nome</label>
+  <input type="text" name="nome" required>
+  <label>Tipo</label>
+  <select name="tipo" required>
+    <option value="PRODUCAO">Produção</option>
+    <option value="QUALIDADE">Qualidade</option>
+    <option value="MONITORAMENTO">Monitoramento</option>
+  </select>
+  <label>Complexidade</label>
+  <input type="text" name="complexidade">
+  <label>Serviço</label>
+  <input type="text" name="servico">
+  <label>Fonte de dados (base importada que alimenta o indicador)</label>
+  <select name="fonte_id">
+    <option value="">-- qualquer fonte (não restringir) --</option>
+    {% for f in fontes %}<option value="{{ f.id }}">{{ f.nome }} - {{ f.descricao }}</option>{% endfor %}
+  </select>
+  <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:500">
+    <input type="checkbox" name="consolida_cnes" value="1" style="width:auto"> Consolidar por CNES (soma os CMES do mesmo CNES no Painel e nas Metas)
+  </label>
+  <button type="submit">Cadastrar</button>
+</form>
+
+<!-- Um <form> vazio por linha, fora da tabela (forms não podem ser
+     aninhados) - os campos de edição de cada linha se associam a este
+     form pelo atributo form="form-ind-ID". -->
+{% for i in indicadores %}
+<form id="form-ind-{{ i.id }}" method="post" action="{{ url_for('cadastros.editar_indicador', indicador_id=i.id) }}"></form>
+{% endfor %}
+
+<div class="table-card">
+<table>
+  <thead><tr><th>Código</th><th>Nome</th><th>Tipo</th><th>Complexidade</th><th>Serviço</th><th>Fonte de dados</th><th title="Consolidar por CNES: soma os CMES do mesmo CNES no Painel e nas Metas">CNES</th><th></th></tr></thead>
+  <tbody>
+    {% for i in indicadores %}
+    <tr>
+      <td><input type="text" name="codigo" value="{{ i.codigo }}" form="form-ind-{{ i.id }}" style="width:70px" required></td>
+      <td><input type="text" name="nome" value="{{ i.nome }}" form="form-ind-{{ i.id }}" style="width:100%;min-width:160px" required></td>
+      <td>
+        <select name="tipo" form="form-ind-{{ i.id }}" style="width:100%">
+          <option value="PRODUCAO" {% if i.tipo == 'PRODUCAO' %}selected{% endif %}>Produção</option>
+          <option value="QUALIDADE" {% if i.tipo == 'QUALIDADE' %}selected{% endif %}>Qualidade</option>
+          <option value="MONITORAMENTO" {% if i.tipo == 'MONITORAMENTO' %}selected{% endif %}>Monitoramento</option>
+        </select>
+      </td>
+      <td><input type="text" name="complexidade" value="{{ i.complexidade or '' }}" form="form-ind-{{ i.id }}" style="width:100%" placeholder="Complexidade"></td>
+      <td><input type="text" name="servico" value="{{ i.servico or '' }}" form="form-ind-{{ i.id }}" style="width:100%" placeholder="Serviço"></td>
+      <td>
+        <select name="fonte_id" form="form-ind-{{ i.id }}" style="width:100%;min-width:170px" title="{{ i.fonte_dados or '' }}">
+          <option value="">-- qualquer fonte --</option>
+          {% for f in fontes %}<option value="{{ f.id }}" {% if i.fonte_id == f.id %}selected{% endif %}>{{ f.nome }}</option>{% endfor %}
+        </select>
+        {% if not i.fonte_id and i.fonte_dados %}<div style="font-size:11px;color:var(--cor-texto-muted)" title="Texto antigo (livre) - escolha a fonte no seletor para o cálculo usá-la">texto antigo: {{ i.fonte_dados }}</div>{% endif %}
+      </td>
+      <td style="text-align:center"><input type="checkbox" name="consolida_cnes" value="1" form="form-ind-{{ i.id }}" style="width:auto" {% if i.consolida_cnes %}checked{% endif %}></td>
+      <td style="white-space:nowrap">
+        <button type="submit" form="form-ind-{{ i.id }}" class="btn-sm">Salvar</button>
+        <a href="{{ url_for('cadastros.detalhe_indicador', indicador_id=i.id) }}">vínculos</a>
+        <form method="post" action="{{ url_for('cadastros.excluir_indicador', indicador_id=i.id) }}"
+              style="display:inline" onsubmit="return confirm('Excluir este indicador e seus vínculos de CBO/procedimento? Metas que usam este indicador precisam ser excluídas antes.')">
+          <button type="submit" class="btn-link">excluir</button>
+        </form>
+        <form method="post" action="{{ url_for('cadastros.clonar_indicador', indicador_id=i.id) }}"
+              style="display:inline-flex;gap:4px;align-items:center">
+          <input type="text" name="novo_codigo" placeholder="novo código" style="width:80px;padding:3px 5px;font-size:12px" required>
+          <button type="submit" class="btn-sm">Clonar</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8">Nenhum indicador cadastrado nesta portaria.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

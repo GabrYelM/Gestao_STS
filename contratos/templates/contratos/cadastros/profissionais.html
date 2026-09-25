@@ -1,0 +1,240 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Profissionais - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+<h1>Profissionais</h1>
+<p class="subtitulo-pagina">
+  Cadastro de profissionais vinculados a um estabelecimento e uma categoria (CBO) -
+  odontologia (eSB/CEO) e demais equipes. Informe o CNS, se é Responsável Técnico
+  (RT) e o tipo de equipe.
+</p>
+
+<style>
+  .busca-wrap { position: relative; }
+  .busca-resultados {
+    position: absolute; z-index: 10; background: #fff; border: 1px solid var(--cor-borda-forte);
+    border-top: none; max-height: 240px; overflow-y: auto; width: 100%; box-sizing: border-box;
+    display: none; box-shadow: 0 4px 10px rgba(16,24,40,.1); border-radius: 0 0 var(--raio-sm) var(--raio-sm);
+  }
+  .busca-resultados > div { padding: 6px 8px; font-size: 13px; cursor: pointer; }
+  .busca-resultados > div:hover { background: var(--cor-fundo); }
+  .chk-rt { width: auto !important; }
+</style>
+
+<div class="toolbar">
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-prof')">📤 Importar CSV em lote</button>
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-novo-prof')">＋ Incluir novo</button>
+  <a class="btn btn-secondary" href="{{ url_for('cadastros.exportar_profissionais_csv') }}">⬇ Exportar</a>
+  <span class="espaco"></span>
+  <span class="toolbar-texto" data-autofiltro-contador="tabela-profissionais"></span>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-autofiltro-limpar="tabela-profissionais"><i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros</button>
+</div>
+
+<div id="painel-importar-prof" class="painel-acao">
+  <form class="card card-tint-blue" method="post" action="{{ url_for('cadastros.importar_profissionais_csv') }}" enctype="multipart/form-data">
+    <h2>Importar CSV em lote</h2>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Cabeçalho esperado (separador ; ou ,): <code>nome;cns;cod_cmes;cbo_codigo;rt;tipo_equipe;pmmb</code>.
+      Apenas <code>nome</code> e <code>cod_cmes</code> (código CMES do estabelecimento) são
+      obrigatórios - o estabelecimento precisa já estar cadastrado. <code>cbo_codigo</code>
+      também precisa já existir no cadastro de CBO, senão a linha é importada sem CBO.
+      <code>rt</code> e <code>pmmb</code> aceitam <code>1</code>/<code>sim</code> para marcar Responsável Técnico / vínculo com o Programa Mais Médicos para o Brasil.
+      Ex.: <code>Maria Silva;700000000000000;12345;322205;sim;eSB</code>.
+    </p>
+    <input type="file" name="arquivo" accept=".csv" required>
+    <button type="submit" class="btn-secondary">Importar CSV</button>
+  </form>
+</div>
+
+<div id="painel-novo-prof" class="painel-acao">
+  <form class="card" method="post" action="{{ url_for('cadastros.novo_profissional') }}" id="form-novo-prof">
+    <h2>Novo profissional</h2>
+    <label>Nome</label>
+    <input type="text" name="nome" required>
+
+    <label>CNS</label>
+    <input type="text" name="cns" placeholder="Cartão Nacional de Saúde" inputmode="numeric">
+
+    <label>Estabelecimento</label>
+    <div class="busca-wrap">
+      <input type="text" id="busca-estab-novo" autocomplete="off" placeholder="Digite o nome, CNES ou CMES...">
+      <div class="busca-resultados" id="resultados-estab-novo"></div>
+    </div>
+    <input type="hidden" name="estabelecimento_id" id="estabelecimento_id_hidden-novo">
+
+    <label>CBO (categoria profissional)</label>
+    <div class="busca-wrap">
+      <input type="text" id="busca-cbo-novo" autocomplete="off" placeholder="Digite o código ou o nome do CBO...">
+      <div class="busca-resultados" id="resultados-cbo-novo"></div>
+    </div>
+    <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-novo">
+
+    <label>Tipo de equipe</label>
+    <input type="text" name="tipo_equipe" list="sugestoes-tipo-equipe" placeholder="ex: eSB, eSF, NASF-AB, CEO">
+    <datalist id="sugestoes-tipo-equipe">
+      <option value="eSB">
+      <option value="eSF">
+      <option value="NASF-AB">
+      <option value="CEO">
+    </datalist>
+
+    <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:500">
+      <input type="checkbox" name="rt" value="1" class="chk-rt"> É Responsável Técnico (RT)
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:500">
+      <input type="checkbox" name="pmmb" value="1" class="chk-rt"> Vinculado ao PMMB (Programa Mais Médicos para o Brasil)
+    </label>
+
+    <button type="submit">Cadastrar</button>
+  </form>
+</div>
+
+<!-- Um <form> vazio por linha (forms não podem ser aninhados em HTML) - os
+     campos de cada linha da tabela se associam a este form via form="...". -->
+{% for p in itens %}
+<form id="form-editar-prof-{{ p.id }}" method="post" action="{{ url_for('cadastros.editar_profissional', id=p.id) }}"></form>
+{% endfor %}
+
+<div class="toolbar card-tint-amber">
+  <span class="toolbar-texto">Marque linhas na tabela abaixo para excluir em massa:</span>
+  <span class="espaco"></span>
+  <button type="submit" form="form-bulk-prof" class="btn-danger"
+          onclick="return confirm('Excluir todos os profissionais marcados? Essa ação não pode ser desfeita.')">
+    🗑 Excluir selecionados
+  </button>
+</div>
+
+<form method="post" action="{{ url_for('cadastros.bulk_excluir_profissionais') }}" id="form-bulk-prof"></form>
+
+<div class="table-card">
+<table id="tabela-profissionais">
+  <thead>
+    <tr>
+      <th><input type="checkbox" class="chk-todos" title="Marcar todas as linhas visíveis"></th>
+      <th data-filtro>Nome</th><th data-filtro>CNS</th><th data-filtro>Estabelecimento</th><th data-filtro>CBO</th>
+      <th data-filtro>RT</th><th data-filtro>Tipo de equipe</th><th data-filtro>PMMB</th><th data-filtro>Ativo</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in itens %}
+    <tr>
+      <td><input type="checkbox" name="selecionados" value="{{ p.id }}" form="form-bulk-prof" class="chk-linha"></td>
+      <td><input type="text" name="nome" value="{{ p.nome }}" form="form-editar-prof-{{ p.id }}" required style="width:100%"></td>
+      <td><input type="text" name="cns" value="{{ p.cns or '' }}" form="form-editar-prof-{{ p.id }}" style="width:100%"></td>
+      <td>
+        {# só a opção escolhida vai no HTML; a lista completa é preenchida no navegador (ver script) #}
+        <select name="estabelecimento_id" form="form-editar-prof-{{ p.id }}" style="width:100%" data-lista="estabelecimentos">
+          <option value="">-- nenhum --</option>
+          {% if p.estabelecimento_id %}<option value="{{ p.estabelecimento_id }}" selected>{{ p.estabelecimento_nome }}</option>{% endif %}
+        </select>
+      </td>
+      <td>
+        <select name="cbo_codigo" form="form-editar-prof-{{ p.id }}" style="width:100%" data-lista="cbo">
+          <option value="">-- nenhum --</option>
+          {% if p.cbo_codigo %}<option value="{{ p.cbo_codigo }}" selected>{{ p.cbo_codigo }}{% if p.cbo_nome %} - {{ p.cbo_nome }}{% endif %}</option>{% endif %}
+        </select>
+      </td>
+      <td style="text-align:center">
+        <input type="checkbox" name="rt" value="1" form="form-editar-prof-{{ p.id }}" class="chk-rt" {% if p.rt %}checked{% endif %}>
+      </td>
+      <td><input type="text" name="tipo_equipe" value="{{ p.tipo_equipe or '' }}" form="form-editar-prof-{{ p.id }}" style="width:100%"></td>
+      <td style="text-align:center">
+        <input type="checkbox" name="pmmb" value="1" form="form-editar-prof-{{ p.id }}" class="chk-rt" {% if p.pmmb %}checked{% endif %}>
+      </td>
+      <td style="text-align:center">
+        <input type="checkbox" name="ativo" value="1" form="form-editar-prof-{{ p.id }}" class="chk-rt" {% if p.ativo %}checked{% endif %}>
+      </td>
+      <td style="white-space:nowrap">
+        <button type="submit" form="form-editar-prof-{{ p.id }}" class="btn-sm">Salvar</button>
+        <form method="post" action="{{ url_for('cadastros.excluir_profissional', id=p.id) }}" onsubmit="return confirm('Excluir este profissional?')" style="display:inline">
+          <button type="submit" class="btn-link">excluir</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10">Nenhum profissional cadastrado.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<script type="application/json" id="prof-listas-json">{{ listas_json | tojson }}</script>
+{% include "contratos/_autofiltro.html" %}
+<script>
+AutoFiltro.iniciar('tabela-profissionais');
+
+// Preenche o <select> de Estabelecimento/CBO de uma linha só quando o usuário chega nele
+// (o HTML da tela leva só a opção já escolhida - antes eram ~180 opções x 2 x cada linha).
+(function () {
+  const listas = JSON.parse(document.getElementById('prof-listas-json').textContent);
+  const tabela = document.getElementById('tabela-profissionais');
+  function hidratar(sel) {
+    if (!sel || sel.tagName !== 'SELECT' || !sel.dataset.lista || sel.dataset.hidratado) return;
+    sel.dataset.hidratado = '1';
+    const valor = sel.value;
+    const frag = document.createDocumentFragment();
+    frag.appendChild(new Option('-- nenhum --', ''));
+    (listas[sel.dataset.lista] || []).forEach(o => frag.appendChild(new Option(o.t, o.v)));
+    sel.textContent = '';
+    sel.appendChild(frag);
+    sel.value = valor;
+  }
+  ['mouseover', 'focusin', 'touchstart'].forEach(ev =>
+    tabela.addEventListener(ev, e => hidratar(e.target.closest ? e.target.closest('select[data-lista]') : null), { passive: true })
+  );
+})();
+
+// Busca com autocomplete para Estabelecimento e CBO no formulário "Novo
+// profissional" (mesmo padrão usado em indicador_detalhe.html).
+function criarBusca(inputId, resultadosId, hiddenId, urlBusca, montarTexto, montarValor) {
+  const input = document.getElementById(inputId);
+  const resultados = document.getElementById(resultadosId);
+  const hidden = document.getElementById(hiddenId);
+  if (!input) return;
+  let timer = null;
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    hidden.value = '';
+    const termo = input.value.trim();
+    timer = setTimeout(async () => {
+      const resp = await fetch(urlBusca + '?q=' + encodeURIComponent(termo));
+      const itens = await resp.json();
+      resultados.innerHTML = '';
+      if (itens.length === 0) { resultados.style.display = 'none'; return; }
+      itens.forEach(item => {
+        const div = document.createElement('div');
+        div.textContent = montarTexto(item);
+        div.addEventListener('click', () => {
+          input.value = montarTexto(item);
+          hidden.value = montarValor(item);
+          resultados.style.display = 'none';
+        });
+        resultados.appendChild(div);
+      });
+      resultados.style.display = 'block';
+    }, 200);
+  });
+  document.addEventListener('click', (e) => { if (e.target !== input) resultados.style.display = 'none'; });
+}
+
+criarBusca(
+  'busca-estab-novo', 'resultados-estab-novo', 'estabelecimento_id_hidden-novo',
+  '{{ url_for("cadastros.buscar_estabelecimentos_json") }}',
+  item => item.nome, item => item.codigo
+);
+criarBusca(
+  'busca-cbo-novo', 'resultados-cbo-novo', 'cbo_codigo_hidden-novo',
+  '{{ url_for("cadastros.buscar_cbo_json") }}',
+  item => item.codigo + ' - ' + item.nome_categoria, item => item.codigo
+);
+
+document.getElementById('form-novo-prof').addEventListener('submit', function(e) {
+  if (!document.getElementById('estabelecimento_id_hidden-novo').value) {
+    // Estabelecimento é opcional no banco, mas sem ele o profissional fica
+    // "solto" - confirma antes de deixar salvar assim.
+    if (!confirm('Nenhum estabelecimento foi selecionado na busca. Cadastrar mesmo assim sem estabelecimento?')) {
+      e.preventDefault();
+    }
+  }
+});
+</script>
+{% endblock %}
