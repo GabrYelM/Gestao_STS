@@ -271,6 +271,16 @@ def _cbo_permitido_subgrupo(db, indicador_id, subgrupo_id, cbo_codigo):
         ).fetchall()
         if vinculos_subgrupo:
             return any(v["curinga"] or v["cbo_codigo"] == cbo_codigo for v in vinculos_subgrupo)
+        # Se outros subgrupos deste indicador possuem CBOs específicos (como no P42 onde cada subgrupo representa uma especialidade),
+        # um subgrupo sem vínculo próprio NÃO deve aceitar CBOs de outras especialidades ou regra geral indistintamente
+        tem_outros_cbos = db.execute(
+            """SELECT 1 FROM indicador_cbo ic
+               JOIN indicador_subgrupo sg ON sg.id = ic.subgrupo_id
+               WHERE sg.indicador_id = ? LIMIT 1""",
+            (indicador_id,),
+        ).fetchone()
+        if tem_outros_cbos:
+            return False
     return _cbo_permitido(db, indicador_id, cbo_codigo)
 
 
@@ -310,6 +320,53 @@ def _servico_compativel(db, indicador_id, estabelecimento_id):
 # ==============================================================================
 # 2. MOTOR DE CÁLCULO E APURAÇÃO (fato_apuracao)
 # ==============================================================================
+
+def _garantir_linhas_subgrupos(db, periodo_norm):
+    """
+    Garante que especialidades vinculadas a subgrupos (ex: P43 Infantil: Neuro e Pneumo)
+    tenham linha no painel (fato_apuracao com apurado=0) para os estabelecimentos
+    que possuem apuração ou metas desse indicador, mesmo quando não houve produção no mês.
+    """
+    estabs_ind = db.execute(
+        """SELECT DISTINCT f.estabelecimento_id, f.indicador_id
+           FROM fato_apuracao f
+           WHERE f.periodo = ? AND f.indicador_id IS NOT NULL
+           UNION
+           SELECT DISTINCT m.estabelecimento_id, m.indicador_id
+           FROM metas m
+           WHERE m.indicador_id IS NOT NULL""",
+        (periodo_norm,),
+    ).fetchall()
+
+    for row in estabs_ind:
+        eid = row["estabelecimento_id"]
+        iid = row["indicador_id"]
+        sub_cbos = db.execute(
+            """SELECT ic.subgrupo_id, ic.cbo_codigo
+               FROM indicador_cbo ic
+               WHERE ic.indicador_id = ? AND ic.subgrupo_id IS NOT NULL""",
+            (iid,),
+        ).fetchall()
+        for sc in sub_cbos:
+            existe = db.execute(
+                """SELECT 1 FROM fato_apuracao
+                   WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ?
+                     AND subgrupo_id = ? AND cbo_codigo = ?
+                   LIMIT 1""",
+                (periodo_norm, eid, iid, sc["subgrupo_id"], sc["cbo_codigo"]),
+            ).fetchone()
+            if not existe:
+                ind_row = db.execute("SELECT fonte_id FROM indicadores WHERE id = ?", (iid,)).fetchone()
+                fid = ind_row["fonte_id"] if ind_row and ind_row["fonte_id"] else 1
+                db.execute(
+                    """INSERT INTO fato_apuracao (
+                           fonte_id, importacao_id, estabelecimento_id, profissional_id,
+                           cbo_codigo, procedimento_codigo, indicador_id, periodo,
+                           quantidade, tipo_registro, subgrupo_id
+                       ) VALUES (?, 1, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                    (fid, eid, sc["cbo_codigo"], iid, periodo_norm, sc["subgrupo_id"]),
+                )
+
 
 def calcular_at02(db, periodo, importacao_id=None):
     """Gera fato_apuracao (tipo_registro='apurado') a partir de staging_at02."""
@@ -419,6 +476,20 @@ def calcular_at02(db, periodo, importacao_id=None):
             continue
 
         for indicador_id, subgrupo_id in indicadores:
+            sg_id_registro = subgrupo_id
+            # Regra P43: Neuro (225112) e Pneumo (225127) quando CMES != CNES é lançado como Infantil
+            if indicador_id == 43 and cbo_codigo in ("225112", "225127"):
+                cod_cmes_reg = str(linha["cod_cmes"] or "").strip()
+                cod_cnes_reg = str(linha["cod_cnes"] or "").strip()
+                if cod_cmes_reg and cod_cnes_reg and cod_cmes_reg != cod_cnes_reg:
+                    sg_row = db.execute(
+                        "SELECT id FROM indicador_subgrupo WHERE indicador_id = 43 AND lower(nome) = 'infantil'"
+                    ).fetchone()
+                    if sg_row:
+                        sg_id_registro = sg_row["id"]
+                else:
+                    sg_id_registro = None
+
             db.execute(
                 """INSERT INTO fato_apuracao (
                        fonte_id, importacao_id, estabelecimento_id, profissional_id,
@@ -434,11 +505,12 @@ def calcular_at02(db, periodo, importacao_id=None):
                     indicador_id,
                     periodo_norm,
                     linha["quantidade"] or 0,
-                    subgrupo_id,
+                    sg_id_registro,
                 ),
             )
             vinculadas += 1
 
+    _garantir_linhas_subgrupos(db, periodo_norm)
     db.commit()
     return {
         "total_linhas": total,
@@ -1026,6 +1098,40 @@ def recalcular_periodo(db, periodo, fonte_nome):
         return calcular_dtic_rel130(db, periodo_norm)
     else:
         raise ValueError(f"Não há rotina de cálculo para a fonte: {fonte_nome}")
+
+
+def sincronizar_apuracao_dinamica(db, periodo=None):
+    """
+    Sincroniza automaticamente a apuração (fato_apuracao) a partir do staging.
+    É chamada dinamicamente sempre que cadastros de indicadores, procedimentos,
+    CBOs ou estabelecimentos são modificados, eliminando a necessidade de qualquer
+    ação manual de recálculo por parte do usuário.
+    """
+    if periodo:
+        periodos = [_normalizar_periodo(periodo)]
+    else:
+        rows = db.execute(
+            """SELECT DISTINCT periodo_referencia AS p FROM importacoes WHERE periodo_referencia IS NOT NULL
+               UNION
+               SELECT DISTINCT ano_mes AS p FROM staging_at02 WHERE ano_mes IS NOT NULL
+               UNION
+               SELECT DISTINCT periodo AS p FROM fato_apuracao WHERE periodo IS NOT NULL"""
+        ).fetchall()
+        periodos = [r["p"] for r in rows if r["p"]]
+
+    for p in periodos:
+        try:
+            recalcular_periodo(db, p, "TODAS")
+        except Exception:
+            try:
+                calcular_at02(db, p)
+            except Exception:
+                pass
+        try:
+            _garantir_linhas_subgrupos(db, p)
+            db.commit()
+        except Exception:
+            pass
 
 
 def registrar_log(db, fonte, periodo, resumo):

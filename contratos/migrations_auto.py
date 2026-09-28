@@ -746,5 +746,58 @@ def _migrar_v18(conn):
     if _tabela_existe(conn, "categorias_estabelecimento"):
         conn.execute("INSERT OR IGNORE INTO categorias_estabelecimento (nome) VALUES ('INTEGRADA')")
 
+    # Vínculos do P44 (SADT) conforme levantamento oficial e instrutivo
+    p44_ind = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P44' LIMIT 1").fetchone()
+    if p44_ind:
+        p44_id = p44_ind[0]
+        # Subgrupo 12: Ultrassonografia Geral
+        sg12 = conn.execute(
+            "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND nome = 'Ultrassonografia Geral'", (p44_id,)
+        ).fetchone()
+        if sg12:
+            for p in [
+                '0205020038', '0205020046', '0205020054', '0205020062', '0205020070',
+                '0205020097', '0205020100', '0205020127', '0205020143', '0205020151',
+                '0205020160', '0205020178', '0205020186'
+            ]:
+                conn.execute("""
+                    INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+                    VALUES (?, ?, 'inclusao', ?)
+                """, (p44_id, p, sg12[0]))
+        # Subgrupo 32: Diagnóstico em Ginecologia-Obstetrícia (Colposcopia)
+        sg32 = conn.execute(
+            "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND nome = 'Diagnóstico em Ginecologia-Obstetrícia'", (p44_id,)
+        ).fetchone()
+        if sg32:
+            conn.execute("""
+                INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+                VALUES (?, '0211040029', 'inclusao', ?)
+            """, (p44_id, sg32[0]))
+        # Subgrupo 33: Diagnóstico em Oftalmologia (Mapeamento de Retina)
+        sg33 = conn.execute(
+            "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND nome = 'Diagnóstico em Oftalmologia'", (p44_id,)
+        ).fetchone()
+        if sg33:
+            conn.execute("""
+                INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+                VALUES (?, '0211060127', 'inclusao', ?)
+            """, (p44_id, sg33[0]))
+        # Subgrupo 34: Diagnóstico em Otorrinolaringologia/Fonoaudiologia (Audiometria Tonal Limiar)
+        sg34 = conn.execute(
+            "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND nome = 'Diagnóstico em Otorrinolaringologia/Fonoaudiologia'", (p44_id,)
+        ).fetchone()
+        if sg34:
+            conn.execute("""
+                INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+                VALUES (?, '0211070041', 'inclusao', ?)
+            """, (p44_id, sg34[0]))
+        # Remove vínculos de subgrupos que não possuem meta e duplicavam exames
+        conn.execute("""
+            DELETE FROM indicador_procedimento
+            WHERE indicador_id = ? AND subgrupo_id IN (
+                SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND nome IN ('Ultrassonografia Obstétrico Morfológico', 'Ultrassonografia Mamária Bilateral')
+            )
+        """, (p44_id, p44_id))
+
     return aplicou
 

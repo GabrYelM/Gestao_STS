@@ -350,7 +350,7 @@
 </form>
 
 {% for sg in subgrupos %}
-<div class="bloco-subgrupo">
+<div class="bloco-subgrupo" id="sg{{ sg.id }}">
   <div class="bloco-subgrupo-cabecalho">
     <h3>📁 {{ sg.nome }}</h3>
     <form method="post" action="{{ url_for('cadastros.renomear_subgrupo', indicador_id=indicador.id, subgrupo_id=sg.id) }}" style="display:flex;gap:4px;align-items:center">
@@ -365,42 +365,44 @@
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
     <div>
-      <h4 style="font-size:12px;color:var(--cor-texto-muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px">CBO deste subgrupo</h4>
-      <form method="post" action="{{ url_for('cadastros.add_vinculo_cbo', indicador_id=indicador.id) }}" style="margin-bottom:8px">
-        <input type="hidden" name="subgrupo_id" value="{{ sg.id }}">
-        <div class="busca-wrap">
-          <input type="text" id="busca-cbo-sg{{ sg.id }}" autocomplete="off" placeholder="Buscar CBO...">
-          <div class="busca-resultados" id="resultados-cbo-sg{{ sg.id }}"></div>
-        </div>
-        <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-sg{{ sg.id }}">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px"><input type="checkbox" name="curinga" style="width:auto"> Curinga (raro dentro de subgrupo)</label>
-        <button type="submit" class="btn-sm">Adicionar</button>
-      </form>
-      <ul style="padding-left:18px;margin:0 0 6px;font-size:13px;list-style:none">
-        {% for v in sg.vinculos_cbo %}
-        <li style="display:flex;align-items:center;gap:6px;padding:2px 0">
-          <input type="checkbox" name="vinculo_ids" value="{{ v.id }}" form="form-bulk-cbo-sg{{ sg.id }}">
-          <span>{{ v.cbo_codigo or 'curinga' }} {{ v.nome_categoria or '' }}</span>
-          <form method="post" action="{{ url_for('cadastros.remover_vinculo_cbo', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline">
-            <button type="submit" class="btn-link" style="font-size:12px">remover</button>
-          </form>
-        </li>
-        {% else %}
-        <li style="color:var(--cor-texto-muted)">Nenhum - usa a regra geral do indicador.</li>
-        {% endfor %}
-      </ul>
+      <h4 style="font-size:12px;color:var(--cor-texto-muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px">Especialidade / CBO deste subgrupo</h4>
       {% if sg.vinculos_cbo %}
-      <div style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:8px">
-        <label style="display:flex;align-items:center;gap:4px;margin:0;font-weight:400">
-          <input type="checkbox" onclick="marcarTodos(this, 'form-bulk-cbo-sg{{ sg.id }}')"> marcar todos
-        </label>
-        <button type="submit" form="form-bulk-cbo-sg{{ sg.id }}" class="btn-link"
-                onclick="return confirm('Excluir os CBOs marcados deste subgrupo?')">
-          excluir selecionados
-        </button>
-      </div>
+        {% for v in sg.vinculos_cbo %}
+        <div style="background:#fff;border:1px solid var(--cor-borda);border-radius:var(--raio-sm);padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <span style="font-weight:600;font-size:13px;color:var(--stspe-primary)">🩺 {{ v.cbo_codigo or 'curinga' }}</span>
+          <span style="font-size:13px;color:var(--cor-texto)">{{ v.nome_categoria or '' }}</span>
+          <form method="post" action="{{ url_for('cadastros.remover_vinculo_cbo', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline;margin-left:auto">
+            <button type="submit" class="btn-link" style="color:var(--cor-perigo);font-size:12px" title="Remover especialidade">remover</button>
+          </form>
+        </div>
+        {% endfor %}
+        <details style="margin-bottom:10px">
+          <summary style="font-size:12px;color:var(--stspe-primary);cursor:pointer">Alterar especialidade / CBO</summary>
+          <form method="post" action="{{ url_for('cadastros.add_vinculo_cbo', indicador_id=indicador.id) }}" style="margin-top:6px">
+            <input type="hidden" name="subgrupo_id" value="{{ sg.id }}">
+            <div class="busca-wrap">
+              <input type="text" id="busca-cbo-sg{{ sg.id }}" autocomplete="off" placeholder="Buscar nova especialidade / CBO...">
+              <div class="busca-resultados" id="resultados-cbo-sg{{ sg.id }}"></div>
+            </div>
+            <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-sg{{ sg.id }}">
+            <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+              <button type="submit" class="btn-sm">Substituir especialidade</button>
+            </div>
+          </form>
+        </details>
+      {% else %}
+        <form method="post" action="{{ url_for('cadastros.add_vinculo_cbo', indicador_id=indicador.id) }}" style="margin-bottom:8px">
+          <input type="hidden" name="subgrupo_id" value="{{ sg.id }}">
+          <div class="busca-wrap">
+            <input type="text" id="busca-cbo-sg{{ sg.id }}" autocomplete="off" placeholder="Buscar especialidade / CBO...">
+            <div class="busca-resultados" id="resultados-cbo-sg{{ sg.id }}"></div>
+          </div>
+          <input type="hidden" name="cbo_codigo" id="cbo_codigo_hidden-sg{{ sg.id }}">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:4px 0"><input type="checkbox" name="curinga" style="width:auto"> Curinga (raro dentro de subgrupo)</label>
+          <button type="submit" class="btn-sm">Definir especialidade</button>
+        </form>
+        <p style="color:var(--cor-texto-muted);font-size:12px;margin:0 0 6px">Nenhuma especialidade vinculada ainda.</p>
       {% endif %}
-      <form method="post" action="{{ url_for('cadastros.bulk_excluir_vinculo_cbo', indicador_id=indicador.id) }}" id="form-bulk-cbo-sg{{ sg.id }}"></form>
     </div>
 
     <div>
@@ -654,5 +656,33 @@ criarBuscaEstabelecimento('cnesalt');
 criarBuscaCbo('sg{{ sg.id }}');
 criarBuscaProcedimento('sg{{ sg.id }}');
 {% endfor %}
+
+// Preservação rigorosa da posição de scroll na tela de detalhes/vínculos
+(function() {
+  const chaveScroll = 'scroll_pos_ind_' + window.location.pathname;
+
+  // Salva no submit de qualquer form da página
+  document.addEventListener('submit', function() {
+    sessionStorage.setItem(chaveScroll, window.scrollY);
+  });
+
+  // Também salva antes de descarregar
+  window.addEventListener('beforeunload', function() {
+    sessionStorage.setItem(chaveScroll, window.scrollY);
+  });
+
+  // Restaura na carga da página
+  const posSalva = sessionStorage.getItem(chaveScroll);
+  if (posSalva !== null) {
+    sessionStorage.removeItem(chaveScroll);
+    const y = parseInt(posSalva, 10);
+    if (!isNaN(y)) {
+      window.scrollTo({ top: y, behavior: 'instant' });
+      requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+      setTimeout(() => window.scrollTo({ top: y, behavior: 'instant' }), 50);
+      setTimeout(() => window.scrollTo({ top: y, behavior: 'instant' }), 150);
+    }
+  }
+})();
 </script>
 {% endblock %}

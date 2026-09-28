@@ -16,7 +16,7 @@ import sqlite3
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from ..db import get_db
-from ..funcoes import consolidacao
+from ..funcoes import consolidacao, recalcular_periodo, registrar_log, sincronizar_apuracao_dinamica
 from ..etl import normalizar_cod_procedimento
 
 bp = Blueprint("cadastros", __name__, url_prefix="/contratos/cadastros")
@@ -78,16 +78,43 @@ def administracao():
 
 @bp.route("/recalcular", methods=["POST"])
 def recalcular():
-    """Processa a solicitação de recalculo do período acionada pelo cabeçalho."""
-    fonte_at02 = request.form.get("fonte_at02")
-    competencia = request.form.get("competencia")
-    
-    if not fonte_at02 or not competencia:
-        flash("Por favor, informe a fonte AT-02 e a competência.", "erro")
+    """Processa a solicitação de recálculo do período acionada pelo cabeçalho."""
+    db = get_db()
+    fonte_opcao = (request.form.get("fonte_at02") or "").strip().upper()
+    competencia = (request.form.get("competencia") or "").strip()
+
+    if not competencia:
+        flash("Por favor, informe a competência a recalcular.", "erro")
         return redirect(request.referrer or url_for("cadastros.administracao"))
-    
-    # Executa lógica de recalculagem conforme parâmetros informados
-    flash(f"Recalculo para a competência {competencia} ({fonte_at02}) iniciado com sucesso.", "sucesso")
+
+    if "AT" in fonte_opcao and "02" in fonte_opcao:
+        fonte_nome = "AT02"
+    elif "WEB" in fonte_opcao:
+        fonte_nome = "WEBSSAS"
+    elif "VISIT" in fonte_opcao:
+        fonte_nome = "VISITA_DOMICILIAR"
+    elif fonte_opcao in ("TODAS", "TUDO", "TODOS"):
+        fonte_nome = "TODAS"
+    else:
+        fonte_nome = "AT02"
+
+    try:
+        resumo = recalcular_periodo(db, competencia, fonte_nome)
+        if isinstance(resumo, dict) and "linhas_vinculadas" in resumo:
+            linhas = resumo["linhas_vinculadas"]
+            registrar_log(db, fonte_nome, competencia, resumo)
+            flash(
+                f"Recálculo concluído com sucesso para a competência {competencia} ({fonte_nome}): {linhas} linhas vinculadas.",
+                "sucesso",
+            )
+        else:
+            flash(
+                f"Recálculo concluído com sucesso para a competência {competencia} ({fonte_nome}).",
+                "sucesso",
+            )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao recalcular a competência {competencia}: {exc}", "erro")
+
     return redirect(request.referrer or url_for("cadastros.administracao"))
 
 
@@ -242,6 +269,7 @@ def editar_estabelecimento(id):
     )
     _salvar_tipos_servico(db, id, request.form.get("tipo_servico"))
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash("Estabelecimento atualizado.", "sucesso")
     return redirect(url_for("cadastros.administracao", aba="estabelecimentos"))
 
@@ -272,6 +300,7 @@ def bulk_editar_estabelecimentos():
             _salvar_tipos_servico(db, est_id, tipo_servico)
 
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash(f"{len(ids)} estabelecimento(s) atualizado(s) em massa.", "sucesso")
     return redirect(url_for("cadastros.administracao", aba="estabelecimentos"))
 
@@ -296,6 +325,9 @@ def bulk_excluir_estabelecimentos():
             db.rollback()
             bloqueados += 1
 
+    if excluidos > 0:
+        sincronizar_apuracao_dinamica(db)
+
     msg = f"{excluidos} estabelecimento(s) excluído(s)."
     if bloqueados:
         msg += (
@@ -313,6 +345,7 @@ def excluir_estabelecimento(id):
     try:
         db.execute("DELETE FROM estabelecimentos WHERE id=?", (id,))
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Estabelecimento excluído.", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(
@@ -1015,6 +1048,7 @@ def novo_indicador(portaria_id):
             ),
         )
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Indicador cadastrado.", "sucesso")
     except sqlite3.IntegrityError:
         flash(
@@ -1070,6 +1104,7 @@ def clonar_indicador(indicador_id):
             (novo_id, indicador_id),
         )
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash(
             f"Indicador '{novo_codigo}' criado como cópia de '{original['codigo']}', "
             "já com os mesmos vínculos de CBO e procedimento. Ajuste o nome e o que "
@@ -1106,6 +1141,7 @@ def editar_indicador(indicador_id):
             ),
         )
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Indicador atualizado.", "sucesso")
     except sqlite3.IntegrityError:
         flash(f"Já existe outro indicador com o código '{codigo}' nesta portaria.", "erro")
@@ -1120,6 +1156,7 @@ def excluir_indicador(indicador_id):
     try:
         db.execute("DELETE FROM indicadores WHERE id=?", (indicador_id,))
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Indicador excluído (junto com seus vínculos de CBO/procedimento).", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(
@@ -1226,10 +1263,11 @@ def add_vinculo_cbo(indicador_id):
     curinga = 1 if request.form.get("curinga") else 0
     cbo_codigo = None if curinga else (request.form.get("cbo_codigo") or None)
     subgrupo_id = request.form.get("subgrupo_id") or None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
 
     if not curinga and not cbo_codigo:
         flash("Selecione um CBO ou marque 'Aceitar qualquer CBO'.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     if cbo_codigo:
         existe = db.execute("SELECT 1 FROM cbo WHERE codigo=?", (cbo_codigo,)).fetchone()
@@ -1239,36 +1277,59 @@ def add_vinculo_cbo(indicador_id):
                 "Cadastros > CBO antes de vincular.",
                 "erro",
             )
-            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     try:
+        if subgrupo_id:
+            # Em subgrupos (ex.: P42), garante que haja apenas 1 especialidade/CBO por subgrupo
+            db.execute("DELETE FROM indicador_cbo WHERE subgrupo_id = ?", (subgrupo_id,))
         db.execute(
             "INSERT OR IGNORE INTO indicador_cbo (indicador_id, cbo_codigo, curinga, subgrupo_id) VALUES (?, ?, ?, ?)",
             (indicador_id, cbo_codigo, curinga, subgrupo_id),
         )
         db.commit()
-        flash("Vínculo de CBO adicionado.", "sucesso")
+        sincronizar_apuracao_dinamica(db)
+        flash("Vínculo de CBO atualizado.", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(f"Não foi possível adicionar o vínculo: {exc}", "erro")
 
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route("/indicadores/<int:indicador_id>/vinculo_cbo/<int:vinculo_id>/remover", methods=["POST"])
 def remover_vinculo_cbo(indicador_id, vinculo_id):
     db = get_db()
+    row = db.execute("SELECT subgrupo_id, cbo_codigo FROM indicador_cbo WHERE id=?", (vinculo_id,)).fetchone()
+    subgrupo_id = row["subgrupo_id"] if row else None
+    cbo_codigo = row["cbo_codigo"] if row else None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
     db.execute("DELETE FROM indicador_cbo WHERE id=?", (vinculo_id,))
+    if cbo_codigo:
+        if subgrupo_id:
+            db.execute(
+                "DELETE FROM fato_apuracao WHERE indicador_id=? AND subgrupo_id=? AND cbo_codigo=? AND tipo_registro='apurado'",
+                (indicador_id, subgrupo_id, cbo_codigo),
+            )
+        else:
+            db.execute(
+                "DELETE FROM fato_apuracao WHERE indicador_id=? AND cbo_codigo=? AND tipo_registro='apurado'",
+                (indicador_id, cbo_codigo),
+            )
     db.commit()
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    sincronizar_apuracao_dinamica(db)
+    flash("Vínculo de CBO removido.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route("/indicadores/<int:indicador_id>/vinculo_cbo/bulk_excluir", methods=["POST"])
 def bulk_excluir_vinculo_cbo(indicador_id):
     db = get_db()
     ids = request.form.getlist("vinculo_ids")
+    subgrupo_id = request.form.get("subgrupo_id") or None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
     if not ids:
         flash("Nenhum vínculo de CBO selecionado para excluir.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     marcadores = ",".join("?" for _ in ids)
     db.execute(
@@ -1276,8 +1337,9 @@ def bulk_excluir_vinculo_cbo(indicador_id):
         (indicador_id, *ids),
     )
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash(f"{len(ids)} vínculo(s) de CBO excluído(s).", "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route("/indicadores/<int:indicador_id>/vinculo_procedimento", methods=["POST"])
@@ -1287,10 +1349,11 @@ def add_vinculo_procedimento(indicador_id):
     procedimento_codigo = normalizar_cod_procedimento(codigo_digitado)
     estabelecimento_id = request.form.get("estabelecimento_id") or None
     subgrupo_id = request.form.get("subgrupo_id") or None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
 
     if not procedimento_codigo:
         flash("Informe o código do procedimento.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     if estabelecimento_id:
         existe_estab = db.execute(
@@ -1298,7 +1361,7 @@ def add_vinculo_procedimento(indicador_id):
         ).fetchone()
         if not existe_estab:
             flash(f"Estabelecimento id '{estabelecimento_id}' não encontrado.", "erro")
-            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     try:
         db.execute(
@@ -1322,11 +1385,12 @@ def add_vinculo_procedimento(indicador_id):
             ),
         )
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Vínculo de procedimento adicionado.", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(f"Não foi possível adicionar o vínculo: {exc}", "erro")
 
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route("/indicadores/<int:indicador_id>/vinculo_procedimento_lote", methods=["POST"])
@@ -1338,10 +1402,11 @@ def add_vinculo_procedimento_lote(indicador_id):
     categoria_estabelecimento = request.form.get("categoria_estabelecimento") or None
     categoria_estabelecimento_neg = request.form.get("categoria_estabelecimento_neg") or None
     subgrupo_id = request.form.get("subgrupo_id") or None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
 
     if not codigos:
         flash("Nenhum procedimento selecionado para adicionar em lote.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     if estabelecimento_id:
         existe_estab = db.execute(
@@ -1349,7 +1414,7 @@ def add_vinculo_procedimento_lote(indicador_id):
         ).fetchone()
         if not existe_estab:
             flash(f"Estabelecimento id '{estabelecimento_id}' não encontrado.", "erro")
-            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     adicionados = 0
     for codigo_bruto in codigos:
@@ -1377,12 +1442,13 @@ def add_vinculo_procedimento_lote(indicador_id):
             adicionados += 1
 
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     ja_existiam = len(codigos) - adicionados
     msg = f"{adicionados} procedimento(s) vinculado(s) ao indicador."
     if ja_existiam:
         msg += f" {ja_existiam} já estavam vinculados e foram ignorados."
     flash(msg, "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route(
@@ -1391,6 +1457,9 @@ def add_vinculo_procedimento_lote(indicador_id):
 )
 def editar_vinculo_procedimento(indicador_id, vinculo_id):
     db = get_db()
+    row = db.execute("SELECT subgrupo_id FROM indicador_procedimento WHERE id=?", (vinculo_id,)).fetchone()
+    subgrupo_id = row["subgrupo_id"] if row else None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
     db.execute(
         # O filtro positivo (categoria_estabelecimento) saiu da tela; a coluna continua no
         # banco por compatibilidade e NÃO é tocada aqui (vínculos antigos mantêm o valor).
@@ -1404,8 +1473,9 @@ def editar_vinculo_procedimento(indicador_id, vinculo_id):
         ),
     )
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash("Vínculo atualizado.", "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route(
@@ -1414,9 +1484,36 @@ def editar_vinculo_procedimento(indicador_id, vinculo_id):
 )
 def remover_vinculo_procedimento(indicador_id, vinculo_id):
     db = get_db()
+    row = db.execute("SELECT subgrupo_id, procedimento_codigo FROM indicador_procedimento WHERE id=?", (vinculo_id,)).fetchone()
+    subgrupo_id = row["subgrupo_id"] if row else None
+    procedimento_codigo = row["procedimento_codigo"] if row else None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
     db.execute("DELETE FROM indicador_procedimento WHERE id=?", (vinculo_id,))
+    if procedimento_codigo:
+        if subgrupo_id:
+            outro = db.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id=? AND subgrupo_id=? AND procedimento_codigo=? LIMIT 1",
+                (indicador_id, subgrupo_id, procedimento_codigo),
+            ).fetchone()
+            if not outro:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE indicador_id=? AND subgrupo_id=? AND procedimento_codigo=? AND tipo_registro='apurado'",
+                    (indicador_id, subgrupo_id, procedimento_codigo),
+                )
+        else:
+            outro = db.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id=? AND procedimento_codigo=? LIMIT 1",
+                (indicador_id, procedimento_codigo),
+            ).fetchone()
+            if not outro:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE indicador_id=? AND procedimento_codigo=? AND tipo_registro='apurado'",
+                    (indicador_id, procedimento_codigo),
+                )
     db.commit()
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    sincronizar_apuracao_dinamica(db)
+    flash("Vínculo de procedimento removido.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route(
@@ -1426,18 +1523,51 @@ def remover_vinculo_procedimento(indicador_id, vinculo_id):
 def bulk_excluir_vinculo_procedimento(indicador_id):
     db = get_db()
     ids = request.form.getlist("vinculo_ids")
+    subgrupo_id = request.form.get("subgrupo_id") or None
+    anchor = f"sg{subgrupo_id}" if subgrupo_id else None
     if not ids:
         flash("Nenhum procedimento selecionado para excluir.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     marcadores = ",".join("?" for _ in ids)
+    rows_del = db.execute(
+        f"SELECT DISTINCT subgrupo_id, procedimento_codigo FROM indicador_procedimento WHERE indicador_id = ? AND id IN ({marcadores})",
+        (indicador_id, *ids),
+    ).fetchall()
+
     db.execute(
         f"DELETE FROM indicador_procedimento WHERE indicador_id = ? AND id IN ({marcadores})",
         (indicador_id, *ids),
     )
+
+    for r in rows_del:
+        sg = r["subgrupo_id"]
+        proc = r["procedimento_codigo"]
+        if sg:
+            outro = db.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id=? AND subgrupo_id=? AND procedimento_codigo=? LIMIT 1",
+                (indicador_id, sg, proc),
+            ).fetchone()
+            if not outro:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE indicador_id=? AND subgrupo_id=? AND procedimento_codigo=? AND tipo_registro='apurado'",
+                    (indicador_id, sg, proc),
+                )
+        else:
+            outro = db.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id=? AND procedimento_codigo=? LIMIT 1",
+                (indicador_id, proc),
+            ).fetchone()
+            if not outro:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE indicador_id=? AND procedimento_codigo=? AND tipo_registro='apurado'",
+                    (indicador_id, proc),
+                )
+
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash(f"{len(ids)} vínculo(s) de procedimento excluído(s).", "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 # ---------------------------------------------------------------------------
@@ -1456,25 +1586,30 @@ def novo_subgrupo(indicador_id):
         "SELECT COALESCE(MAX(ordem), 0) + 1 AS n FROM indicador_subgrupo WHERE indicador_id=?",
         (indicador_id,),
     ).fetchone()["n"]
-    db.execute(
+    cur = db.execute(
         "INSERT INTO indicador_subgrupo (indicador_id, nome, ordem) VALUES (?, ?, ?)",
         (indicador_id, nome, ordem),
     )
+    novo_id = cur.lastrowid
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash(f"Subgrupo '{nome}' criado.", "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    anchor = f"sg{novo_id}" if novo_id else None
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route("/indicadores/<int:indicador_id>/subgrupos/<int:subgrupo_id>/renomear", methods=["POST"])
 def renomear_subgrupo(indicador_id, subgrupo_id):
     db = get_db()
     nome = (request.form.get("nome") or "").strip()
+    anchor = f"sg{subgrupo_id}"
     if not nome:
         flash("Informe um nome para o subgrupo.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
     db.execute("UPDATE indicador_subgrupo SET nome=? WHERE id=?", (nome, subgrupo_id))
     db.commit()
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    sincronizar_apuracao_dinamica(db)
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
 @bp.route("/indicadores/<int:indicador_id>/subgrupos/<int:subgrupo_id>/excluir", methods=["POST"])
@@ -1482,6 +1617,7 @@ def excluir_subgrupo(indicador_id, subgrupo_id):
     db = get_db()
     db.execute("DELETE FROM indicador_subgrupo WHERE id=?", (subgrupo_id,))
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash("Subgrupo excluído (junto com os vínculos e as metas que só existiam dentro dele).", "sucesso")
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
 
@@ -1506,6 +1642,7 @@ def add_excecao_cbo(indicador_id):
         (indicador_id, cbo_codigo),
     )
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash(f"CBO '{cbo_codigo}' passa a ser desconsiderado para este indicador.", "sucesso")
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
 
@@ -1515,6 +1652,7 @@ def remover_excecao_cbo(indicador_id, excecao_id):
     db = get_db()
     db.execute("DELETE FROM indicador_cbo_excecao WHERE id=?", (excecao_id,))
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
 
 
@@ -1534,6 +1672,7 @@ def add_excecao_estabelecimento(indicador_id):
         (indicador_id, estabelecimento_id),
     )
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash("Estabelecimento passa a ser desconsiderado para este indicador.", "sucesso")
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
 
@@ -1546,6 +1685,7 @@ def remover_excecao_estabelecimento(indicador_id, excecao_id):
     db = get_db()
     db.execute("DELETE FROM indicador_estabelecimento_excecao WHERE id=?", (excecao_id,))
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
 
 

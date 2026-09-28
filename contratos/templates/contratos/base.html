@@ -78,9 +78,8 @@
 
     .badge-cinza { background: var(--cor-neutro-bg); color: var(--cor-neutro); }
     .badge-amarelo { background: #fef3d6; color: #8a6100; }
-    .badge-azul { background: #e3e8fb; color: var(--stspe-primary); }
-    .badge-vermelho { background: #fbe3e1; color: var(--cor-perigo); }
-    .badge-verde { background: #e3f5e9; color: var(--cor-sucesso); }
+    .badge-vermelho, .badge-perigo { background: #fbe3e1 !important; color: var(--cor-perigo) !important; }
+    .badge-verde { background: #e3f5e9 !important; color: var(--cor-sucesso) !important; }
 
     .contratos-container .highlights { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 22px; }
     .contratos-container .stat-card { flex: 1 1 180px; background: #fff; border: 1px solid var(--cor-borda);
@@ -124,21 +123,6 @@
         color: #ffffff !important;
         background-color: rgba(255, 255, 255, 0.22);
         font-weight: 700;
-    }
-    .btn-recalc-header {
-        background: #ffffff;
-        color: #30407B !important;
-        font-weight: 600;
-        border-radius: 8px;
-        padding: 6px 16px;
-        border: none;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.12);
-        transition: all 0.2s ease;
-    }
-    .btn-recalc-header:hover {
-        background: #eef1fb;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.18);
     }
 
     /* =========================================================
@@ -281,57 +265,6 @@
                 </li>
             </ul>
         </div>
-
-        <div class="d-flex align-items-center">
-            <button type="button" class="btn btn-recalc-header btn-sm d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#modalRecalcularPeriodo">
-                <i class="fa-solid fa-rotate me-1"></i> Recalcular Período
-            </button>
-        </div>
-    </div>
-
-    <!-- Modal Recalcular Período -->
-    <div class="modal fade" id="modalRecalcularPeriodo" tabindex="-1" aria-labelledby="modalRecalcularPeriodoLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow rounded-4">
-                <div class="modal-header text-white rounded-top-4" style="background-color: var(--stspe-primary);">
-                    <h5 class="modal-title fw-bold" id="modalRecalcularPeriodoLabel">
-                        <i class="fa-solid fa-rotate me-2"></i> Recalcular Período
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <form action="{{ url_for('cadastros.recalcular') }}" method="POST">
-                    <div class="modal-body p-4">
-                        <div class="alert alert-info d-flex align-items-start mb-3" role="alert">
-                            <i class="fa-solid fa-circle-info me-2 mt-1 fs-5"></i>
-                            <div class="small">
-                                O processo de recalcular atualiza os dados consolidados do período selecionado com base na fonte de dados especificada. Certifique-se de selecionar a competência correta.
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="fonte_at02" class="form-label fw-bold">Seleção de Fonte AT-02</label>
-                            <select class="form-select" id="fonte_at02" name="fonte_at02" required>
-                                <option value="" selected disabled>Selecione a fonte...</option>
-                                <option value="AT-02_PADRAO">AT-02 Padrão Produção</option>
-                                <option value="AT-02_VIGENCIA">AT-02 Vigência Atual</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="competencia" class="form-label fw-bold">Competência (AAAAMM)</label>
-                            <input type="text" class="form-control" id="competencia" name="competencia" placeholder="Ex: 202601" maxlength="6" pattern="[0-9]{6}" required>
-                            <div class="form-text">Digite o ano e o mês no formato de 6 dígitos.</div>
-                        </div>
-                    </div>
-                    <div class="modal-footer bg-light rounded-bottom-4">
-                        <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" class="btn btn-stspe-primary rounded-pill px-4">
-                            <i class="fa-solid fa-check me-1"></i> Recalcular
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
     </div>
 
     <!-- Conteúdo Específico da Página de Contratos -->
@@ -349,6 +282,31 @@
             chk.checked = checkboxTodos.checked;
         });
     }
+
+    // Preservação geral de posição de scroll nos módulos de contratos
+    (function() {
+        const scrollKey = 'contratos_scroll_pos_' + window.location.pathname;
+
+        document.addEventListener('submit', function() {
+            sessionStorage.setItem(scrollKey, window.scrollY);
+        }, true);
+
+        window.addEventListener('beforeunload', function() {
+            sessionStorage.setItem(scrollKey, window.scrollY);
+        });
+
+        const savedPos = sessionStorage.getItem(scrollKey);
+        if (savedPos !== null) {
+            sessionStorage.removeItem(scrollKey);
+            const y = parseInt(savedPos, 10);
+            if (!isNaN(y) && !window.location.hash) {
+                window.scrollTo({ top: y, behavior: 'instant' });
+                requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'instant' }));
+                setTimeout(() => window.scrollTo({ top: y, behavior: 'instant' }), 50);
+                setTimeout(() => window.scrollTo({ top: y, behavior: 'instant' }), 150);
+            }
+        }
+    })();
 </script>
 {% endblock %}
 

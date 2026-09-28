@@ -323,7 +323,7 @@ async function abrirDetalheAlerta(tipo, titulo) {
       </th>
       <th class="sorting" data-col-index="5">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Apurado STS</span>
+          <span class="header-text text-nowrap">Apurado</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="5">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
@@ -331,7 +331,7 @@ async function abrirDetalheAlerta(tipo, titulo) {
       </th>
       <th class="col-auditoria sorting" data-col-index="6">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Declarado Websaass</span>
+          <span class="header-text text-nowrap">Websaass</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="6">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
@@ -537,21 +537,45 @@ async function abrirDetalheAlerta(tipo, titulo) {
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* Cabeçalho fixo: a tabela do painel ganha sua própria área de rolagem
-     (como uma planilha), então o cabeçalho gruda no topo DESSA área via
-     CSS puro - não depende de calcular a altura da navbar em JS nem
-     interfere no scroll da página, então não tem como sobrepor o resto
-     do layout. */
+  /* A tabela não fica presa em contêiner de rolagem interna: expande livremente
+     e rola junto com toda a página, permitindo visualizar muito mais registros. */
   #tabela-painel-wrap {
-    max-height: 70vh;
-    overflow-y: auto;
+    max-height: none !important;
+    overflow-y: visible !important;
     overflow-x: auto;
   }
   #tabela-painel thead th {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 10;
+    background: var(--cor-fundo, #f4f5f7);
     box-shadow: 0 1px 0 var(--cor-borda);
+  }
+  /* Badges de Status e Auditoria (garante fundo visível e texto contrastante) */
+  .badge-vermelho, .badge-perigo {
+    background: #fbe3e1 !important;
+    color: var(--cor-perigo, #c0392b) !important;
+    font-weight: 600;
+  }
+  .badge-verde {
+    background: #e3f5e9 !important;
+    color: var(--cor-sucesso, #3f8f5f) !important;
+    font-weight: 600;
+  }
+  .badge-amarelo {
+    background: #fef3d6 !important;
+    color: #8a6100 !important;
+    font-weight: 600;
+  }
+  .badge-azul {
+    background: #e3e8fb !important;
+    color: var(--stspe-primary, #30407B) !important;
+    font-weight: 600;
+  }
+  .badge-cinza {
+    background: var(--cor-neutro-bg, #eceff1) !important;
+    color: var(--cor-neutro, #6c757d) !important;
+    font-weight: 600;
   }
 </style>
 

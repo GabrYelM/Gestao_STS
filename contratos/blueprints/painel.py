@@ -13,6 +13,13 @@ def _resultados_filtrados(db):
     Portaria/TA, ou seletor do próprio painel), os cadastros que compartilham
     o mesmo CNES viram uma linha só - ver app/etl/consolidacao.py. Em 'CMES'
     (padrão) a view é usada como está."""
+    has_fatos = db.execute("SELECT 1 FROM fato_apuracao LIMIT 1").fetchone()
+    if not has_fatos:
+        has_staging = db.execute("SELECT 1 FROM staging_at02 LIMIT 1").fetchone()
+        if has_staging:
+            from ..funcoes import sincronizar_apuracao_dinamica
+            sincronizar_apuracao_dinamica(db)
+
     linhas = [
         dict(r) for r in db.execute(
             "SELECT * FROM resultados_indicador ORDER BY estabelecimento_nome, indicador_codigo, subgrupo_nome"
@@ -63,12 +70,12 @@ def status_auditoria(apurado, declarado, meta):
     if ap == dec:
         return ("Conforme (OK)", "badge-verde", 0)
     if dec > 0 and ap == 0:
-        return (f"Não apurado ({dif:+d})", "badge-perigo", dif)
+        return (f"Não apurado ({dif:+d})", "badge-vermelho", dif)
     if ap > 0 and dec == 0:
         return (f"Não declarado ({dif:+d})", "badge-amarelo", dif)
     if dif > 0:
         return (f"Apurado maior ({dif:+d})", "badge-amarelo", dif)
-    return (f"Declarado maior ({dif:+d})", "badge-perigo", dif)
+    return (f"Declarado maior ({dif:+d})", "badge-vermelho", dif)
 
 
 def _resultados_com_status(db):
@@ -352,6 +359,13 @@ def _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
                    WHERE ip.indicador_id = ? AND ip.subgrupo_id = ?""",
                 (indicador_id, subgrupo_id)
             ).fetchall()
+            if not res:
+                res = db.execute(
+                    """SELECT p.codigo, p.nome FROM indicador_procedimento ip
+                       JOIN procedimentos p ON p.codigo = ip.procedimento_codigo
+                       WHERE ip.indicador_id = ?""",
+                    (indicador_id,)
+                ).fetchall()
         else:
             res = db.execute(
                 """SELECT p.codigo, p.nome FROM indicador_procedimento ip
@@ -513,6 +527,11 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
     elif cbos:
         sql += f" AND s.cod_cbo_sus IN ({','.join('?' * len(cbos))})"
         params.extend(cbos)
+    if str(indicador_id) == "43" and (cbo_codigo in ("225112", "225127") or (cbos and any(c in ("225112", "225127") for c in cbos))):
+        if subgrupo_id is not None:
+            sql += " AND s.cod_cmes != s.cod_cnes"
+        else:
+            sql += " AND (s.cod_cmes = s.cod_cnes OR s.cod_cmes IS NULL OR s.cod_cnes IS NULL)"
     sql += " GROUP BY s.nome_profissional, s.cod_cbo_sus ORDER BY apurado DESC"
     return db.execute(sql, params).fetchall()
 
@@ -620,15 +639,18 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
               WHERE s.ano_mes = ? AND s.cod_cmes IN ({",".join("?" * len(cmes))}) AND s.nome_profissional = ?
                 AND s.cod_procedimento IN ({",".join("?" * len(proc_lista))})"""
     params = [periodo, *cmes, profissional, *proc_lista]
-    if cbo_codigo:
+    cbo_alvo = cbo_codigo or cbo_profissional
+    if cbo_alvo:
         sql += " AND s.cod_cbo_sus = ?"
-        params.append(cbo_codigo)
-    elif cbo_profissional:
-        sql += " AND s.cod_cbo_sus = ?"
-        params.append(cbo_profissional)
+        params.append(cbo_alvo)
     elif cbos:
         sql += f" AND s.cod_cbo_sus IN ({','.join('?' * len(cbos))})"
         params.extend(cbos)
+    if str(indicador_id) == "43" and (cbo_alvo in ("225112", "225127") or (cbos and any(c in ("225112", "225127") for c in cbos))):
+        if subgrupo_id is not None:
+            sql += " AND s.cod_cmes != s.cod_cnes"
+        else:
+            sql += " AND (s.cod_cmes = s.cod_cnes OR s.cod_cmes IS NULL OR s.cod_cnes IS NULL)"
     sql += " GROUP BY s.cod_procedimento, p.nome ORDER BY apurado DESC"
     return db.execute(sql, params).fetchall()
 
