@@ -202,15 +202,61 @@ def _garantir_procedimento(db, codigo, nome):
     return codigo
 
 
-def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, categoria_estabelecimento=None, fonte_id=None):
+def _carregar_mapa_depara_procedimentos(db):
+    """Carrega em memória o mapa bidirecional de conversões ativas de procedimentos."""
+    try:
+        rows = db.execute(
+            "SELECT cod_siga, cod_sigtap FROM de_para_procedimentos WHERE ativo = 1 AND cod_sigtap IS NOT NULL AND cod_sigtap != ''"
+        ).fetchall()
+    except Exception:
+        return {}, {}
+
+    siga_para_sigtap = {}
+    sigtap_para_siga = {}
+    for r in rows:
+        siga = str(r["cod_siga"] or "").strip()
+        sigtap = str(r["cod_sigtap"] or "").strip()
+        if siga and sigtap:
+            siga_para_sigtap[siga] = sigtap
+            if sigtap not in sigtap_para_siga:
+                sigtap_para_siga[sigtap] = set()
+            sigtap_para_siga[sigtap].add(siga)
+    return siga_para_sigtap, sigtap_para_siga
+
+
+def _obter_codigos_equivalentes(procedimento_codigo, mapa_depara=None):
+    if not procedimento_codigo:
+        return []
+    cod = str(procedimento_codigo).strip()
+    codigos = {cod}
+    if mapa_depara:
+        siga_para_sigtap, sigtap_para_siga = mapa_depara
+        if cod in siga_para_sigtap:
+            codigos.add(siga_para_sigtap[cod])
+        if cod in sigtap_para_siga:
+            codigos.update(sigtap_para_siga[cod])
+    return list(codigos)
+
+
+def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, categoria_estabelecimento=None, fonte_id=None, mapa_depara=None):
+    if mapa_depara is None:
+        mapa_depara = _carregar_mapa_depara_procedimentos(db)
+
+    codigos_busca = _obter_codigos_equivalentes(procedimento_codigo, mapa_depara)
+    if not codigos_busca:
+        return []
+
+    placeholders = ",".join("?" for _ in codigos_busca)
+    params_incl = list(codigos_busca) + [estabelecimento_id, fonte_id, fonte_id]
+
     incluidos = db.execute(
-        """SELECT ip.indicador_id, ip.subgrupo_id, ip.categoria_estabelecimento, ip.categoria_estabelecimento_neg
+        f"""SELECT ip.indicador_id, ip.subgrupo_id, ip.categoria_estabelecimento, ip.categoria_estabelecimento_neg
            FROM indicador_procedimento ip
            JOIN indicadores i ON i.id = ip.indicador_id
-           WHERE ip.procedimento_codigo = ? AND ip.tipo_vinculo = 'inclusao'
+           WHERE ip.procedimento_codigo IN ({placeholders}) AND ip.tipo_vinculo = 'inclusao'
              AND (ip.estabelecimento_id IS NULL OR ip.estabelecimento_id = ?)
              AND (? IS NULL OR i.fonte_id IS NULL OR i.fonte_id = ?)""",
-        (procedimento_codigo, estabelecimento_id, fonte_id, fonte_id),
+        params_incl,
     ).fetchall()
 
     cat_estab = (categoria_estabelecimento or "").strip().lower()
@@ -231,13 +277,14 @@ def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, 
             continue
         vistos.add(chave)
 
+        params_excl = [indicador_id] + list(codigos_busca) + [estabelecimento_id, subgrupo_id]
         excluido = db.execute(
-            """SELECT 1 FROM indicador_procedimento
-               WHERE indicador_id = ? AND procedimento_codigo = ? AND tipo_vinculo = 'exclusao'
+            f"""SELECT 1 FROM indicador_procedimento
+               WHERE indicador_id = ? AND procedimento_codigo IN ({placeholders}) AND tipo_vinculo = 'exclusao'
                  AND (estabelecimento_id IS NULL OR estabelecimento_id = ?)
                  AND (subgrupo_id IS NULL OR subgrupo_id = ?)
                LIMIT 1""",
-            (indicador_id, procedimento_codigo, estabelecimento_id, subgrupo_id),
+            params_excl,
         ).fetchone()
         if not excluido:
             resultado.append((indicador_id, subgrupo_id))
@@ -382,6 +429,7 @@ def calcular_at02(db, periodo, importacao_id=None):
         params.append(importacao_id)
 
     linhas = db.execute(query, params).fetchall()
+    mapa_nomes_subgrupo = {r["id"]: r["nome"] for r in db.execute("SELECT id, nome FROM indicador_subgrupo").fetchall()}
 
     total = 0
     vinculadas = 0
@@ -402,6 +450,7 @@ def calcular_at02(db, periodo, importacao_id=None):
     cmes_pendentes_cnes = {}
     cbo_pendentes_codigos = {}
     linhas_casadas_por_cnes = 0
+    mapa_depara = _carregar_mapa_depara_procedimentos(db)
 
     for linha in linhas:
         total += 1
@@ -434,6 +483,7 @@ def calcular_at02(db, periodo, importacao_id=None):
             db, procedimento_codigo, estabelecimento_id,
             categoria_estabelecimento=_categoria_contrato(db, estabelecimento_id),
             fonte_id=fonte_id,
+            mapa_depara=mapa_depara,
         )
 
         aprovados = []
@@ -454,6 +504,23 @@ def calcular_at02(db, periodo, importacao_id=None):
         indicadores = []
         for indicador_id in dict.fromkeys(ind for ind, _ in aprovados):
             subgrupos_aprovados = [sg for ind, sg in aprovados if ind == indicador_id and sg is not None]
+            if indicador_id == 35 and subgrupos_aprovados:
+                esp = (linha["nome_especialidade2"] or "").lower()
+                sg_filtrado = []
+                for sg_id in subgrupos_aprovados:
+                    sg_nome = mapa_nomes_subgrupo.get(sg_id, "").lower()
+                    if "auditiva" in sg_nome and "auditiva" in esp:
+                        sg_filtrado.append(sg_id)
+                    elif ("fisica" in sg_nome or "fsica" in sg_nome) and ("fisica" in esp or "fsica" in esp):
+                        sg_filtrado.append(sg_id)
+                    elif "intelectual" in sg_nome and "intelectual" in esp:
+                        sg_filtrado.append(sg_id)
+                    elif "visual" in sg_nome and "visual" in esp:
+                        sg_filtrado.append(sg_id)
+                subgrupos_aprovados = sg_filtrado
+                if not subgrupos_aprovados:
+                    continue
+
             if subgrupos_aprovados:
                 indicadores.extend((indicador_id, sg) for sg in subgrupos_aprovados)
             else:

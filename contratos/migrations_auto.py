@@ -799,5 +799,137 @@ def _migrar_v18(conn):
             )
         """, (p44_id, p44_id))
 
+    if not _tabela_existe(conn, "de_para_procedimentos"):
+        conn.execute("""
+            CREATE TABLE de_para_procedimentos (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                cod_siga             TEXT NOT NULL UNIQUE,
+                procedimento_siga    TEXT,
+                cod_sigtap           TEXT NOT NULL,
+                procedimento_sigtap  TEXT,
+                ativo                INTEGER NOT NULL DEFAULT 1,
+                observacao           TEXT,
+                criado_em            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                atualizado_em        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_depara_proc_siga ON de_para_procedimentos(cod_siga)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_depara_proc_sigtap ON de_para_procedimentos(cod_sigtap)")
+        aplicou = True
+
+    # Configuração dos subgrupos e procedimentos do P35 (CER - Casos Novos por Mês)
+    p35_row = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P35' OR codigo = '35'").fetchone()
+    if p35_row:
+        p35_id = p35_row[0]
+        subgrupos_p35_def = [
+            ("Especialista Em Reabilitação Auditiva", 1),
+            ("Especialista Em Reabilitação Fisica", 2),
+            ("Especialista Em Reabilitação Intelectual/Desenvolvimento", 3),
+            ("Especialista Em Reabilitação Visual", 4),
+        ]
+        sg_p35_map = {}
+        for nome_sg, ordem_sg in subgrupos_p35_def:
+            row_sg = conn.execute(
+                "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND lower(trim(nome)) = lower(?)",
+                (p35_id, nome_sg),
+            ).fetchone()
+            if not row_sg:
+                cur = conn.execute(
+                    "INSERT INTO indicador_subgrupo (indicador_id, nome, ordem) VALUES (?, ?, ?)",
+                    (p35_id, nome_sg, ordem_sg),
+                )
+                sg_id = cur.lastrowid
+            else:
+                sg_id = row_sg[0]
+            sg_p35_map[nome_sg] = sg_id
+
+        # Procedimento 0301079005 para cada subgrupo
+        for nome_sg, sg_id in sg_p35_map.items():
+            conn.execute("""
+                INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+                VALUES (?, '0301079005', 'inclusao', ?)
+            """, (p35_id, sg_id))
+
+        # Exclusão explícita do procedimento de consulta (0301010048) no P35
+        conn.execute("""
+            INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+            VALUES (?, '0301010048', 'exclusao', NULL)
+        """, (p35_id,))
+
+        # Remove vínculo genérico sem subgrupo se existir
+        conn.execute("""
+            DELETE FROM indicador_procedimento
+            WHERE indicador_id = ? AND subgrupo_id IS NULL AND tipo_vinculo = 'inclusao'
+        """, (p35_id,))
+
+        # Desativar row de de_para_procedimentos que traduzia 0301079005 para 0301010048
+        conn.execute("""
+            UPDATE de_para_procedimentos
+            SET ativo = 0
+            WHERE cod_siga = '0301079005' AND cod_sigtap = '0301010048'
+        """)
+
+        # Atualizar de_para_websaass_indicador para ligar aos subgrupos do P35
+        if "Especialista Em Reabilitação Auditiva" in sg_p35_map:
+            conn.execute("""
+                UPDATE de_para_websaass_indicador
+                SET subgrupo_id = ?
+                WHERE indicador_id = ? AND cod_producao = '70.02.30'
+            """, (sg_p35_map["Especialista Em Reabilitação Auditiva"], p35_id))
+
+        if "Especialista Em Reabilitação Fisica" in sg_p35_map:
+            conn.execute("""
+                UPDATE de_para_websaass_indicador
+                SET subgrupo_id = ?
+                WHERE indicador_id = ? AND cod_producao = '70.02.10'
+            """, (sg_p35_map["Especialista Em Reabilitação Fisica"], p35_id))
+
+        if "Especialista Em Reabilitação Visual" in sg_p35_map:
+            conn.execute("""
+                UPDATE de_para_websaass_indicador
+                SET subgrupo_id = ?
+                WHERE indicador_id = ? AND cod_producao = '70.02.40'
+            """, (sg_p35_map["Especialista Em Reabilitação Visual"], p35_id))
+
+    # --- Regras P43 (Consultas Médicas: Consulta Pré-Natal e exclusão de Especialidades Cirúrgicas) ---
+    p43_row = conn.execute("SELECT id FROM indicadores WHERE codigo IN ('P43', '43') LIMIT 1").fetchone()
+    if p43_row:
+        p43_id = p43_row[0]
+
+        # 1. Limpar código incorreto digitado '0030101011'
+        conn.execute("DELETE FROM indicador_procedimento WHERE procedimento_codigo = '0030101011'")
+        conn.execute("DELETE FROM procedimentos WHERE codigo = '0030101011'")
+
+        # 2. Garantir procedimento oficial 0301010110 (CONSULTA PRÉ-NATAL)
+        conn.execute("""
+            INSERT OR IGNORE INTO procedimentos (codigo, nome)
+            VALUES ('0301010110', 'CONSULTA PRÉ-NATAL')
+        """)
+        conn.execute("""
+            INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+            VALUES (?, '0301010110', 'inclusao', NULL)
+        """, (p43_id,))
+
+        # 3. Excluir especialidades cirúrgicas do P43
+        for cod_cirurgica, nome_cirurgica in [
+            ('0301019933', 'CONSULTA MÉDICA EM ESPECIALIDADE CIRÚRGICA'),
+            ('0301019061', 'CONSULTA MÉDICA EM ESPECIALIDADE CIRÚRGICA II')
+        ]:
+            conn.execute("""
+                INSERT OR IGNORE INTO procedimentos (codigo, nome)
+                VALUES (?, ?)
+            """, (cod_cirurgica, nome_cirurgica))
+            # Remover se existir como inclusão
+            conn.execute("""
+                DELETE FROM indicador_procedimento
+                WHERE indicador_id = ? AND procedimento_codigo = ? AND tipo_vinculo = 'inclusao'
+            """, (p43_id, cod_cirurgica))
+            # Inserir como exclusão
+            conn.execute("""
+                INSERT OR IGNORE INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, subgrupo_id)
+                VALUES (?, ?, 'exclusao', NULL)
+            """, (p43_id, cod_cirurgica))
+
     return aplicou
+
 

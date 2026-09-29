@@ -289,7 +289,7 @@ async function abrirDetalheAlerta(tipo, titulo) {
   <thead>
     <tr>
       <th style="width: 32px;" class="sorting_disabled"></th>
-      <th class="sorting" data-col-index="1">
+      <th class="sorting_asc" data-col-index="1">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
           <span class="header-text text-nowrap">Indicador</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="1">
@@ -386,7 +386,13 @@ async function abrirDetalheAlerta(tipo, titulo) {
         data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}">
       <td><button type="button" class="btn-expandir" onclick="alternarLinha(this)" title="Ver procedimentos e profissionais">+</button></td>
       <td>
-        <div class="celula-indicador-principal">{{ r.indicador_codigo }} - {{ r.indicador_nome }}{% if r.subgrupo_nome %} · Subgrupo: {{ r.subgrupo_nome }}{% endif %}</div>
+        <div class="celula-indicador-principal">
+          {% if r.indicador_id %}
+            <a href="{{ url_for('cadastros.detalhe_indicador', indicador_id=r.indicador_id) }}" class="link-indicador" title="Abrir página de vínculos e regras do indicador {{ r.indicador_codigo }}">{{ r.indicador_codigo }} - {{ r.indicador_nome }}{% if r.subgrupo_nome %} · Subgrupo: {{ r.subgrupo_nome }}{% endif %}</a>
+          {% else %}
+            {{ r.indicador_codigo }} - {{ r.indicador_nome }}{% if r.subgrupo_nome %} · Subgrupo: {{ r.subgrupo_nome }}{% endif %}
+          {% endif %}
+        </div>
         <div class="celula-indicador-secundaria">{{ r.indicador_tipo }}{% if r.complexidade %} · {{ r.complexidade }}{% endif %}{% if r.servico %} · {{ r.servico }}{% endif %}</div>
         {% if r.fonte_dados %}<div class="celula-indicador-secundaria" title="Fonte de dados oficial (Portaria)">📊 {{ r.fonte_dados }}</div>{% endif %}
       </td>
@@ -487,6 +493,16 @@ async function abrirDetalheAlerta(tipo, titulo) {
   .conteudo-detalhe h4 { margin: 8px 0 4px; font-size: 12px; color: var(--cor-texto-muted); }
 
   .celula-indicador-principal { font-weight: 500; }
+  .link-indicador {
+    color: var(--stspe-primary, #30407B);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.15s ease, text-decoration 0.15s ease;
+  }
+  .link-indicador:hover {
+    color: var(--stspe-hover, #3f51b5);
+    text-decoration: underline;
+  }
   .celula-indicador-secundaria { font-size: 11.5px; color: var(--cor-texto-sutil); margin-top: 1px; }
 
   /* Autofiltro estilo Excel moderno idêntico ao da produção */
@@ -610,25 +626,161 @@ function montarHtmlProfissionais(dados, idPrefixo) {
   return html;
 }
 
-function montarHtmlProcedimentos(dados) {
-  if (dados.procedimentos.length === 0) {
+function montarHtmlProcedimentos(dados, contexto) {
+  if (!dados.procedimentos || dados.procedimentos.length === 0) {
     return '<p style="font-size:12px;color:var(--cor-texto-muted);margin:0">Nenhum procedimento encontrado.</p>';
   }
-  let html = '<table><thead><tr><th>Código</th><th>Procedimento</th><th>Origem</th><th>Apurado STS</th></tr></thead><tbody>';
-  dados.procedimentos.forEach(p => {
-    const badge = p.municipal
-      ? '<span class="badge badge-amarelo" style="font-size:10px;font-weight:600">SMS-SP Municipal</span>'
-      : '<span class="badge badge-cinza" style="font-size:10px">SIGTAP Federal</span>';
-    const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
-    html += `<tr>
-      <td><code>${p.codigo || '-'}</code></td>
-      <td>${p.nome}</td>
-      <td>${badge}</td>
-      <td><strong>${qtdFormatada}</strong></td>
-    </tr>`;
-  });
-  html += '</tbody></table>';
+
+  const considerados = dados.procedimentos.filter(p => p.considerado !== false);
+  const restantes = dados.procedimentos.filter(p => p.considerado === false);
+
+  let html = '';
+
+  if (considerados.length > 0) {
+    if (restantes.length > 0) {
+      html += '<div style="margin-bottom:6px;font-size:11px;font-weight:700;color:var(--cor-sucesso,#15803d);display:flex;align-items:center;gap:6px;">' +
+              '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background-color:var(--cor-sucesso,#15803d);"></span>' +
+              'Procedimentos Contabilizados no Indicador' +
+              '</div>';
+    }
+    html += '<table><thead><tr><th>Código</th><th>Procedimento</th><th>Origem</th><th>Apurado STS</th><th style="width:85px;text-align:center;">Ação</th></tr></thead><tbody>';
+    considerados.forEach(p => {
+      const badge = p.municipal
+        ? '<span class="badge badge-amarelo" style="font-size:10px;font-weight:600">SMS-SP Municipal</span>'
+        : '<span class="badge badge-cinza" style="font-size:10px">SIGTAP Federal</span>';
+      const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+      const nomeEscapado = (p.nome || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      html += `<tr>
+        <td><code>${p.codigo || '-'}</code></td>
+        <td>${p.nome}</td>
+        <td>${badge}</td>
+        <td><strong style="color:var(--cor-sucesso,#15803d);">${qtdFormatada}</strong></td>
+        <td style="text-align:center;">
+          <button type="button" class="btn-remover-proc"
+                  onclick="desvincularProcedimentoDoPainel('${p.codigo}', '${nomeEscapado}', '${contexto?.indicadorId || ''}', '${contexto?.subgrupoId || ''}', '${contexto?.periodo || ''}', this)"
+                  style="background:transparent; border:1px solid #fca5a5; color:#b91c1c; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:3px; transition:all 0.2s;"
+                  onmouseover="this.style.background='#fef2f2'"
+                  onmouseout="this.style.background='transparent'"
+                  title="Remover / desvincular este procedimento do indicador">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            Remover
+          </button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
+  if (restantes.length > 0) {
+    html += '<div style="margin-top:14px;margin-bottom:6px;padding-top:10px;border-top:1px dashed var(--cor-borda);font-size:11px;font-weight:700;color:var(--cor-texto-muted);display:flex;align-items:center;gap:6px;">' +
+            '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background-color:var(--cor-texto-muted);"></span>' +
+            'Outros Procedimentos Realizados pelo Profissional (Não Vinculados ao Indicador)' +
+            '</div>';
+    html += '<table><thead><tr><th>Código</th><th>Procedimento</th><th>Origem</th><th>Realizado</th><th style="width:85px;text-align:center;">Ação</th></tr></thead><tbody>';
+    restantes.forEach(p => {
+      const badge = p.municipal
+        ? '<span class="badge badge-amarelo" style="font-size:10px;font-weight:600">SMS-SP Municipal</span>'
+        : '<span class="badge badge-cinza" style="font-size:10px">SIGTAP Federal</span>';
+      const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+      const nomeEscapado = (p.nome || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      html += `<tr style="opacity:0.9;">
+        <td><code>${p.codigo || '-'}</code></td>
+        <td>${p.nome}</td>
+        <td>${badge}</td>
+        <td><strong>${qtdFormatada}</strong></td>
+        <td style="text-align:center;">
+          <button type="button" class="btn-vincular-proc"
+                  onclick="vincularProcedimentoDoPainel('${p.codigo}', '${nomeEscapado}', '${contexto?.indicadorId || ''}', '${contexto?.subgrupoId || ''}', '${contexto?.periodo || ''}', this)"
+                  style="background:transparent; border:1px solid #93c5fd; color:#1d4ed8; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:3px; transition:all 0.2s;"
+                  onmouseover="this.style.background='#eff6ff'"
+                  onmouseout="this.style.background='transparent'"
+                  title="Vincular procedimento a este indicador">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+            Vincular
+          </button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  }
+
   return html;
+}
+
+async function desvincularProcedimentoDoPainel(codigo, nome, indicadorId, subgrupoId, periodo, btn) {
+  if (!indicadorId || !codigo) return;
+  const msg = `Deseja realmente remover o procedimento:\n\n[${codigo}] ${nome}\n\ndeste indicador? Ele deixará de ser contabilizado na apuração.`;
+  if (!confirm(msg)) return;
+
+  btn.disabled = true;
+  btn.innerText = 'Removendo...';
+
+  try {
+    const resp = await fetch('{{ url_for("painel.desvincular_procedimento") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        indicador_id: indicadorId,
+        subgrupo_id: subgrupoId || null,
+        cod_procedimento: codigo,
+        periodo: periodo,
+      }),
+    });
+    const res = await resp.json();
+    if (res.ok) {
+      cacheDetalhe.clear();
+      cacheProfissional.clear();
+      sessionStorage.setItem('stspe_reabrir_pos_acao', JSON.stringify({
+        indicadorId, subgrupoId, periodo
+      }));
+      window.location.reload();
+    } else {
+      alert('Erro ao remover procedimento: ' + (res.mensagem || 'Falha na operação.'));
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg> Remover';
+    }
+  } catch (e) {
+    alert('Erro de comunicação: ' + e);
+    btn.disabled = false;
+  }
+}
+
+async function vincularProcedimentoDoPainel(codigo, nome, indicadorId, subgrupoId, periodo, btn) {
+  if (!indicadorId || !codigo) return;
+  const msg = `Deseja vincular o procedimento:\n\n[${codigo}] ${nome}\n\na este indicador? Ele passará a ser contabilizado na apuração.`;
+  if (!confirm(msg)) return;
+
+  btn.disabled = true;
+  btn.innerText = 'Vinculando...';
+
+  try {
+    const resp = await fetch('{{ url_for("painel.vincular_procedimento") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        indicador_id: indicadorId,
+        subgrupo_id: subgrupoId || null,
+        cod_procedimento: codigo,
+        periodo: periodo,
+      }),
+    });
+    const res = await resp.json();
+    if (res.ok) {
+      cacheDetalhe.clear();
+      cacheProfissional.clear();
+      sessionStorage.setItem('stspe_reabrir_pos_acao', JSON.stringify({
+        indicadorId, subgrupoId, periodo
+      }));
+      window.location.reload();
+    } else {
+      alert('Erro ao vincular procedimento: ' + (res.mensagem || 'Falha na operação.'));
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Vincular';
+    }
+  } catch (e) {
+    alert('Erro de comunicação: ' + e);
+    btn.disabled = false;
+  }
 }
 
 async function carregarDetalhe(trResumo) {
@@ -711,7 +863,12 @@ async function alternarProfissional(botao, profissionalCodificado, cboProfission
       dados = await resp.json();
       cacheProfissional.set(chave, dados);
     }
-    celula.innerHTML = montarHtmlProcedimentos(dados);
+    const contexto = {
+      indicadorId: botao.dataset.indicadorId,
+      subgrupoId: botao.dataset.subgrupoId,
+      periodo: botao.dataset.periodo,
+    };
+    celula.innerHTML = montarHtmlProcedimentos(dados, contexto);
     celula.dataset.carregado = '1';
   }
 }
@@ -756,7 +913,7 @@ const filtrosAtivos = {}; // { colIndex: Set(valoresMarcados) }
 let colunaFiltroAberta = null;
 let contagensColunaAtual = {};
 let valoresOrdenadosColunaAtual = [];
-let ordenacaoAtualPainel = { colIdx: null, asc: true };
+let ordenacaoAtualPainel = { colIdx: 1, asc: true };
 
 function compararAlfanumerico(aStr, bStr, asc = true) {
   if (aStr === undefined || aStr === null) aStr = '';
@@ -807,7 +964,13 @@ function ordenarTabelaPainel(colIdx, asc = true) {
     return { trResumo, trDetalhe, val };
   });
 
-  pares.sort((a, b) => compararAlfanumerico(a.val, b.val, asc));
+  pares.sort((a, b) => {
+    const cmp = compararAlfanumerico(a.val, b.val, asc);
+    if (cmp !== 0) return cmp;
+    const estabA = a.trResumo.children[2] ? a.trResumo.children[2].textContent.trim() : '';
+    const estabB = b.trResumo.children[2] ? b.trResumo.children[2].textContent.trim() : '';
+    return compararAlfanumerico(estabA, estabB, true);
+  });
 
   const irmao = tbody.nextSibling;
   const tabela = tbody.parentNode;
@@ -1124,6 +1287,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const modoSalvo = localStorage.getItem('contratos_modo_painel') || 'producao';
   alternarModoPainel(modoSalvo);
 
+  // Ordena por padrão pela coluna Indicador em ordem alfanumérica crescente
+  ordenarTabelaPainel(1, true);
+
   // Ordenação nativa ao clicar no cabeçalho <th> (idêntico ao DataTables do sistema de produção)
   document.querySelectorAll('#tabela-painel thead th[data-col-index]').forEach(th => {
     th.addEventListener('click', function (e) {
@@ -1140,6 +1306,27 @@ document.addEventListener('DOMContentLoaded', function () {
       abrirFiltroColuna(this);
     });
   });
+
+  // Reabre automaticamente a linha se houve ação de remoção ou vinculação
+  const reabrir = sessionStorage.getItem('stspe_reabrir_pos_acao');
+  if (reabrir) {
+    sessionStorage.removeItem('stspe_reabrir_pos_acao');
+    try {
+      const cfg = JSON.parse(reabrir);
+      setTimeout(() => {
+        document.querySelectorAll('.linha-resumo').forEach(tr => {
+          if (tr.dataset.indicadorId == cfg.indicadorId &&
+              String(tr.dataset.subgrupoId || '') == String(cfg.subgrupoId || '') &&
+              tr.dataset.periodo == cfg.periodo) {
+            const btn = tr.querySelector('.btn-expandir');
+            if (btn && btn.textContent.trim() === '+') {
+              alternarLinha(btn);
+            }
+          }
+        });
+      }, 300);
+    } catch (e) {}
+  }
 });
 </script>
 {% endblock %}

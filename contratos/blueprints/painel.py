@@ -1,4 +1,5 @@
 import io
+import re
 
 from flask import Blueprint, Response, jsonify, render_template, request
 
@@ -6,6 +7,20 @@ from ..db import get_db
 from ..funcoes import consolidacao, diagnostico_metas, pendencias
 
 bp = Blueprint("painel", __name__, url_prefix="/contratos")
+
+
+def _chave_ordem_indicador(r):
+    cod = str(r.get("indicador_codigo") or "").strip()
+    m = re.search(r"\d+", cod)
+    num = int(m.group(0)) if m else 9999
+    return (
+        num,
+        cod,
+        r.get("subgrupo_nome") or "",
+        r.get("estabelecimento_nome") or "",
+        r.get("cbo_codigo") or "",
+        r.get("periodo") or "",
+    )
 
 
 def _resultados_filtrados(db):
@@ -22,7 +37,7 @@ def _resultados_filtrados(db):
 
     linhas = [
         dict(r) for r in db.execute(
-            "SELECT * FROM resultados_indicador ORDER BY estabelecimento_nome, indicador_codigo, subgrupo_nome"
+            "SELECT * FROM resultados_indicador"
         ).fetchall()
     ]
     linhas = consolidacao.consolidar_resultados(
@@ -31,10 +46,7 @@ def _resultados_filtrados(db):
     linhas = consolidacao.completar_metas_do_grupo(db, linhas)
     for linha in linhas:
         linha.setdefault("estabelecimento_ids", [linha["estabelecimento_id"]])
-    linhas.sort(key=lambda r: (
-        r["estabelecimento_nome"] or "", r["indicador_codigo"] or "", r.get("subgrupo_nome") or "",
-        r["cbo_codigo"] or "", r["periodo"] or "",
-    ))
+    linhas.sort(key=_chave_ordem_indicador)
     return linhas
 
 
@@ -356,22 +368,40 @@ def _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
             res = db.execute(
                 """SELECT p.codigo, p.nome FROM indicador_procedimento ip
                    JOIN procedimentos p ON p.codigo = ip.procedimento_codigo
-                   WHERE ip.indicador_id = ? AND ip.subgrupo_id = ?""",
-                (indicador_id, subgrupo_id)
+                   WHERE ip.indicador_id = ? AND ip.subgrupo_id = ?
+                     AND ip.tipo_vinculo = 'inclusao'
+                     AND ip.procedimento_codigo NOT IN (
+                         SELECT procedimento_codigo FROM indicador_procedimento
+                         WHERE indicador_id = ? AND tipo_vinculo = 'exclusao'
+                           AND (subgrupo_id IS NULL OR subgrupo_id = ?)
+                     )""",
+                (indicador_id, subgrupo_id, indicador_id, subgrupo_id)
             ).fetchall()
             if not res:
                 res = db.execute(
                     """SELECT p.codigo, p.nome FROM indicador_procedimento ip
                        JOIN procedimentos p ON p.codigo = ip.procedimento_codigo
-                       WHERE ip.indicador_id = ?""",
-                    (indicador_id,)
+                       WHERE ip.indicador_id = ?
+                         AND ip.tipo_vinculo = 'inclusao'
+                         AND ip.procedimento_codigo NOT IN (
+                             SELECT procedimento_codigo FROM indicador_procedimento
+                             WHERE indicador_id = ? AND tipo_vinculo = 'exclusao'
+                               AND (subgrupo_id IS NULL OR subgrupo_id = ?)
+                         )""",
+                    (indicador_id, indicador_id, subgrupo_id)
                 ).fetchall()
         else:
             res = db.execute(
                 """SELECT p.codigo, p.nome FROM indicador_procedimento ip
                    JOIN procedimentos p ON p.codigo = ip.procedimento_codigo
-                   WHERE ip.indicador_id = ? AND ip.subgrupo_id IS NULL""",
-                (indicador_id,)
+                   WHERE ip.indicador_id = ? AND ip.subgrupo_id IS NULL
+                     AND ip.tipo_vinculo = 'inclusao'
+                     AND ip.procedimento_codigo NOT IN (
+                         SELECT procedimento_codigo FROM indicador_procedimento
+                         WHERE indicador_id = ? AND tipo_vinculo = 'exclusao'
+                           AND subgrupo_id IS NULL
+                     )""",
+                (indicador_id, indicador_id)
             ).fetchall()
     return res
 
@@ -532,6 +562,18 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
             sql += " AND s.cod_cmes != s.cod_cnes"
         else:
             sql += " AND (s.cod_cmes = s.cod_cnes OR s.cod_cmes IS NULL OR s.cod_cnes IS NULL)"
+    if str(indicador_id) == "35" and subgrupo_id is not None:
+        sg_row = db.execute("SELECT nome FROM indicador_subgrupo WHERE id = ?", (subgrupo_id,)).fetchone()
+        if sg_row:
+            sg_n = (sg_row["nome"] or "").lower()
+            if "auditiva" in sg_n:
+                sql += " AND lower(s.nome_especialidade2) LIKE '%auditiva%'"
+            elif "fisica" in sg_n or "fsica" in sg_n:
+                sql += " AND (lower(s.nome_especialidade2) LIKE '%fisica%' OR lower(s.nome_especialidade2) LIKE '%fsica%')"
+            elif "intelectual" in sg_n:
+                sql += " AND lower(s.nome_especialidade2) LIKE '%intelectual%'"
+            elif "visual" in sg_n:
+                sql += " AND lower(s.nome_especialidade2) LIKE '%visual%'"
     sql += " GROUP BY s.nome_profissional, s.cod_cbo_sus ORDER BY apurado DESC"
     return db.execute(sql, params).fetchall()
 
@@ -559,7 +601,7 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
             [p, p, ano, mes, mes_sem_zero, *cnes_list, profissional],
         ).fetchone()
         tot = row["apurado"] if row and row["apurado"] is not None else 0
-        return [{"codigo": "0101030010", "nome": "Visita Domiciliar por Profissional de Nível Superior", "apurado": tot}]
+        return [{"codigo": "0101030010", "nome": "Visita Domiciliar por Profissional de Nível Superior", "apurado": tot, "considerado": True}]
 
     # 2. Atividades Coletivas eMulti (P12 / P22)
     if ind_cod in ("P12", "P22"):
@@ -574,7 +616,8 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                     AND s.nome_profissional = ?
                   GROUP BY s.cod_proced_sigtap, s.procedimento_sigtap
                   ORDER BY apurado DESC"""
-        return db.execute(sql, [p, f"%{p}%", *cnes_list, profissional]).fetchall()
+        rows = db.execute(sql, [p, f"%{p}%", *cnes_list, profissional]).fetchall()
+        return [{**dict(r), "considerado": True} for r in rows]
 
     # 3. Atendimento Domiciliar eSUS (P30 / P33)
     if ind_cod in ("P30", "P33"):
@@ -591,7 +634,8 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                     AND s.nome_profissional = ?
                   GROUP BY s.cod_procedimento, s.procedimento
                   ORDER BY apurado DESC"""
-        return db.execute(sql, [p, f"%{p}%", equipe_filtro, *cnes_list, profissional]).fetchall()
+        rows = db.execute(sql, [p, f"%{p}%", equipe_filtro, *cnes_list, profissional]).fetchall()
+        return [{**dict(r), "considerado": True} for r in rows]
 
     # 4. PICS (P09, P10, P19, P20)
     if ind_cod in ("P09", "P10", "P19", "P20"):
@@ -601,7 +645,8 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                   WHERE s.fonte_at = 'AT57' AND (s.ano_mes = ? OR s.ano_mes LIKE ?) AND s.cod_cnes IN ({marc_cnes})
                   GROUP BY s.procedimento_codigo, s.procedimento_nome
                   ORDER BY apurado DESC"""
-        return db.execute(sql, [str(periodo or ""), f"%{periodo}%", *cnes_list]).fetchall()
+        rows = db.execute(sql, [str(periodo or ""), f"%{periodo}%", *cnes_list]).fetchall()
+        return [{**dict(r), "considerado": True} for r in rows]
 
     # 5. Grupos (P11, P21)
     if ind_cod in ("P11", "P21"):
@@ -611,7 +656,8 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                   WHERE s.fonte_at = 'AT61' AND (s.ano_mes = ? OR s.ano_mes LIKE ?) AND s.cod_cnes IN ({marc_cnes})
                   GROUP BY s.procedimento_nome
                   ORDER BY apurado DESC"""
-        return db.execute(sql, [str(periodo or ""), f"%{periodo}%", *cnes_list]).fetchall()
+        rows = db.execute(sql, [str(periodo or ""), f"%{periodo}%", *cnes_list]).fetchall()
+        return [{**dict(r), "considerado": True} for r in rows]
 
     # 6. Outros SSRS (P25, P29, P36, P38, P41, P27)
     if ind_cod in ("P25", "P29", "P36", "P38", "P41", "P27"):
@@ -622,7 +668,7 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
             [indicador_id, *estabelecimento_ids, str(periodo or "")],
         ).fetchone()
         tot = int(row["tot"]) if row and row["tot"] is not None else 0
-        return [{"codigo": ind_cod, "nome": ind_nome, "apurado": tot}]
+        return [{"codigo": ind_cod, "nome": ind_nome, "apurado": tot, "considerado": True}]
 
     # 7. AT-02 padrão
     procedimentos = _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id)
@@ -651,8 +697,87 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
             sql += " AND s.cod_cmes != s.cod_cnes"
         else:
             sql += " AND (s.cod_cmes = s.cod_cnes OR s.cod_cmes IS NULL OR s.cod_cnes IS NULL)"
+    if str(indicador_id) == "35" and subgrupo_id is not None:
+        sg_row = db.execute("SELECT nome FROM indicador_subgrupo WHERE id = ?", (subgrupo_id,)).fetchone()
+        if sg_row:
+            sg_n = (sg_row["nome"] or "").lower()
+            if "auditiva" in sg_n:
+                sql += " AND lower(s.nome_especialidade2) LIKE '%auditiva%'"
+            elif "fisica" in sg_n or "fsica" in sg_n:
+                sql += " AND (lower(s.nome_especialidade2) LIKE '%fisica%' OR lower(s.nome_especialidade2) LIKE '%fsica%')"
+            elif "intelectual" in sg_n:
+                sql += " AND lower(s.nome_especialidade2) LIKE '%intelectual%'"
+            elif "visual" in sg_n:
+                sql += " AND lower(s.nome_especialidade2) LIKE '%visual%'"
     sql += " GROUP BY s.cod_procedimento, p.nome ORDER BY apurado DESC"
-    return db.execute(sql, params).fetchall()
+    considerados_rows = db.execute(sql, params).fetchall()
+
+    resultado = []
+    for r in considerados_rows:
+        item = dict(r)
+        item["considerado"] = True
+        resultado.append(item)
+
+    # Procedimentos restantes do profissional na mesma competência e unidade
+    sql_todos = f"""
+        SELECT s.cod_procedimento AS codigo,
+               COALESCE(p.nome, s.nome_procedimento, s.cod_procedimento) AS nome,
+               s.nome_especialidade2,
+               SUM(s.quantidade) AS total_qtd
+        FROM staging_at02 s
+        LEFT JOIN procedimentos p ON p.codigo = s.cod_procedimento
+        WHERE s.ano_mes = ? AND s.cod_cmes IN ({",".join("?" * len(cmes))}) AND s.nome_profissional = ?
+    """
+    params_todos = [periodo, *cmes, profissional]
+    if cbo_alvo:
+        sql_todos += " AND s.cod_cbo_sus = ?"
+        params_todos.append(cbo_alvo)
+    sql_todos += " GROUP BY s.cod_procedimento, p.nome, s.nome_especialidade2 ORDER BY total_qtd DESC"
+    todos_rows = db.execute(sql_todos, params_todos).fetchall()
+
+    restantes_map = {}
+    for row in todos_rows:
+        cod = row["codigo"]
+        nome = row["nome"]
+        tot = row["total_qtd"] or 0
+        esp = (row["nome_especialidade2"] or "").lower()
+
+        if str(indicador_id) == "35" and subgrupo_id is not None:
+            sg_row = db.execute("SELECT nome FROM indicador_subgrupo WHERE id = ?", (subgrupo_id,)).fetchone()
+            sg_n = (sg_row["nome"] or "").lower() if sg_row else ""
+            pertence_a_este_subgrupo = False
+            if "auditiva" in sg_n and "auditiva" in esp:
+                pertence_a_este_subgrupo = True
+            elif ("fisica" in sg_n or "fsica" in sg_n) and ("fisica" in esp or "fsica" in esp):
+                pertence_a_este_subgrupo = True
+            elif "intelectual" in sg_n and "intelectual" in esp:
+                pertence_a_este_subgrupo = True
+            elif "visual" in sg_n and "visual" in esp:
+                pertence_a_este_subgrupo = True
+
+            if pertence_a_este_subgrupo and cod in proc_lista:
+                continue
+            else:
+                nome_exibir = nome
+                if cod == "0301079005" and row["nome_especialidade2"]:
+                    nome_exibir = f"{nome} ({row['nome_especialidade2']})"
+                chave = (cod, nome_exibir)
+                restantes_map[chave] = restantes_map.get(chave, 0) + tot
+        else:
+            if cod in proc_lista:
+                continue
+            chave = (cod, nome)
+            restantes_map[chave] = restantes_map.get(chave, 0) + tot
+
+    for (cod, nome), qtd in sorted(restantes_map.items(), key=lambda x: x[1], reverse=True):
+        resultado.append({
+            "codigo": cod,
+            "nome": nome,
+            "apurado": qtd,
+            "considerado": False,
+        })
+
+    return resultado
 
 
 
@@ -692,8 +817,121 @@ def profissional_detalhe():
             or "MUNICIPAL" in nome
             or "SALA DO IDOSO" in nome
         )
+        d["considerado"] = p.get("considerado", True)
         itens.append(d)
     return jsonify({"procedimentos": itens})
+
+
+@bp.route("/desvincular_procedimento", methods=["POST"])
+def desvincular_procedimento():
+    """Remove / desvincula um procedimento de um indicador ou subgrupo diretamente pelo painel."""
+    data = request.get_json() or {}
+    indicador_id = data.get("indicador_id")
+    subgrupo_id = data.get("subgrupo_id")
+    if subgrupo_id in ("", "None", "null", "undefined"):
+        subgrupo_id = None
+    elif subgrupo_id is not None:
+        try:
+            subgrupo_id = int(subgrupo_id)
+        except (ValueError, TypeError):
+            pass
+
+    cod_procedimento = str(data.get("cod_procedimento") or "").strip()
+    periodo = data.get("periodo")
+
+    if not indicador_id or not cod_procedimento:
+        return jsonify({"ok": False, "mensagem": "Indicador ou procedimento não informado."}), 400
+
+    db = get_db()
+
+    # 1. Remove qualquer vínculo direto de inclusão para esse indicador/subgrupo
+    db.execute(
+        """DELETE FROM indicador_procedimento
+           WHERE indicador_id = ? AND procedimento_codigo = ?
+             AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+             AND tipo_vinculo = 'inclusao'""",
+        (indicador_id, cod_procedimento, subgrupo_id, subgrupo_id),
+    )
+
+    # 2. Insere regra explícita de exclusão para blindar contra inclusões gerais ou De-Para
+    exclusao_existente = db.execute(
+        """SELECT id FROM indicador_procedimento
+           WHERE indicador_id = ? AND procedimento_codigo = ?
+             AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+             AND tipo_vinculo = 'exclusao'""",
+        (indicador_id, cod_procedimento, subgrupo_id, subgrupo_id),
+    ).fetchone()
+
+    if not exclusao_existente:
+        db.execute(
+            """INSERT INTO indicador_procedimento (indicador_id, subgrupo_id, procedimento_codigo, tipo_vinculo)
+               VALUES (?, ?, ?, 'exclusao')""",
+            (indicador_id, subgrupo_id, cod_procedimento),
+        )
+
+    db.commit()
+
+    # 3. Recalcula a apuração dinâmica
+    from ..funcoes import sincronizar_apuracao_dinamica
+    sincronizar_apuracao_dinamica(db, periodo=periodo)
+
+    return jsonify({"ok": True, "mensagem": f"Procedimento {cod_procedimento} desvinculado com sucesso!"})
+
+
+@bp.route("/vincular_procedimento", methods=["POST"])
+def vincular_procedimento():
+    """Vincula / reativa um procedimento a um indicador ou subgrupo diretamente pelo painel."""
+    data = request.get_json() or {}
+    indicador_id = data.get("indicador_id")
+    subgrupo_id = data.get("subgrupo_id")
+    if subgrupo_id in ("", "None", "null", "undefined"):
+        subgrupo_id = None
+    elif subgrupo_id is not None:
+        try:
+            subgrupo_id = int(subgrupo_id)
+        except (ValueError, TypeError):
+            pass
+
+    cod_procedimento = str(data.get("cod_procedimento") or "").strip()
+    periodo = data.get("periodo")
+
+    if not indicador_id or not cod_procedimento:
+        return jsonify({"ok": False, "mensagem": "Indicador ou procedimento não informado."}), 400
+
+    db = get_db()
+
+    # 1. Remove qualquer regra de exclusão anterior
+    db.execute(
+        """DELETE FROM indicador_procedimento
+           WHERE indicador_id = ? AND procedimento_codigo = ?
+             AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+             AND tipo_vinculo = 'exclusao'""",
+        (indicador_id, cod_procedimento, subgrupo_id, subgrupo_id),
+    )
+
+    # 2. Insere regra de inclusão se não existir
+    inclusao_existente = db.execute(
+        """SELECT id FROM indicador_procedimento
+           WHERE indicador_id = ? AND procedimento_codigo = ?
+             AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+             AND tipo_vinculo = 'inclusao'""",
+        (indicador_id, cod_procedimento, subgrupo_id, subgrupo_id),
+    ).fetchone()
+
+    if not inclusao_existente:
+        db.execute(
+            """INSERT INTO indicador_procedimento (indicador_id, subgrupo_id, procedimento_codigo, tipo_vinculo)
+               VALUES (?, ?, ?, 'inclusao')""",
+            (indicador_id, subgrupo_id, cod_procedimento),
+        )
+
+    db.commit()
+
+    # 3. Recalcula a apuração dinâmica
+    from ..funcoes import sincronizar_apuracao_dinamica
+    sincronizar_apuracao_dinamica(db, periodo=periodo)
+
+    return jsonify({"ok": True, "mensagem": f"Procedimento {cod_procedimento} vinculado com sucesso!"})
 
 
 @bp.route("/exportar_excel")
@@ -767,6 +1005,8 @@ def exportar_excel():
                     else (prof["cbo_codigo"] or "")
                 )
                 for p in procedimentos:
+                    if not p.get("considerado", True):
+                        continue
                     detalhe_ws.append([
                         rotulo_indicador, r.get("subgrupo_nome") or "", r["estabelecimento_nome"], rotulo_cbo,
                         r["periodo"], prof["nome_profissional"], rotulo_cbo_prof,

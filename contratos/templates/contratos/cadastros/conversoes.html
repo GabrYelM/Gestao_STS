@@ -1,0 +1,389 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Conversões de Procedimentos (SIGA ➔ SIGTAP) - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h2 class="h4 mb-1 fw-bold text-dark">
+      <i class="fa-solid fa-arrows-rotate text-primary me-2"></i>Conversões de Procedimentos (De-Para SIGA ➔ SIGTAP)
+    </h2>
+    <p class="text-muted small mb-0">
+      Mapeamento de procedimentos municipais da SMS-SP (SIGA) para os códigos correspondentes da tabela SUS (SIGTAP/SIA).
+    </p>
+  </div>
+</div>
+
+<!-- Cards Informativos / Resumo -->
+<div class="highlights mb-3">
+  <div class="stat-card">
+    <div class="stat-valor text-primary">{{ total_conversoes }}</div>
+    <div class="stat-rotulo">Total de Conversões</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-valor text-success">{{ total_ativas }}</div>
+    <div class="stat-rotulo">Conversões Ativas</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-valor text-muted">{{ total_conversoes - total_ativas }}</div>
+    <div class="stat-rotulo">Conversões Inativas</div>
+  </div>
+  {% if arquivo_padrao %}
+  <div class="stat-card" style="border-left-color: #0d6efd; background-color: #f0f7ff;">
+    <div class="d-flex align-items-center justify-content-between">
+      <div>
+        <span class="badge bg-primary mb-1"><i class="fa-solid fa-file-csv me-1"></i>Arquivo SIGA Local</span>
+        <div class="text-dark small fw-bold text-truncate" style="max-width: 260px;" title="{{ arquivo_padrao }}">
+          {{ arquivo_padrao }}
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm btn-primary ms-2" onclick="alternarPainel('painel-importar-conversoes')">
+        <i class="fa-solid fa-cloud-arrow-down me-1"></i>Importar
+      </button>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Barra de Ferramentas -->
+<div class="toolbar">
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-conversoes')">
+    <i class="fa-solid fa-file-arrow-up me-1 text-primary"></i> 📤 Importar CSV / SIGA
+  </button>
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-nova-conversao')">
+    <i class="fa-solid fa-plus me-1 text-success"></i> ＋ Nova conversão
+  </button>
+  <a class="btn-secondary text-decoration-none" href="{{ url_for('cadastros.exportar_conversoes_csv') }}">
+    <i class="fa-solid fa-download me-1 text-secondary"></i> ⬇ Exportar CSV
+  </a>
+  <span class="espaco"></span>
+  <span class="toolbar-texto" data-autofiltro-contador="tabela-conversoes"></span>
+  <button type="button" class="btn btn-outline-secondary btn-sm" data-autofiltro-limpar="tabela-conversoes">
+    <i class="fa-solid fa-rotate-left me-1"></i> Limpar filtros
+  </button>
+</div>
+
+<!-- Painel de Importação -->
+<div id="painel-importar-conversoes" class="painel-acao mb-3">
+  <div class="card border-primary shadow-sm">
+    <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between">
+      <span class="fw-bold"><i class="fa-solid fa-file-import me-2"></i>Importar Conversões de Procedimentos</span>
+      <button type="button" class="btn-close btn-close-white" onclick="alternarPainel('painel-importar-conversoes')"></button>
+    </div>
+    <div class="card-body">
+      {% if arquivo_padrao %}
+      <div class="p-3 mb-3 bg-light rounded border border-primary-subtle">
+        <h6 class="fw-bold text-primary mb-2">
+          <i class="fa-solid fa-folder-open me-2"></i>Arquivo Oficial Detectado na Pasta do Contrato:
+        </h6>
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div>
+            <code class="fs-6 text-dark bg-white px-2 py-1 rounded border">{{ arquivo_padrao }}</code>
+            <p class="text-muted small mt-1 mb-0">
+              Arquivo exportado pelo SIGAPEP contendo os procedimentos municipais e seus equivalentes SIGTAP.
+            </p>
+          </div>
+          <form method="post" action="{{ url_for('cadastros.importar_conversoes_csv') }}" class="d-flex align-items-center gap-2">
+            <input type="hidden" name="usar_arquivo_pasta" value="1">
+            <div class="form-check form-switch me-2">
+              <input class="form-check-input" type="checkbox" name="apenas_com_sigtap" value="1" id="chkApenasSigtap1" checked>
+              <label class="form-check-label small" for="chkApenasSigtap1">Apenas com código SIGTAP preenchido</label>
+            </div>
+            <button type="submit" class="btn btn-primary" onclick="return confirm('Confirmar importação do arquivo SIGA da pasta?')">
+              <i class="fa-solid fa-bolt me-1"></i> Carregar do Arquivo da Pasta
+            </button>
+          </form>
+        </div>
+      </div>
+      <div class="text-center my-3 text-muted position-relative">
+        <hr class="my-0">
+        <span class="position-absolute top-50 start-50 translate-middle bg-white px-3 fw-bold text-uppercase small" style="color: #888;">OU selecione outro arquivo do seu computador</span>
+      </div>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('cadastros.importar_conversoes_csv') }}" enctype="multipart/form-data">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">Arquivo CSV:</label>
+            <input type="file" name="arquivo" accept=".csv" class="form-control" {% if not arquivo_padrao %}required{% endif %}>
+            <div class="form-text">
+              Colunas aceitas: <code>COD_SIGA;PROCEDIMENTO_SIGA;COD_SIGTAP;PROCEDIMENTO_SIGTAP</code> (separador <code>;</code> ou <code>,</code>).
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="form-check form-switch mt-2">
+              <input class="form-check-input" type="checkbox" name="apenas_com_sigtap" value="1" id="chkApenasSigtap2" checked>
+              <label class="form-check-label" for="chkApenasSigtap2">Importar apenas procedimentos com código SIGTAP</label>
+            </div>
+          </div>
+          <div class="col-md-2 text-end">
+            <button type="submit" class="btn btn-success w-100">
+              <i class="fa-solid fa-upload me-1"></i> Importar CSV
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Painel Nova Conversão -->
+<div id="painel-nova-conversao" class="painel-acao mb-3">
+  <div class="card border-success shadow-sm">
+    <div class="card-header bg-success text-white d-flex align-items-center justify-content-between">
+      <span class="fw-bold"><i class="fa-solid fa-plus-circle me-2"></i>Cadastrar Nova Conversão Manual</span>
+      <button type="button" class="btn-close btn-close-white" onclick="alternarPainel('painel-nova-conversao')"></button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('cadastros.nova_conversao') }}">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Cód. SIGA (Municipal) <span class="text-danger">*</span></label>
+            <input type="text" name="cod_siga" class="form-control" placeholder="ex: 0301019908" required maxlength="12">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label fw-bold">Nome / Procedimento SIGA</label>
+            <input type="text" name="procedimento_siga" class="form-control" placeholder="Descrição do procedimento municipal (opcional)">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Status</label>
+            <select name="ativo" class="form-select">
+              <option value="1" selected>Ativo (aplica conversão)</option>
+              <option value="0">Inativo (não aplica)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">Cód. SIGTAP (Estadual/Federal) <span class="text-danger">*</span></label>
+            <input type="text" name="cod_sigtap" class="form-control" placeholder="ex: 0301010030" required maxlength="12">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label fw-bold">Nome / Procedimento SIGTAP</label>
+            <input type="text" name="procedimento_sigtap" class="form-control" placeholder="Descrição do procedimento nacional (opcional)">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">Observação</label>
+            <input type="text" name="observacao" class="form-control" placeholder="ex: Referência SIGAPEP / Portaria">
+          </div>
+          <div class="col-12 text-end">
+            <button type="button" class="btn btn-secondary me-2" onclick="alternarPainel('painel-nova-conversao')">Cancelar</button>
+            <button type="submit" class="btn btn-success px-4">
+              <i class="fa-solid fa-floppy-disk me-1"></i> Salvar Conversão
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar de Exclusão em Massa -->
+<div class="toolbar card-tint-amber">
+  <span class="toolbar-texto">Marque linhas na tabela abaixo para excluir conversões em massa:</span>
+  <span class="espaco"></span>
+  <button type="submit" form="form-bulk-conversoes" class="btn-danger"
+          onclick="return confirm('Excluir todas as conversões selecionadas? Essa ação não pode ser desfeita.')">
+    <i class="fa-solid fa-trash-can me-1"></i> Excluir selecionadas
+  </button>
+</div>
+
+<form method="post" action="{{ url_for('cadastros.bulk_excluir_conversoes') }}" id="form-bulk-conversoes"></form>
+
+<!-- Tabela de Conversões -->
+<div class="table-card">
+  <table id="tabela-conversoes" class="table table-hover table-striped align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 40px; text-align: center;">
+          <input type="checkbox" class="chk-todos" title="Marcar todas as linhas visíveis">
+        </th>
+        <th data-filtro style="width: 140px;">Cód. SIGA</th>
+        <th data-filtro>Procedimento SIGA (Municipal)</th>
+        <th style="width: 40px; text-align: center;"><i class="fa-solid fa-arrow-right text-muted"></i></th>
+        <th data-filtro style="width: 140px;">Cód. SIGTAP</th>
+        <th data-filtro>Procedimento SIGTAP (Estadual/Federal)</th>
+        <th data-filtro style="width: 100px; text-align: center;">Status</th>
+        <th style="width: 120px; text-align: center;">Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in itens %}
+      <tr data-id="{{ c.id }}"
+          data-siga="{{ c.cod_siga }}"
+          data-nome-siga="{{ c.procedimento_siga or '' }}"
+          data-sigtap="{{ c.cod_sigtap }}"
+          data-nome-sigtap="{{ c.procedimento_sigtap or '' }}"
+          data-ativo="{{ c.ativo }}"
+          data-obs="{{ c.observacao or '' }}">
+        <td style="text-align: center;">
+          <input type="checkbox" name="selecionados" value="{{ c.id }}" form="form-bulk-conversoes" class="chk-linha">
+        </td>
+        <td>
+          <span class="badge bg-secondary-subtle text-dark border font-monospace fs-7 px-2 py-1">
+            {{ c.cod_siga }}
+          </span>
+        </td>
+        <td class="fw-semibold text-dark">
+          {{ c.procedimento_siga or '<span class="text-muted fst-italic">Sem descrição</span>' | safe }}
+        </td>
+        <td style="text-align: center;">
+          <i class="fa-solid fa-arrow-right text-primary"></i>
+        </td>
+        <td>
+          <span class="badge bg-primary-subtle text-primary border border-primary font-monospace fs-7 px-2 py-1">
+            {{ c.cod_sigtap }}
+          </span>
+        </td>
+        <td class="text-secondary">
+          {{ c.procedimento_sigtap or '<span class="text-muted fst-italic">Sem descrição</span>' | safe }}
+        </td>
+        <td style="text-align: center;">
+          <form method="post" action="{{ url_for('cadastros.toggle_conversao', id=c.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent" title="Clique para alterar status">
+              {% if c.ativo %}
+              <span class="badge bg-success"><i class="fa-solid fa-circle-check me-1"></i>Ativo</span>
+              {% else %}
+              <span class="badge bg-secondary"><i class="fa-solid fa-circle-xmark me-1"></i>Inativo</span>
+              {% endif %}
+            </button>
+          </form>
+        </td>
+        <td style="text-align: center;">
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-primary btn-sm btn-abrir-editar" title="Editar conversão">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <form method="post" action="{{ url_for('cadastros.excluir_conversao', id=c.id) }}" style="display:inline;"
+                  onsubmit="return confirm('Deseja realmente excluir a conversão do código {{ c.cod_siga }}?');">
+              <button type="submit" class="btn btn-outline-danger btn-sm" title="Excluir">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="text-center py-4 text-muted">
+          <i class="fa-solid fa-circle-info fa-2x mb-2 d-block text-secondary"></i>
+          Nenhuma conversão cadastrada no momento.<br>
+          Clique em <strong>Importar CSV / SIGA</strong> para carregar o arquivo oficial ou <strong>Nova conversão</strong> para cadastrar manualmente.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="subtitulo-pagina">Use o funil (▼) no cabeçalho de cada coluna para filtrar instantaneamente por código, descrição ou status.</p>
+
+<!-- Modal de Edição -->
+<div class="modal fade" id="modalEditarConversao" tabindex="-1" aria-labelledby="modalEditarConversaoLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow border-0">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="modalEditarConversaoLabel">
+          <i class="fa-solid fa-pen-to-square me-2"></i>Editar Conversão de Procedimento
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form method="post" id="formEditarConversao" action="">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">Cód. SIGA (Municipal):</label>
+            <input type="text" id="editCodSiga" class="form-control bg-light font-monospace" readonly>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Procedimento SIGA (Municipal):</label>
+            <input type="text" name="procedimento_siga" id="editProcSiga" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold text-primary">Cód. SIGTAP (Estadual/Federal): <span class="text-danger">*</span></label>
+            <input type="text" name="cod_sigtap" id="editCodSigtap" class="form-control font-monospace border-primary" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Procedimento SIGTAP (Estadual/Federal):</label>
+            <input type="text" name="procedimento_sigtap" id="editProcSigtap" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Status:</label>
+            <select name="ativo" id="editAtivo" class="form-select">
+              <option value="1">Ativo</option>
+              <option value="0">Inativo</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">Observação:</label>
+            <input type="text" name="observacao" id="editObs" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary px-4">
+            <i class="fa-solid fa-check me-1"></i> Salvar Alterações
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% include "contratos/_autofiltro.html" %}
+
+<script>
+AutoFiltro.iniciar('tabela-conversoes');
+
+(function() {
+  const tabela = document.getElementById('tabela-conversoes');
+  if (!tabela) return;
+
+  const urlEditarBase = {{ url_for('cadastros.editar_conversao', id=0) | tojson }};
+  const modalEl = document.getElementById('modalEditarConversao');
+  let modalInstance = null;
+  if (modalEl && typeof bootstrap !== 'undefined') {
+    modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+  }
+
+  tabela.addEventListener('click', function(e) {
+    const btnEditar = e.target.closest('.btn-abrir-editar');
+    if (!btnEditar) return;
+    const tr = btnEditar.closest('tr');
+    if (!tr) return;
+
+    const id = tr.dataset.id;
+    const siga = tr.dataset.siga || '';
+    const nomeSiga = tr.dataset.nomeSiga || '';
+    const sigtap = tr.dataset.sigtap || '';
+    const nomeSigtap = tr.dataset.nomeSigtap || '';
+    const ativo = tr.dataset.ativo || '1';
+    const obs = tr.dataset.obs || '';
+
+    const form = document.getElementById('formEditarConversao');
+    form.action = urlEditarBase.replace('/0/', '/' + encodeURIComponent(id) + '/');
+
+    document.getElementById('editCodSiga').value = siga;
+    document.getElementById('editProcSiga').value = nomeSiga;
+    document.getElementById('editCodSigtap').value = sigtap;
+    document.getElementById('editProcSigtap').value = nomeSigtap;
+    document.getElementById('editAtivo').value = ativo;
+    document.getElementById('editObs').value = obs;
+
+    if (modalInstance) {
+      modalInstance.show();
+    }
+  });
+
+  // Checkbox marcar todos
+  const chkTodos = tabela.querySelector('.chk-todos');
+  if (chkTodos) {
+    chkTodos.addEventListener('change', function() {
+      const linhas = tabela.querySelectorAll('tbody tr');
+      linhas.forEach(tr => {
+        if (tr.style.display !== 'none') {
+          const chk = tr.querySelector('.chk-linha');
+          if (chk) chk.checked = chkTodos.checked;
+        }
+      });
+    });
+  }
+})();
+</script>
+
+{% endblock %}

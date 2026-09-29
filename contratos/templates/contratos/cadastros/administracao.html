@@ -27,6 +27,11 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-conversoes" data-bs-toggle="tab" data-bs-target="#conversoes" type="button" role="tab" data-url="{{ url_for('cadastros.conversoes_partial') }}">
+                    <i class="fa-solid fa-arrows-rotate me-1"></i> Conversões SIGA/SIGTAP
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tab-profissionais" data-bs-toggle="tab" data-bs-target="#profissionais" type="button" role="tab" data-url="{{ url_for('cadastros.profissionais_partial') }}">
                     <i class="fa-solid fa-user-nurse me-1"></i> Profissionais
                 </button>
@@ -62,6 +67,7 @@
             </div>
             <div class="tab-pane fade" id="cbo" role="tabpanel"></div>
             <div class="tab-pane fade" id="procedimentos" role="tabpanel"></div>
+            <div class="tab-pane fade" id="conversoes" role="tabpanel"></div>
             <div class="tab-pane fade" id="profissionais" role="tabpanel"></div>
             <div class="tab-pane fade" id="portaria" role="tabpanel"></div>
             <div class="tab-pane fade" id="importar" role="tabpanel"></div>

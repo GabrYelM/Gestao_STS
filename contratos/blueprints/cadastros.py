@@ -10,11 +10,14 @@ telas são o próximo passo depois de importar os dados brutos.
 """
 
 import csv
+import glob
 import io
+import os
 import sqlite3
 
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
+from .. import config as config_module
 from ..db import get_db
 from ..funcoes import consolidacao, recalcular_periodo, registrar_log, sincronizar_apuracao_dinamica
 from ..etl import normalizar_cod_procedimento
@@ -27,8 +30,17 @@ bp = Blueprint("cadastros", __name__, url_prefix="/contratos/cadastros")
 # ---------------------------------------------------------------------------
 
 def _ler_csv_upload(arquivo):
-    """Lê um arquivo CSV enviado por upload, detectando ; ou , como delimitador."""
-    conteudo = arquivo.read().decode("utf-8-sig")
+    """Lê um arquivo CSV enviado por upload, detectando ; ou , como delimitador e suportando múltiplos encodings."""
+    raw = arquivo.read()
+    conteudo = ""
+    for enc in ("utf-8-sig", "latin1", "cp1252", "iso-8859-1"):
+        try:
+            conteudo = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if not conteudo:
+        conteudo = raw.decode("latin1", errors="replace")
     delimitador = ";" if conteudo.count(";") >= conteudo.count(",") else ","
     linhas = list(csv.reader(io.StringIO(conteudo), delimiter=delimitador))
     if not linhas:
@@ -56,7 +68,7 @@ def _csv_response(cabecalho, linhas, nome_arquivo):
 # ---------------------------------------------------------------------------
 
 ABAS_ADMINISTRACAO = (
-    "estabelecimentos", "cbo", "procedimentos", "profissionais", "portaria", "importar", "backup", "logs",
+    "estabelecimentos", "cbo", "procedimentos", "conversoes", "profissionais", "portaria", "importar", "backup", "logs",
 )
 
 
@@ -153,6 +165,25 @@ def procedimentos_partial():
     # navegador e precisa enxergar todos os procedimentos (~5 mil linhas, HTML enxuto).
     itens = db.execute("SELECT * FROM procedimentos ORDER BY nome").fetchall()
     return render_template("contratos/cadastros/procedimentos.html", itens=itens, partial=True)
+
+
+@bp.route("/conversoes/partial", methods=["GET"])
+def conversoes_partial():
+    db = get_db()
+    itens = db.execute("SELECT * FROM de_para_procedimentos ORDER BY cod_siga").fetchall()
+    padrao_csv = os.path.join(config_module.BASE_DIR, "SIGA_-_Procedimentos_Municipais*.csv")
+    matches = glob.glob(padrao_csv)
+    arquivo_padrao = os.path.basename(matches[0]) if matches else None
+    total_conversoes = len(itens)
+    total_ativas = sum(1 for i in itens if i["ativo"] == 1)
+    return render_template(
+        "contratos/cadastros/conversoes.html",
+        itens=itens,
+        arquivo_padrao=arquivo_padrao,
+        total_conversoes=total_conversoes,
+        total_ativas=total_ativas,
+        partial=True,
+    )
 
 
 @bp.route("/portaria/partial", methods=["GET"])
@@ -992,6 +1023,294 @@ def buscar_procedimentos_json():
             (f"%{termo}%", f"%{termo}%"),
         ).fetchall()
     return jsonify([dict(i) for i in itens])
+
+
+# ---------------------------------------------------------------------------
+# CONVERSÕES DE PROCEDIMENTOS (DE-PARA SIGA -> SIGTAP)
+# ---------------------------------------------------------------------------
+
+@bp.route("/conversoes", methods=["GET"])
+def conversoes():
+    """Tela avulsa antiga: agora só leva para a aba dentro do Painel de Administração."""
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/nova", methods=["POST"])
+def nova_conversao():
+    db = get_db()
+    cod_siga_dig = (request.form.get("cod_siga") or "").strip()
+    cod_sigtap_dig = (request.form.get("cod_sigtap") or "").strip()
+    proc_siga = (request.form.get("procedimento_siga") or "").strip()
+    proc_sigtap = (request.form.get("procedimento_sigtap") or "").strip()
+    obs = (request.form.get("observacao") or "").strip()
+    ativo = 1 if request.form.get("ativo", "1") in ("1", "on", "true") else 0
+
+    cod_siga = normalizar_cod_procedimento(cod_siga_dig)
+    cod_sigtap = normalizar_cod_procedimento(cod_sigtap_dig)
+
+    if not cod_siga or not cod_sigtap:
+        flash("Informe o Código SIGA e o Código SIGTAP para cadastrar a conversão.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+    if not proc_siga:
+        row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (cod_siga,)).fetchone()
+        if row:
+            proc_siga = row["nome"]
+    if not proc_sigtap:
+        row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (cod_sigtap,)).fetchone()
+        if row:
+            proc_sigtap = row["nome"]
+
+    try:
+        db.execute("""
+            INSERT INTO de_para_procedimentos (cod_siga, procedimento_siga, cod_sigtap, procedimento_sigtap, ativo, observacao, atualizado_em)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(cod_siga) DO UPDATE SET
+                procedimento_siga = excluded.procedimento_siga,
+                cod_sigtap = excluded.cod_sigtap,
+                procedimento_sigtap = excluded.procedimento_sigtap,
+                ativo = excluded.ativo,
+                observacao = excluded.observacao,
+                atualizado_em = CURRENT_TIMESTAMP
+        """, (cod_siga, proc_siga, cod_sigtap, proc_sigtap, ativo, obs))
+
+        if proc_siga:
+            db.execute("INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)", (cod_siga, proc_siga))
+        if proc_sigtap:
+            db.execute("INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)", (cod_sigtap, proc_sigtap))
+
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash(f"Conversão cadastrada com sucesso: {cod_siga} ➔ {cod_sigtap}.", "sucesso")
+    except Exception as exc:
+        flash(f"Erro ao salvar conversão: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/<int:id>/editar", methods=["POST"])
+def editar_conversao(id):
+    db = get_db()
+    cod_sigtap_dig = (request.form.get("cod_sigtap") or "").strip()
+    proc_siga = (request.form.get("procedimento_siga") or "").strip()
+    proc_sigtap = (request.form.get("procedimento_sigtap") or "").strip()
+    obs = (request.form.get("observacao") or "").strip()
+    ativo = 1 if request.form.get("ativo", "1") in ("1", "on", "true") else 0
+
+    cod_sigtap = normalizar_cod_procedimento(cod_sigtap_dig) if cod_sigtap_dig else ""
+
+    if not cod_sigtap:
+        flash("Informe o Código SIGTAP de destino.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+    if not proc_sigtap:
+        row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (cod_sigtap,)).fetchone()
+        if row:
+            proc_sigtap = row["nome"]
+
+    try:
+        db.execute("""
+            UPDATE de_para_procedimentos
+            SET cod_sigtap = ?, procedimento_siga = ?, procedimento_sigtap = ?, ativo = ?, observacao = ?, atualizado_em = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (cod_sigtap, proc_siga, proc_sigtap, ativo, obs, id))
+
+        if proc_sigtap:
+            db.execute("INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)", (cod_sigtap, proc_sigtap))
+
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Conversão atualizada com sucesso.", "sucesso")
+    except Exception as exc:
+        flash(f"Erro ao atualizar conversão: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/<int:id>/toggle", methods=["POST"])
+def toggle_conversao(id):
+    db = get_db()
+    try:
+        db.execute("UPDATE de_para_procedimentos SET ativo = 1 - ativo, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?", (id,))
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Status da conversão alterado com sucesso.", "sucesso")
+    except Exception as exc:
+        flash(f"Erro ao alterar status: {exc}", "erro")
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/<int:id>/excluir", methods=["POST"])
+def excluir_conversao(id):
+    db = get_db()
+    try:
+        db.execute("DELETE FROM de_para_procedimentos WHERE id = ?", (id,))
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Conversão excluída com sucesso.", "sucesso")
+    except Exception as exc:
+        flash(f"Erro ao excluir conversão: {exc}", "erro")
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/bulk_excluir", methods=["POST"])
+def bulk_excluir_conversoes():
+    db = get_db()
+    ids = request.form.getlist("selecionados")
+    if not ids:
+        flash("Marque pelo menos uma conversão para excluir.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+    excluidos = 0
+    for cid in ids:
+        try:
+            db.execute("DELETE FROM de_para_procedimentos WHERE id = ?", (int(cid),))
+            excluidos += 1
+        except Exception:
+            pass
+    db.commit()
+    sincronizar_apuracao_dinamica(db)
+    flash(f"{excluidos} conversão(ões) excluída(s).", "sucesso" if excluidos else "erro")
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/importar_csv", methods=["POST"])
+def importar_conversoes_csv():
+    db = get_db()
+    usar_pasta = request.form.get("usar_arquivo_pasta") == "1"
+    apenas_com_sigtap = request.form.get("apenas_com_sigtap", "1") == "1"
+
+    linhas_dados = []
+
+    if usar_pasta:
+        padrao_csv = os.path.join(config_module.BASE_DIR, "SIGA_-_Procedimentos_Municipais*.csv")
+        matches = glob.glob(padrao_csv)
+        if not matches:
+            flash("Nenhum arquivo SIGA_-_Procedimentos_Municipais*.csv encontrado na pasta do contrato.", "erro")
+            return redirect(url_for("cadastros.administracao", aba="conversoes"))
+        caminho_arquivo = matches[0]
+        conteudo = None
+        for enc in ("latin1", "cp1252", "utf-8-sig", "iso-8859-1"):
+            try:
+                with open(caminho_arquivo, "r", encoding=enc) as f:
+                    conteudo = f.read()
+                    break
+            except UnicodeDecodeError:
+                continue
+        if not conteudo:
+            with open(caminho_arquivo, "r", encoding="latin1", errors="replace") as f:
+                conteudo = f.read()
+        delimitador = ";" if conteudo.count(";") >= conteudo.count(",") else ","
+        reader = list(csv.reader(io.StringIO(conteudo), delimiter=delimitador))
+        if reader:
+            cabecalho = [c.strip().lower().replace('"', '') for c in reader[0]]
+            linhas_dados = (cabecalho, reader[1:])
+    else:
+        arquivo = request.files.get("arquivo")
+        if not arquivo or not arquivo.filename:
+            flash("Selecione um arquivo CSV para importar.", "erro")
+            return redirect(url_for("cadastros.administracao", aba="conversoes"))
+        cabecalho, linhas = _ler_csv_upload(arquivo)
+        linhas_dados = (cabecalho, linhas)
+
+    cabecalho, linhas = linhas_dados
+    if not cabecalho:
+        flash("O arquivo selecionado está vazio.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+    idx_siga = None
+    idx_proc_siga = None
+    idx_sigtap = None
+    idx_proc_sigtap = None
+
+    for i, col in enumerate(cabecalho):
+        c = col.replace("_", "").replace("-", "").strip().lower()
+        if "codsiga" in c or c == "siga" or "codprocedimentosiga" in c or c == "codigomunicipal":
+            idx_siga = i
+        elif "procedimentosiga" in c or "nomesiga" in c or "descsiga" in c:
+            idx_proc_siga = i
+        elif "codsigtap" in c or c == "sigtap" or "codprocedimentosigtap" in c or c == "codigoestadual" or c == "codigonacional":
+            idx_sigtap = i
+        elif "procedimentosigtap" in c or "nomesigtap" in c or "descsigtap" in c:
+            idx_proc_sigtap = i
+
+    if idx_siga is None and len(cabecalho) > 0:
+        idx_siga = 0
+    if idx_sigtap is None and len(cabecalho) > 2:
+        idx_sigtap = 2
+    if idx_proc_siga is None and len(cabecalho) > 1:
+        idx_proc_siga = 1
+    if idx_proc_sigtap is None and len(cabecalho) > 3:
+        idx_proc_sigtap = 3
+
+    if idx_siga is None or idx_sigtap is None:
+        flash("Não foi possível identificar as colunas COD_SIGA e COD_SIGTAP no arquivo.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+    mapeados = {}
+    for linha in linhas:
+        if len(linha) <= max(idx_siga, idx_sigtap):
+            continue
+        siga_raw = linha[idx_siga].replace('"', '').strip()
+        sigtap_raw = linha[idx_sigtap].replace('"', '').strip()
+        proc_siga_raw = linha[idx_proc_siga].replace('"', '').strip() if idx_proc_siga is not None and len(linha) > idx_proc_siga else ""
+        proc_sigtap_raw = linha[idx_proc_sigtap].replace('"', '').strip() if idx_proc_sigtap is not None and len(linha) > idx_proc_sigtap else ""
+
+        if not siga_raw:
+            continue
+
+        cod_siga = normalizar_cod_procedimento(siga_raw)
+        cod_sigtap = normalizar_cod_procedimento(sigtap_raw) if sigtap_raw else ""
+
+        if apenas_com_sigtap and not cod_sigtap:
+            continue
+
+        if cod_siga not in mapeados or (not mapeados[cod_siga][1] and cod_sigtap):
+            mapeados[cod_siga] = (proc_siga_raw, cod_sigtap, proc_sigtap_raw)
+
+    total_inseridos = 0
+    for cod_siga, (proc_siga, cod_sigtap, proc_sigtap) in mapeados.items():
+        if not proc_siga:
+            row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (cod_siga,)).fetchone()
+            if row:
+                proc_siga = row["nome"]
+        if not proc_sigtap and cod_sigtap:
+            row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (cod_sigtap,)).fetchone()
+            if row:
+                proc_sigtap = row["nome"]
+
+        db.execute("""
+            INSERT INTO de_para_procedimentos (cod_siga, procedimento_siga, cod_sigtap, procedimento_sigtap, ativo, atualizado_em)
+            VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT(cod_siga) DO UPDATE SET
+                procedimento_siga = excluded.procedimento_siga,
+                cod_sigtap = excluded.cod_sigtap,
+                procedimento_sigtap = excluded.procedimento_sigtap,
+                ativo = 1,
+                atualizado_em = CURRENT_TIMESTAMP
+        """, (cod_siga, proc_siga, cod_sigtap, proc_sigtap))
+
+        if proc_siga:
+            db.execute("INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)", (cod_siga, proc_siga))
+        if proc_sigtap:
+            db.execute("INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)", (cod_sigtap, proc_sigtap))
+
+        total_inseridos += 1
+
+    db.commit()
+    sincronizar_apuracao_dinamica(db)
+    flash(f"Importação realizada com sucesso: {total_inseridos} conversão(ões) de procedimentos cadastradas/atualizadas.", "sucesso")
+    return redirect(url_for("cadastros.administracao", aba="conversoes"))
+
+
+@bp.route("/conversoes/exportar_csv", methods=["GET"])
+def exportar_conversoes_csv():
+    db = get_db()
+    itens = db.execute("SELECT cod_siga, procedimento_siga, cod_sigtap, procedimento_sigtap, ativo, observacao FROM de_para_procedimentos ORDER BY cod_siga").fetchall()
+    cabecalho = ["COD_SIGA", "PROCEDIMENTO_SIGA", "COD_SIGTAP", "PROCEDIMENTO_SIGTAP", "ATIVO", "OBSERVACAO"]
+    linhas = [[i["cod_siga"], i["procedimento_siga"] or "", i["cod_sigtap"], i["procedimento_sigtap"] or "", "1" if i["ativo"] else "0", i["observacao"] or ""] for i in itens]
+    return _csv_response(cabecalho, linhas, "conversoes_procedimentos_siga_sigtap.csv")
+
 
 
 # ---------------------------------------------------------------------------
