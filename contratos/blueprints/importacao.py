@@ -789,3 +789,32 @@ def upload_visita_domiciliar():
         flash(f"Erro ao importar Visita Domiciliar Periódica: {exc}", "erro")
 
     return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at57", methods=["POST"])
+def upload_at57():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT57", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT57")
+        registrar_log(db, "AT57", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-57 (Atendimento PICs) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P09, P10, P19 e P20.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-57: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+

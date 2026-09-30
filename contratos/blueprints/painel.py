@@ -511,8 +511,19 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
         return db.execute(sql, params).fetchall()
 
     # 4. PICS (P09, P10, P19, P20) ou Grupos (P11, P21) - SSRS
-    if ind_cod in ("P09", "P10", "P19", "P20", "P11", "P21"):
-        fonte = "AT57" if ind_cod in ("P09", "P10", "P19", "P20") else "AT61"
+    if ind_cod in ("P09", "P10", "P19", "P20"):
+        marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
+        row = db.execute(
+            f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
+                WHERE indicador_id = ? AND estabelecimento_id IN ({marc_estabs}) AND periodo = ? AND tipo_registro = 'apurado'""",
+            [indicador_id, *estabelecimento_ids, str(periodo or "")],
+        ).fetchone()
+        tot = int(row["tot"]) if row and row["tot"] is not None else 0
+        desc = "Práticas Integrativas (PICS Individuais)" if ind_cod in ("P09", "P19") else "Práticas Integrativas (PICS Coletivas)"
+        return [{"nome_profissional": f"Consolidado SIGA ({desc})", "cbo_codigo": cbo_codigo, "cbo_nome": desc, "apurado": tot}]
+
+    if ind_cod in ("P11", "P21"):
+        fonte = "AT61"
         marc_cnes = ",".join("?" * len(cnes_list)) if cnes_list else "''"
         row = db.execute(
             f"""SELECT SUM(quantidade) AS tot FROM staging_bi_siga
@@ -520,7 +531,7 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
             [fonte, str(periodo or ""), f"%{periodo}%", *cnes_list],
         ).fetchone()
         tot = int(row["tot"]) if row and row["tot"] is not None else 0
-        desc = "Práticas Integrativas (PICS)" if fonte == "AT57" else "Grupos e Atendimentos"
+        desc = "Grupos e Atendimentos"
         return [{"nome_profissional": f"Consolidado SIGA ({desc})", "cbo_codigo": cbo_codigo, "cbo_nome": desc, "apurado": tot}]
 
     # 5. Outros SSRS (P25 [PAI], P29 [CAPS], P36 [CER], P38 [CEO], P41 [APD], P27 [URSI])
@@ -639,13 +650,17 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
 
     # 4. PICS (P09, P10, P19, P20)
     if ind_cod in ("P09", "P10", "P19", "P20"):
-        marc_cnes = ",".join("?" * len(cnes_list)) if cnes_list else "''"
-        sql = f"""SELECT s.procedimento_codigo AS codigo, s.procedimento_nome AS nome, SUM(s.quantidade) AS apurado
-                  FROM staging_bi_siga s
-                  WHERE s.fonte_at = 'AT57' AND (s.ano_mes = ? OR s.ano_mes LIKE ?) AND s.cod_cnes IN ({marc_cnes})
-                  GROUP BY s.procedimento_codigo, s.procedimento_nome
+        marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
+        sql = f"""SELECT f.procedimento_codigo AS codigo,
+                         COALESCE(p.nome, 'Procedimento ' || f.procedimento_codigo) AS nome,
+                         SUM(f.quantidade) AS apurado
+                  FROM fato_apuracao f
+                  LEFT JOIN procedimentos p ON p.codigo = f.procedimento_codigo
+                  WHERE f.indicador_id = ? AND f.estabelecimento_id IN ({marc_estabs}) AND f.periodo = ?
+                    AND f.tipo_registro = 'apurado' AND f.quantidade > 0
+                  GROUP BY f.procedimento_codigo, p.nome
                   ORDER BY apurado DESC"""
-        rows = db.execute(sql, [str(periodo or ""), f"%{periodo}%", *cnes_list]).fetchall()
+        rows = db.execute(sql, [indicador_id, *estabelecimento_ids, str(periodo or "")]).fetchall()
         return [{**dict(r), "considerado": True} for r in rows]
 
     # 5. Grupos (P11, P21)

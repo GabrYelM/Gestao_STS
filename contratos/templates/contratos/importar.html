@@ -327,7 +327,7 @@
                       </form>
 
                       <!-- Visitas eSUS Individual -->
-                      <form method="post" action="{{ url_for('importacao.upload_visita_domiciliar') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                      <form method="post" action="{{ url_for('importacao.upload_visita_domiciliar') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border mb-2">
                         <div class="fw-bold small text-dark mb-1">Upload Isolado: Visitas Domiciliares (eSUS)</div>
                         <div class="d-flex gap-2 mb-1">
                           <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
@@ -335,6 +335,16 @@
                         </div>
                         <div class="d-flex gap-2">
                           <input type="text" name="supervisao_filtro" placeholder="Ex: SUDESTE - PENHA" class="form-control form-control-sm">
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-57 PICs Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at57') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-57 (Atendimento PICs)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
                           <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
                         </div>
                       </form>
@@ -353,6 +363,7 @@
                             <option value="AT02">SIGA AT-02</option>
                             <option value="WEBSSAS">WebSaass</option>
                             <option value="VISITA_DOMICILIAR">Visita Domiciliar</option>
+                            <option value="AT57">SIGA AT-57 (PICs)</option>
                           </select>
                         </div>
                         <div class="col-6">

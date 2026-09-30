@@ -165,6 +165,87 @@
   </ul>
 </div>
 
+<!-- ===================================================================
+     VÍNCULO DE UNIDADES DE REFERÊNCIA (De/Para)
+     Útil para relatórios com equipes de apoio/volantes (ex.: eMulti / eMAB no AT-57),
+     onde a produção da equipe ou unidade no relatório deve somar na unidade de referência contratada.
+     =================================================================== -->
+<div class="card" id="vinculos-unidade">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+    <div>
+      <h2 style="margin:0 0 4px">Vínculo de Unidades de Referência (De/Para)</h2>
+      <p class="subtitulo-pagina" style="margin:0">
+        Indique para qual unidade contratada a produção vinda no relatório deve ser direcionada (ex.: equipes eMulti/eMAB do AT-57).
+        Caso não haja vínculo manual cadastrado, o sistema aplica automaticamente a regra do último nome da equipe eMulti.
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('cadastros.autovincular_emulti', indicador_id=indicador.id) }}">
+      <button type="submit" class="btn-secondary btn-sm" title="Carregar automaticamente todas as equipes eMulti/eMAB presentes nos relatórios aplicando a regra do último nome">
+        ⚡ Auto-vincular eMulti pelo Último Nome
+      </button>
+    </form>
+  </div>
+
+  <form method="post" action="{{ url_for('cadastros.add_vinculo_unidade', indicador_id=indicador.id) }}" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px;padding:12px;background:#f8fafc;border:1px solid var(--cor-borda);border-radius:var(--raio-sm)">
+    <div style="flex:1;min-width:240px">
+      <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Nome no Relatório (Origem)</label>
+      <input type="text" name="nome_origem" list="lista-nomes-origem" placeholder="Ex: Emulti Vila Matilde/Maringa" autocomplete="off" required style="width:100%;margin:0">
+      <datalist id="lista-nomes-origem">
+        {% for no in nomes_origem_disponiveis %}
+        <option value="{{ no }}">
+        {% endfor %}
+      </datalist>
+    </div>
+
+    <div style="flex:1;min-width:240px">
+      <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Unidade de Destino no Contrato</label>
+      <div class="busca-wrap">
+        <input type="text" id="busca-estab-vinculounidade" autocomplete="off" placeholder="Buscar unidade de destino..." required style="width:100%;margin:0">
+        <div class="busca-resultados" id="resultados-estab-vinculounidade"></div>
+      </div>
+      <input type="hidden" name="estabelecimento_id" id="estabelecimento_id_hidden-vinculounidade">
+    </div>
+
+    <div>
+      <button type="submit" class="btn-primary" style="margin:0;padding:7px 16px">Vincular Unidade</button>
+    </div>
+  </form>
+
+  <div class="table-card" style="margin-top:14px">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome no Relatório (Origem)</th>
+          <th>Unidade de Referência (Destino no Contrato)</th>
+          <th style="width:120px">CNES Destino</th>
+          <th style="width:80px;text-align:right">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for vu in vinculos_unidade %}
+        <tr>
+          <td><strong>{{ vu.nome_origem }}</strong></td>
+          <td>{{ vu.estabelecimento_nome }}</td>
+          <td>{{ vu.cod_cnes or '-' }}</td>
+          <td style="text-align:right">
+            <form method="post" action="{{ url_for('cadastros.remover_vinculo_unidade', indicador_id=indicador.id, vinculo_id=vu.id) }}" style="display:inline">
+              <button type="submit" class="btn-link" style="color:var(--cor-perigo);font-size:12px" onclick="return confirm('Remover o vínculo desta unidade?')">remover</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" style="color:var(--cor-texto-muted)">
+            Nenhum vínculo personalizado cadastrado. A apuração usará a resolução automática padrão (regra do último nome para eMulti/eMAB).
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
 {% if vinculos_cbo | selectattr('curinga') | list %}
 <!-- ===================================================================
      EXCEÇÕES (v7) - só fazem sentido quando o indicador aceita "qualquer
@@ -652,6 +733,7 @@ criarBuscaProcedimento('geral');
 criarBuscaCbo('excecao');
 criarBuscaEstabelecimento('excecao');
 criarBuscaEstabelecimento('cnesalt');
+criarBuscaEstabelecimento('vinculounidade');
 {% for sg in subgrupos %}
 criarBuscaCbo('sg{{ sg.id }}');
 criarBuscaProcedimento('sg{{ sg.id }}');

@@ -326,6 +326,19 @@ CREATE TABLE indicador_estabelecimento_cnes_alternativo (
 CREATE INDEX idx_ind_estab_cnes_alt_indicador ON indicador_estabelecimento_cnes_alternativo(indicador_id);
 CREATE INDEX idx_ind_estab_cnes_alt_cnes ON indicador_estabelecimento_cnes_alternativo(cnes_alternativo);
 
+-- De/Para de unidades de referência para indicadores (ex.: equipes eMulti/eMAB
+-- no AT-57, onde o nome no relatório deve somar na unidade de referência).
+CREATE TABLE indicador_unidade_origem (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    indicador_id        INTEGER NOT NULL REFERENCES indicadores(id) ON DELETE CASCADE,
+    nome_origem         TEXT NOT NULL,
+    estabelecimento_id  INTEGER NOT NULL REFERENCES estabelecimentos(id),
+    criado_em           TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (indicador_id, nome_origem)
+);
+CREATE INDEX idx_ind_unidade_origem ON indicador_unidade_origem(indicador_id);
+
+
 CREATE TABLE indicador_procedimento (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     indicador_id            INTEGER NOT NULL REFERENCES indicadores(id) ON DELETE CASCADE,

@@ -1561,6 +1561,23 @@ def detalhe_indicador(indicador_id):
         (indicador_id,),
     ).fetchall()
 
+    vinculos_unidade = db.execute(
+        """SELECT uo.id, uo.nome_origem, uo.estabelecimento_id, es.nome AS estabelecimento_nome, es.cod_cnes
+           FROM indicador_unidade_origem uo
+           LEFT JOIN estabelecimentos es ON es.id = uo.estabelecimento_id
+           WHERE uo.indicador_id=?
+           ORDER BY uo.nome_origem""",
+        (indicador_id,),
+    ).fetchall()
+
+    nomes_origem_disponiveis = [
+        r["nome_estabelecimento"] for r in db.execute(
+            """SELECT DISTINCT nome_estabelecimento FROM staging_bi_siga
+               WHERE nome_estabelecimento IS NOT NULL AND trim(nome_estabelecimento) != ''
+               ORDER BY nome_estabelecimento"""
+        ).fetchall()
+    ]
+
     categorias_lista = db.execute("SELECT nome FROM categorias_estabelecimento ORDER BY nome").fetchall()
 
     return render_template("contratos/cadastros/indicador_detalhe.html",
@@ -1573,6 +1590,8 @@ def detalhe_indicador(indicador_id):
         excecoes_estabelecimento=excecoes_estabelecimento,
         tipos_equipe_cadastrados=tipos_equipe_cadastrados,
         cnes_alternativos=cnes_alternativos,
+        vinculos_unidade=vinculos_unidade,
+        nomes_origem_disponiveis=nomes_origem_disponiveis,
     )
 
 
@@ -2098,6 +2117,60 @@ def remover_cnes_alternativo(indicador_id, cnes_alt_id):
     db.execute("DELETE FROM indicador_estabelecimento_cnes_alternativo WHERE id=?", (cnes_alt_id,))
     db.commit()
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+
+
+@bp.route("/indicadores/<int:indicador_id>/vinculo_unidade", methods=["POST"])
+def add_vinculo_unidade(indicador_id):
+    db = get_db()
+    nome_origem = (request.form.get("nome_origem") or "").strip()
+    estabelecimento_id = request.form.get("estabelecimento_id") or None
+    if not nome_origem or not estabelecimento_id:
+        flash("Informe o nome da unidade no relatório e selecione a unidade de destino.", "erro")
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="vinculos-unidade"))
+
+    existe = db.execute("SELECT 1 FROM estabelecimentos WHERE id=?", (estabelecimento_id,)).fetchone()
+    if not existe:
+        flash(f"Estabelecimento id '{estabelecimento_id}' não encontrado.", "erro")
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="vinculos-unidade"))
+
+    try:
+        db.execute(
+            """INSERT INTO indicador_unidade_origem (indicador_id, nome_origem, estabelecimento_id)
+               VALUES (?, ?, ?)
+               ON CONFLICT(indicador_id, nome_origem)
+               DO UPDATE SET estabelecimento_id=excluded.estabelecimento_id""",
+            (indicador_id, nome_origem, estabelecimento_id),
+        )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Vínculo de unidade cadastrado com sucesso.", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao cadastrar vínculo de unidade: {exc}", "erro")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="vinculos-unidade"))
+
+
+@bp.route(
+    "/indicadores/<int:indicador_id>/vinculo_unidade/<int:vinculo_id>/remover",
+    methods=["POST"],
+)
+def remover_vinculo_unidade(indicador_id, vinculo_id):
+    db = get_db()
+    db.execute("DELETE FROM indicador_unidade_origem WHERE id=? AND indicador_id=?", (vinculo_id, indicador_id))
+    db.commit()
+    sincronizar_apuracao_dinamica(db)
+    flash("Vínculo de unidade removido.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="vinculos-unidade"))
+
+
+@bp.route("/indicadores/<int:indicador_id>/autovincular_emulti", methods=["POST"])
+def autovincular_emulti(indicador_id):
+    db = get_db()
+    from ..funcoes import autovincular_emulti_indicador
+    total = autovincular_emulti_indicador(db, indicador_id)
+    sincronizar_apuracao_dinamica(db)
+    flash(f"{total} vínculo(s) de eMulti mapeados automaticamente pela regra do último nome.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="vinculos-unidade"))
+
 
 
 # ---------------------------------------------------------------------------

@@ -177,6 +177,135 @@ def _resolver_estabelecimento_por_cnes(db, cod_cnes, indicador_id=None):
     return linhas[0]["id"], "ok"
 
 
+MAPEAMENTO_EMULTI_PADRAO = [
+    ("maringa", 52),       # Ubs Jardim Maringa - Vila Talarico
+    ("villalobo", 55),     # Ubs Dr. Antonio Pires Ferreira Villalobo
+    ("guilhermina", 66),   # Ubs Vila Guilhermina - Dr Americo Raspa Neto
+    ("nobrega", 5),        # Ama/Ubs Integrada Padre Manoel Da Nobrega
+    ("vila silvia", 6),    # Ama/Ubs Integrada Vila Silvia
+    ("silvia", 6),         # Ama/Ubs Integrada Vila Silvia
+    ("trindade", 57),      # Ubs Eng Trindade
+    ("ae carvalho", 53),   # Ubs Ae Carvalho
+    ("carvalho", 53),      # Ubs Ae Carvalho
+    ("chacara", 4),        # Ama/Ubs Integrada Chacara Cruzeiro Do Sul
+    ("esperanca", 63),     # Ubs Vila Esperanca-Cassio Bittencourt Filho
+    ("sao francisco", 58), # Ubs Jardim Sao Francisco I
+    ("arthur alvim", 60),  # Ubs Parque Arthur Alvim
+    ("anchieta", 61),      # Ubs Pe Jose De Anchieta
+    ("aricanduva", 62),    # Ubs Vila Aricanduva
+    ("goulart", 56),       # Ubs Eng Goulart- Dr Jose Pires
+    ("granada", 65),       # Ubs Vila Granada-Alfredo F Paulino Filho
+    ("matilde", 67),       # Ubs Vila Matilde - Dr Rubens Do Val
+    ("cangaiba", 21),      # Ama/Ubs Integrada Cangaiba - Dr. Carlos Gentile De Mello
+    ("patriarca", 54),     # Ubs Cidade Patriarca - Dr Hermenegildo Morbin Junior
+    ("emilio", 64),        # Ubs Vila Esperanca-Emilio Santiago De Oliveira
+    ("sao nicolau", 59),   # Ubs Jardim Sao Nicolau
+]
+
+
+def resolver_unidade_at57(db, nome_estabelecimento, cod_cnes=None, indicador_id=None):
+    """
+    Resolve o estabelecimento de destino para linhas do relatório AT-57.
+    Aplica:
+      1. Vínculo manual explícito da tabela indicador_unidade_origem (se indicador_id informado).
+      2. Regra de eMulti/eMAB: o último nome (após '/') define a unidade de referência.
+      3. Caso geral: resolução por CNES ou nome direto da unidade.
+    """
+    nome = (nome_estabelecimento or "").strip()
+    if not nome:
+        return None, None
+
+    # 1. Checa indicador_unidade_origem para o indicador específico
+    if indicador_id:
+        row = db.execute(
+            """SELECT uo.estabelecimento_id, e.nome
+               FROM indicador_unidade_origem uo
+               JOIN estabelecimentos e ON e.id = uo.estabelecimento_id
+               WHERE uo.indicador_id = ? AND lower(trim(uo.nome_origem)) = lower(trim(?))""",
+            (indicador_id, nome),
+        ).fetchone()
+        if row:
+            return row["estabelecimento_id"], row["nome"]
+
+    # 2. Regra de eMulti/eMAB pelo último nome
+    nome_low = nome.lower()
+    if "emulti" in nome_low or "emab" in nome_low:
+        partes = nome.split("/")
+        ultimo = partes[-1].strip()
+        for pref in ["inativo - emab ", "inativo -  emab ", "inativo - emulti ", "emulti ", "emab "]:
+            if ultimo.lower().startswith(pref):
+                ultimo = ultimo[len(pref):].strip()
+                break
+        u_low = ultimo.lower()
+        for termo, estab_id in MAPEAMENTO_EMULTI_PADRAO:
+            if termo in u_low:
+                e = db.execute("SELECT id, nome FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                if e:
+                    return e["id"], e["nome"]
+
+    # 3. Não é eMulti: busca por CNES
+    if cod_cnes:
+        cnes_str = str(cod_cnes).strip().lstrip("0")
+        cnes_matches = db.execute(
+            "SELECT id, nome FROM estabelecimentos WHERE ltrim(cod_cnes, '0') = ?", (cnes_str,)
+        ).fetchall()
+        for e in cnes_matches:
+            if nome_low in e["nome"].lower() or e["nome"].lower() in nome_low:
+                return e["id"], e["nome"]
+        if len(cnes_matches) == 1:
+            return cnes_matches[0]["id"], cnes_matches[0]["nome"]
+
+    # 4. Busca por nome direto
+    row = db.execute("SELECT id, nome FROM estabelecimentos WHERE lower(nome) = ?", (nome_low,)).fetchone()
+    if row:
+        return row["id"], row["nome"]
+    row = db.execute("SELECT id, nome FROM estabelecimentos WHERE lower(nome) LIKE ?", (f"%{nome_low}%",)).fetchone()
+    if row:
+        return row["id"], row["nome"]
+
+    return None, None
+
+
+def autovincular_emulti_indicador(db, indicador_id):
+    """
+    Popula indicador_unidade_origem para um indicador aplicando a regra do último
+    nome em todas as equipes eMulti/eMAB encontradas no staging do AT-57.
+    Vincula prioritariamente as equipes que atendem unidades com meta cadastrada
+    para este indicador (ou todas caso o indicador ainda não tenha metas).
+    """
+    estabs_meta = {
+        r["estabelecimento_id"] for r in db.execute(
+            "SELECT DISTINCT estabelecimento_id FROM metas WHERE indicador_id = ?", (indicador_id,)
+        ).fetchall()
+    }
+
+    linhas = db.execute(
+        """SELECT DISTINCT nome_estabelecimento, cod_cnes
+           FROM staging_bi_siga
+           WHERE fonte_at = 'AT57'
+             AND (lower(nome_estabelecimento) LIKE '%emulti%' OR lower(nome_estabelecimento) LIKE '%emab%')"""
+    ).fetchall()
+
+    criados = 0
+    for r in linhas:
+        nome_origem = r["nome_estabelecimento"]
+        estab_id, _ = resolver_unidade_at57(db, nome_origem, r["cod_cnes"], indicador_id=None)
+        if estab_id:
+            # Se o indicador tem metas, vincula apenas as equipes pertinentes a ele
+            if estabs_meta and estab_id not in estabs_meta:
+                continue
+            db.execute(
+                """INSERT INTO indicador_unidade_origem (indicador_id, nome_origem, estabelecimento_id)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(indicador_id, nome_origem)
+                   DO UPDATE SET estabelecimento_id = excluded.estabelecimento_id""",
+                (indicador_id, nome_origem, estab_id),
+            )
+            criados += 1
+    db.commit()
+    return criados
+
+
 def _categoria_contrato(db, estabelecimento_id):
     if not estabelecimento_id:
         return None
@@ -917,40 +1046,129 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         vinculadas += 1
 
         elif fat == "AT57":
+            ind_p09 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P09'").fetchone()
+            ind_p10 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P10'").fetchone()
+            ind_p19 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P19'").fetchone()
+            ind_p20 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P20'").fetchone()
+
+            metas_p09 = {r["estabelecimento_id"] for r in db.execute("SELECT DISTINCT estabelecimento_id FROM metas WHERE indicador_id = ?", (ind_p09["id"],)).fetchall()} if ind_p09 else set()
+            metas_p10 = {r["estabelecimento_id"] for r in db.execute("SELECT DISTINCT estabelecimento_id FROM metas WHERE indicador_id = ?", (ind_p10["id"],)).fetchall()} if ind_p10 else set()
+            metas_p19 = {r["estabelecimento_id"] for r in db.execute("SELECT DISTINCT estabelecimento_id FROM metas WHERE indicador_id = ?", (ind_p19["id"],)).fetchall()} if ind_p19 else set()
+            metas_p20 = {r["estabelecimento_id"] for r in db.execute("SELECT DISTINCT estabelecimento_id FROM metas WHERE indicador_id = ?", (ind_p20["id"],)).fetchall()} if ind_p20 else set()
+
             linhas = db.execute(
-                """SELECT cod_cnes, nome_estabelecimento, grupo, sum(quantidade) as total, max(importacao_id) as imp_id
+                """SELECT cod_cnes, nome_estabelecimento, grupo, procedimento_codigo, procedimento_nome,
+                          sum(quantidade) as total, max(importacao_id) as imp_id
                    FROM staging_bi_siga
                    WHERE fonte_at = 'AT57' AND (ano_mes = ? OR ano_mes LIKE ?)
-                   GROUP BY cod_cnes, nome_estabelecimento, grupo""",
+                   GROUP BY cod_cnes, nome_estabelecimento, grupo, procedimento_codigo, procedimento_nome""",
                 (periodo_norm, f"%{periodo_norm}%"),
             ).fetchall()
             for r in linhas:
                 total += 1
                 qty = int(r["total"] or 0)
-                estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+                if qty <= 0:
+                    continue
+
+                # Apenas unidades UBS, AMA/UBS e eMulti podem ser contadas; CAPS, CECCO, CER, CNR e outros não entram
+                nome_origem_low = (r["nome_estabelecimento"] or "").lower()
+                termos_nao_ubs = ("caps", "cecco", "cer", "cnr", "hospital dia", "teleassistencia")
+                if any(t in nome_origem_low for t in termos_nao_ubs):
+                    continue
+
+                grupo = (r["grupo"] or "").upper()
+                is_coletivo = "COLETIV" in grupo
+
+                # 1. Verifica se há vínculo explícito em indicador_unidade_origem
+                estab_id = None
+                ind_escolhido = None
+                candidatos = (ind_p10, ind_p20) if is_coletivo else (ind_p09, ind_p19)
+                for ind_candidato in candidatos:
+                    if not ind_candidato:
+                        continue
+                    v_row = db.execute(
+                        """SELECT uo.estabelecimento_id FROM indicador_unidade_origem uo
+                           WHERE uo.indicador_id = ? AND lower(trim(uo.nome_origem)) = lower(trim(?))""",
+                        (ind_candidato["id"], r["nome_estabelecimento"]),
+                    ).fetchone()
+                    if v_row:
+                        estab_id = v_row["estabelecimento_id"]
+                        ind_escolhido = ind_candidato
+                        break
+
+                # 2. Se não houver vínculo manual, aplica regra do último nome (eMulti) ou CNES/Nome
                 if not estab_id:
-                    estab_id = _resolver_estabelecimento_por_nome(db, r["nome_estabelecimento"])
-                if estab_id and qty > 0:
-                    servicos = [s[0].upper() for s in db.execute(
-                        "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (estab_id,)
-                    ).fetchall()]
-                    grupo = (r["grupo"] or "").upper()
-                    is_coletivo = "COLETIV" in grupo
-                    if "ESF" in servicos:
-                        p_code = "P10" if is_coletivo else "P09"
-                    elif any("UBS" in s for s in servicos):
-                        p_code = "P20" if is_coletivo else "P19"
+                    estab_id, _ = resolver_unidade_at57(db, r["nome_estabelecimento"], r["cod_cnes"])
+
+                if not estab_id:
+                    continue
+
+                estab_row = db.execute("SELECT nome FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                estab_nome = (estab_row["nome"] if estab_row else "").upper()
+                if any(t in estab_nome.lower() for t in termos_nao_ubs):
+                    continue
+
+                servicos = [s[0].upper() for s in db.execute(
+                    "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (estab_id,)
+                ).fetchall()]
+                is_ubs = "UBS" in estab_nome or any("UBS" in s or "ESF" in s or "TRAD" in s for s in servicos)
+
+                # Se a unidade de destino não for UBS/AMA-UBS, descarta
+                if not is_ubs:
+                    continue
+
+                # 3. Define o indicador correto por tipo de serviço:
+                # P09 e P10: apenas unidades da Estratégia de Saúde da Família (ESF)
+                # P19 e P20: apenas unidades Tradicionais (TRAD)
+                if not ind_escolhido:
+                    is_esf = any("ESF" in s for s in servicos)
+                    if is_esf:
+                        ind_escolhido = ind_p10 if is_coletivo else ind_p09
                     else:
-                        p_code = "P24" if is_coletivo else "P19"
-                    ind_row = db.execute("SELECT id FROM indicadores WHERE codigo = ?", (p_code,)).fetchone()
-                    if ind_row:
+                        ind_escolhido = ind_p20 if is_coletivo else ind_p19
+
+                if not ind_escolhido:
+                    continue
+
+                proc_cod = (r["procedimento_codigo"] or "").rstrip("A").strip()
+                if proc_cod:
+                    _garantir_procedimento(db, proc_cod, r["procedimento_nome"])
+
+                db.execute(
+                    """INSERT INTO fato_apuracao (
+                           fonte_id, importacao_id, estabelecimento_id, cbo_codigo, procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+                       ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'apurado')""",
+                    (fonte_id, r["imp_id"], estab_id, proc_cod or None, ind_escolhido["id"], periodo_norm, qty),
+                )
+                vinculadas += 1
+
+            # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+            for ind_item in (ind_p09, ind_p10, ind_p19, ind_p20):
+                if not ind_item:
+                    continue
+                iid = ind_item["id"]
+                estabs_meta = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id FROM metas m WHERE m.indicador_id = ?", (iid,)
+                ).fetchall()
+                for em in estabs_meta:
+                    eid = em["estabelecimento_id"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (iid, eid, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
                         db.execute(
                             """INSERT INTO fato_apuracao (
-                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
-                               ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
-                            (fonte_id, r["imp_id"], estab_id, ind_row["id"], periodo_norm, qty),
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, NULL, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, iid, periodo_norm),
                         )
-                        vinculadas += 1
 
         elif fat == "AT61":
             linhas = db.execute(
@@ -1007,7 +1225,7 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
         resumos[fat] = {"total_linhas": total, "linhas_vinculadas": vinculadas}
 
     db.commit()
-    return resumos
+    return resumos.get(fonte_at, {"total_linhas": 0, "linhas_vinculadas": 0}) if fonte_at else resumos
 
 
 def calcular_dtic_rel134(db, periodo, importacao_id=None):
@@ -1970,6 +2188,10 @@ resumir = resumir_consolidacao
 _modulo_atual = sys.modules[__name__]
 calculo = _modulo_atual
 consolidacao = _modulo_atual
-diagnostico_metas = _modulo_atual
+class _DiagnosticoMetasProxy:
+    diagnosticar = staticmethod(diagnosticar)
+    resumir = staticmethod(resumir_diagnostico_metas)
+
+diagnostico_metas = _DiagnosticoMetasProxy()
 pendencias = _modulo_atual
 carga_base = _modulo_atual

@@ -636,8 +636,16 @@ def _parse_numero_bi_siga(valor):
 
 
 def _encontrar_cabecalho_bi_siga(linhas, ancora):
+    import unicodedata
+    def _norm(s):
+        return "".join(c for c in unicodedata.normalize("NFD", str(s).lower()) if unicodedata.category(c) != "Mn").strip()
+
+    ancora_norm = _norm(ancora)
     for i, linha in enumerate(linhas):
-        if linha and linha[0].strip() == ancora:
+        if linha and _norm(linha[0]) == ancora_norm:
+            return i
+    for i, linha in enumerate(linhas):
+        if linha and any(_norm(c) == ancora_norm for c in linha):
             return i
     raise ValueError(f"Cabeçalho ('{ancora}') não encontrado no arquivo.")
 
@@ -654,9 +662,17 @@ def importar_bi_siga(fonte_at, caminho_arquivo, periodo_referencia, db, nome_arq
     cabecalho = [c.strip() for c in linhas[idx_cabecalho]]
     dados = linhas[idx_cabecalho + 1:]
 
+    import unicodedata
+    def _norm(s):
+        return "".join(c for c in unicodedata.normalize("NFD", str(s).lower()) if unicodedata.category(c) != "Mn").strip()
+
+    cabecalho_norm = [_norm(c) for c in cabecalho]
     indices = {}
     for col_csv, col_staging in config["mapa"].items():
-        if col_csv in cabecalho:
+        cn = _norm(col_csv)
+        if cn in cabecalho_norm:
+            indices[col_staging] = cabecalho_norm.index(cn)
+        elif col_csv in cabecalho:
             indices[col_staging] = cabecalho.index(col_csv)
 
     fonte_id_row = db.execute("SELECT id FROM fontes_dados WHERE nome = ?", (fonte_at,)).fetchone()
