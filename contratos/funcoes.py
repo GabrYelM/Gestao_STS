@@ -203,60 +203,29 @@ def _garantir_procedimento(db, codigo, nome):
 
 
 def _carregar_mapa_depara_procedimentos(db):
-    """Carrega em memória o mapa bidirecional de conversões ativas de procedimentos."""
-    try:
-        rows = db.execute(
-            "SELECT cod_siga, cod_sigtap FROM de_para_procedimentos WHERE ativo = 1 AND cod_sigtap IS NOT NULL AND cod_sigtap != ''"
-        ).fetchall()
-    except Exception:
-        return {}, {}
-
-    siga_para_sigtap = {}
-    sigtap_para_siga = {}
-    for r in rows:
-        siga = str(r["cod_siga"] or "").strip()
-        sigtap = str(r["cod_sigtap"] or "").strip()
-        if siga and sigtap:
-            siga_para_sigtap[siga] = sigtap
-            if sigtap not in sigtap_para_siga:
-                sigtap_para_siga[sigtap] = set()
-            sigtap_para_siga[sigtap].add(siga)
-    return siga_para_sigtap, sigtap_para_siga
+    """Traduções automáticas de SIGA para SIGTAP desativadas: apuração usa códigos exatos vinculados."""
+    return {}, {}
 
 
 def _obter_codigos_equivalentes(procedimento_codigo, mapa_depara=None):
     if not procedimento_codigo:
         return []
-    cod = str(procedimento_codigo).strip()
-    codigos = {cod}
-    if mapa_depara:
-        siga_para_sigtap, sigtap_para_siga = mapa_depara
-        if cod in siga_para_sigtap:
-            codigos.add(siga_para_sigtap[cod])
-        if cod in sigtap_para_siga:
-            codigos.update(sigtap_para_siga[cod])
-    return list(codigos)
+    return [str(procedimento_codigo).strip()]
 
 
 def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, categoria_estabelecimento=None, fonte_id=None, mapa_depara=None):
-    if mapa_depara is None:
-        mapa_depara = _carregar_mapa_depara_procedimentos(db)
-
-    codigos_busca = _obter_codigos_equivalentes(procedimento_codigo, mapa_depara)
-    if not codigos_busca:
+    if not procedimento_codigo:
         return []
-
-    placeholders = ",".join("?" for _ in codigos_busca)
-    params_incl = list(codigos_busca) + [estabelecimento_id, fonte_id, fonte_id]
+    cod = str(procedimento_codigo).strip()
 
     incluidos = db.execute(
-        f"""SELECT ip.indicador_id, ip.subgrupo_id, ip.categoria_estabelecimento, ip.categoria_estabelecimento_neg
+        """SELECT ip.indicador_id, ip.subgrupo_id, ip.categoria_estabelecimento, ip.categoria_estabelecimento_neg
            FROM indicador_procedimento ip
            JOIN indicadores i ON i.id = ip.indicador_id
-           WHERE ip.procedimento_codigo IN ({placeholders}) AND ip.tipo_vinculo = 'inclusao'
+           WHERE ip.procedimento_codigo = ? AND ip.tipo_vinculo = 'inclusao'
              AND (ip.estabelecimento_id IS NULL OR ip.estabelecimento_id = ?)
              AND (? IS NULL OR i.fonte_id IS NULL OR i.fonte_id = ?)""",
-        params_incl,
+        (cod, estabelecimento_id, fonte_id, fonte_id),
     ).fetchall()
 
     cat_estab = (categoria_estabelecimento or "").strip().lower()
@@ -277,14 +246,13 @@ def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, 
             continue
         vistos.add(chave)
 
-        params_excl = [indicador_id] + list(codigos_busca) + [estabelecimento_id, subgrupo_id]
         excluido = db.execute(
-            f"""SELECT 1 FROM indicador_procedimento
-               WHERE indicador_id = ? AND procedimento_codigo IN ({placeholders}) AND tipo_vinculo = 'exclusao'
+            """SELECT 1 FROM indicador_procedimento
+               WHERE indicador_id = ? AND procedimento_codigo = ? AND tipo_vinculo = 'exclusao'
                  AND (estabelecimento_id IS NULL OR estabelecimento_id = ?)
                  AND (subgrupo_id IS NULL OR subgrupo_id = ?)
                LIMIT 1""",
-            params_excl,
+            (indicador_id, cod, estabelecimento_id, subgrupo_id),
         ).fetchone()
         if not excluido:
             resultado.append((indicador_id, subgrupo_id))
@@ -762,7 +730,8 @@ def calcular_visita_domiciliar(db, periodo, importacao_id=None):
     """Gera fato_apuracao (tipo_registro='apurado') para o indicador P06/P6 a partir de staging_visita_domiciliar."""
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='VISITA_DOMICILIAR'").fetchone()["id"]
     periodo_norm = _normalizar_periodo(periodo)
-    ano_mes_cond = (periodo_norm[:4], periodo_norm[4:6])
+    ano_ref = periodo_norm[:4]
+    mes_ref = int(periodo_norm[4:6]) if len(periodo_norm) >= 6 and periodo_norm[4:6].isdigit() else 1
 
     db.execute("DELETE FROM fato_apuracao WHERE periodo = ? AND fonte_id = ?", (periodo_norm, fonte_id))
 
@@ -771,8 +740,8 @@ def calcular_visita_domiciliar(db, periodo, importacao_id=None):
         or db.execute("SELECT id FROM indicadores WHERE fonte_id = ? ORDER BY id LIMIT 1", (fonte_id,)).fetchone()
     )
 
-    query = "SELECT * FROM staging_visita_domiciliar WHERE (ano || mes) = ? OR (ano = ? AND mes = ?)"
-    params = [periodo_norm, ano_mes_cond[0], ano_mes_cond[1]]
+    query = "SELECT * FROM staging_visita_domiciliar WHERE ano = ? AND (CAST(mes AS INT) = ? OR mes = ?)"
+    params = [ano_ref, mes_ref, f"{mes_ref:02d}"]
     if importacao_id:
         query += " AND importacao_id = ?"
         params.append(importacao_id)
@@ -809,7 +778,7 @@ def calcular_visita_domiciliar(db, periodo, importacao_id=None):
                    fonte_id, importacao_id, estabelecimento_id, profissional_id,
                    cbo_codigo, procedimento_codigo, indicador_id, periodo,
                    quantidade, tipo_registro
-               ) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, ?, 'apurado')""",
+               ) VALUES (?, ?, ?, NULL, ?, '0101030029', ?, ?, ?, 'apurado')""",
             (
                 fonte_id, linha["importacao_id"], estabelecimento_id,
                 cbo, indicador["id"], periodo_norm, qtd,

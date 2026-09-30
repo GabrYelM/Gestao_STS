@@ -11,12 +11,21 @@ if sys.stdout is None or sys.stderr is None:
         sys.stderr = sys.stdout
     except Exception:
         pass
+else:
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, render_template, jsonify, request, session, url_for
 from sqlalchemy import text
 from concurrent.futures import ThreadPoolExecutor
 import threading
+from datetime import datetime
 from decorators import *
 app = Flask(__name__)
 
@@ -285,6 +294,12 @@ MAPA_NOMES_RELATORIOS = {
     'CARGA_COMPLETA_BI_PM': 'Carga completa BI e PM',
 }
 
+MAPA_MESES = {
+    "Janeiro": "01", "Fevereiro": "02", "Março": "03", "Abril": "04",
+    "Maio": "05", "Junho": "06", "Julho": "07", "Agosto": "08",
+    "Setembro": "09", "Outubro": "10", "Novembro": "11", "Dezembro": "12"
+}
+
 def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha, usuario_pm=None, senha_pm=None):
     global status_extracao, evento_cancelar_extracao
     evento_cancelar_extracao.clear()
@@ -297,7 +312,25 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
     status_extracao["erros"] = []
     status_extracao["total_sucessos"] = 0
     status_extracao["total_erros"] = 0
-    
+
+    try:
+        _executar_fila_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha, usuario_pm, senha_pm)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        status_extracao["em_andamento"] = False
+        status_extracao["concluido"] = True
+        status_extracao["progresso"] = f"Falha na extração: {str(e)}"
+        status_extracao["erros"].append({
+            "codigo": relatorio_escolhido or "ERRO",
+            "relatorio": MAPA_NOMES_RELATORIOS.get(relatorio_escolhido, relatorio_escolhido),
+            "competencia": "N/A",
+            "motivo": f"Exceção interna: {str(e)}"
+        })
+        status_extracao["total_erros"] = len(status_extracao["erros"])
+
+def _executar_fila_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario, senha, usuario_pm=None, senha_pm=None):
+    global status_extracao, evento_cancelar_extracao
     todas_funcoes = {
         'AG04': (sb.buscaAG04, etl.processa_ag04),
         'AT02': (sb.buscaAT02, etl.processa_at02),
@@ -365,7 +398,7 @@ def processo_background(mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_esco
         nome_rel = MAPA_NOMES_RELATORIOS.get(chave, chave)
         status_extracao["progresso"] = "Extraindo GAC02 (Snapshot Geral)..."
         try:
-            caminho_gac, erro_gac = executar_bot(bot_gac, hoje.strftime('%B'), hoje.year, usuario, senha)
+            caminho_gac, erro_gac = executar_bot(bot_gac, hoje_mes_nome, hoje.year, usuario, senha)
             if evento_cancelar_extracao.is_set():
                 pass
             elif caminho_gac:
@@ -911,11 +944,14 @@ def cancelar_extracao_route():
         return jsonify({"mensagem": "Nenhuma extração em andamento no momento."}), 200
     
     evento_cancelar_extracao.set()
-    status_extracao["cancelando"] = True
-    status_extracao["progresso"] = "Interrupção solicitada. Finalizando tarefas ativas com segurança..."
+    status_extracao["cancelando"] = False
+    status_extracao["cancelado"] = True
+    status_extracao["em_andamento"] = False
+    status_extracao["concluido"] = True
+    status_extracao["progresso"] = "Extração interrompida pelo usuário."
     return jsonify({
-        "status": "cancelando",
-        "mensagem": "Cancelamento solicitado com sucesso! As tarefas em andamento serão concluídas e a fila será interrompida com segurança."
+        "status": "cancelado",
+        "mensagem": "Cancelamento realizado com sucesso! A tela foi liberada."
     })
 
 

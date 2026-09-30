@@ -68,7 +68,7 @@ def _csv_response(cabecalho, linhas, nome_arquivo):
 # ---------------------------------------------------------------------------
 
 ABAS_ADMINISTRACAO = (
-    "estabelecimentos", "cbo", "procedimentos", "conversoes", "profissionais", "portaria", "importar", "backup", "logs",
+    "estabelecimentos", "cbo", "procedimentos", "profissionais", "portaria", "importar", "backup", "logs",
 )
 
 

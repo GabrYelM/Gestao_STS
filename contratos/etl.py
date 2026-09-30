@@ -429,11 +429,23 @@ def importar_visita_domiciliar(caminho_arquivo, periodo_referencia, db, nome_arq
 
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome = 'VISITA_DOMICILIAR'").fetchone()["id"]
 
-    db.execute(
-        """DELETE FROM staging_visita_domiciliar WHERE importacao_id IN (
-               SELECT id FROM importacoes WHERE fonte_id=? AND periodo_referencia=?)""",
-        (fonte_id, periodo_referencia),
-    )
+    p_norm = str(periodo_referencia or "").replace("-", "").strip()
+    ano_ref = p_norm[:4] if len(p_norm) >= 4 else ""
+    mes_ref = int(p_norm[4:6]) if len(p_norm) >= 6 and p_norm[4:6].isdigit() else None
+
+    # Limpa staging para este período de referência (idêntico ao AT-02)
+    if ano_ref and mes_ref is not None:
+        db.execute(
+            """DELETE FROM staging_visita_domiciliar
+               WHERE ano = ? AND (CAST(mes AS INT) = ? OR mes = ?)""",
+            (ano_ref, mes_ref, f"{mes_ref:02d}"),
+        )
+    else:
+        db.execute(
+            """DELETE FROM staging_visita_domiciliar WHERE importacao_id IN (
+                   SELECT id FROM importacoes WHERE fonte_id=? AND periodo_referencia=?)""",
+            (fonte_id, periodo_referencia),
+        )
 
     cursor = db.execute(
         """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
@@ -442,10 +454,31 @@ def importar_visita_domiciliar(caminho_arquivo, periodo_referencia, db, nome_arq
     )
     importacao_id = cursor.lastrowid
 
+    filtro_sup = (supervisao_filtro or "SUDESTE - PENHA").strip().upper()
+    cnes_penha = {
+        str(r[0]).strip().lstrip("0")
+        for r in db.execute("SELECT cod_cnes FROM estabelecimentos WHERE cod_cnes IS NOT NULL").fetchall()
+    }
+
     linhas_importadas = 0
     for linha in linhas:
-        if supervisao_filtro and (linha.get("supervisao") or "").strip() != supervisao_filtro.strip():
+        sup_linha = (linha.get("supervisao") or "").strip().upper()
+        cnes_linha = (linha.get("cnes") or "").strip().lstrip("0")
+
+        # Filtro de supervisão: deve ser da supervisão Sudeste - Penha (ou unidade cadastrada da Penha)
+        if filtro_sup not in sup_linha and cnes_linha not in cnes_penha:
             continue
+
+        # Filtro de período: seleciona o ano e mês da competência de referência (ex: ano=2026, mes=1)
+        if ano_ref and mes_ref is not None:
+            l_ano = str(linha.get("ano") or "").strip()
+            l_mes_raw = str(linha.get("mes") or "").strip()
+            try:
+                l_mes = int(l_mes_raw)
+            except (ValueError, TypeError):
+                l_mes = None
+            if l_ano != ano_ref or l_mes != mes_ref:
+                continue
 
         def num(campo):
             v = linha.get(campo)

@@ -930,6 +930,13 @@ def _migrar_v18(conn):
                 VALUES (?, ?, 'exclusao', NULL)
             """, (p43_id, cod_cirurgica))
 
+    # Correção do nome do procedimento 0301019231 (removendo sufixo indevido de psiquiatria)
+    conn.execute("""
+        UPDATE procedimentos
+        SET nome = 'CONSULTA DE RETORNO NA ATENÇÃO ESPECIALIZADA'
+        WHERE codigo = '0301019231'
+    """)
+
     return aplicou
 
 

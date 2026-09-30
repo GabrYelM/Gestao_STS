@@ -601,7 +601,7 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
             [p, p, ano, mes, mes_sem_zero, *cnes_list, profissional],
         ).fetchone()
         tot = row["apurado"] if row and row["apurado"] is not None else 0
-        return [{"codigo": "0101030010", "nome": "Visita Domiciliar por Profissional de Nível Superior", "apurado": tot, "considerado": True}]
+        return [{"codigo": "0101030029", "nome": "Visita Domiciliar Periódica (ACS)", "apurado": tot, "considerado": True}]
 
     # 2. Atividades Coletivas eMulti (P12 / P22)
     if ind_cod in ("P12", "P22"):
@@ -680,7 +680,9 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
         return []
 
     proc_lista = [p["codigo"] for p in procedimentos]
-    sql = f"""SELECT s.cod_procedimento AS codigo, p.nome, SUM(s.quantidade) AS apurado
+    sql = f"""SELECT s.cod_procedimento AS codigo,
+                     COALESCE(NULLIF(s.nome_procedimento, ''), p.nome) AS nome,
+                     SUM(s.quantidade) AS apurado
               FROM staging_at02 s JOIN procedimentos p ON p.codigo = s.cod_procedimento
               WHERE s.ano_mes = ? AND s.cod_cmes IN ({",".join("?" * len(cmes))}) AND s.nome_profissional = ?
                 AND s.cod_procedimento IN ({",".join("?" * len(proc_lista))})"""
@@ -822,9 +824,42 @@ def profissional_detalhe():
     return jsonify({"procedimentos": itens})
 
 
+def _obter_dados_linha_resumo(db, indicador_id, estabelecimento_ids, subgrupo_id, cbo_codigo, periodo):
+    """Retorna os dados consolidados e recalculados de uma linha específica do painel."""
+    linhas_f = _resultados_com_status(db)
+    est_list = []
+    if estabelecimento_ids:
+        if isinstance(estabelecimento_ids, str):
+            est_list = [int(x) for x in estabelecimento_ids.split(",") if x.isdigit()]
+        elif isinstance(estabelecimento_ids, (list, tuple)):
+            est_list = [int(x) for x in estabelecimento_ids if str(x).isdigit()]
+
+    for r in linhas_f:
+        if (str(r.get("indicador_id")) == str(indicador_id) and
+            str(r.get("subgrupo_id") or "") == str(subgrupo_id or "") and
+            str(r.get("cbo_codigo") or "") == str(cbo_codigo or "") and
+            str(r.get("periodo") or "") == str(periodo or "")):
+            if est_list:
+                r_estabs = r.get("estabelecimento_ids") or [r.get("estabelecimento_id")]
+                if not any(e in r_estabs for e in est_list):
+                    continue
+            return {
+                "valor_apurado": r.get("valor_apurado") or 0,
+                "valor_declarado": r.get("valor_declarado"),
+                "divergencia": r.get("divergencia"),
+                "valor_meta": r.get("valor_meta"),
+                "percentual_meta": r.get("percentual_meta"),
+                "status_rotulo": r.get("status_rotulo"),
+                "status_classe": r.get("status_classe"),
+                "auditoria_rotulo": r.get("auditoria_rotulo"),
+                "auditoria_classe": r.get("auditoria_classe"),
+            }
+    return None
+
+
 @bp.route("/desvincular_procedimento", methods=["POST"])
 def desvincular_procedimento():
-    """Remove / desvincula um procedimento de um indicador ou subgrupo diretamente pelo painel."""
+    """Remove o vínculo de um procedimento com o indicador (adiciona regra de exclusão)."""
     data = request.get_json() or {}
     indicador_id = data.get("indicador_id")
     subgrupo_id = data.get("subgrupo_id")
@@ -875,7 +910,15 @@ def desvincular_procedimento():
     from ..funcoes import sincronizar_apuracao_dinamica
     sincronizar_apuracao_dinamica(db, periodo=periodo)
 
-    return jsonify({"ok": True, "mensagem": f"Procedimento {cod_procedimento} desvinculado com sucesso!"})
+    linha_atualizada = _obter_dados_linha_resumo(
+        db, indicador_id, data.get("estabelecimento_ids"), subgrupo_id, data.get("cbo_codigo"), periodo
+    )
+
+    return jsonify({
+        "ok": True,
+        "mensagem": f"Procedimento {cod_procedimento} desvinculado com sucesso!",
+        "linha": linha_atualizada
+    })
 
 
 @bp.route("/vincular_procedimento", methods=["POST"])
@@ -931,7 +974,15 @@ def vincular_procedimento():
     from ..funcoes import sincronizar_apuracao_dinamica
     sincronizar_apuracao_dinamica(db, periodo=periodo)
 
-    return jsonify({"ok": True, "mensagem": f"Procedimento {cod_procedimento} vinculado com sucesso!"})
+    linha_atualizada = _obter_dados_linha_resumo(
+        db, indicador_id, data.get("estabelecimento_ids"), subgrupo_id, data.get("cbo_codigo"), periodo
+    )
+
+    return jsonify({
+        "ok": True,
+        "mensagem": f"Procedimento {cod_procedimento} vinculado com sucesso!",
+        "linha": linha_atualizada
+    })
 
 
 @bp.route("/exportar_excel")

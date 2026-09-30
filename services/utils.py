@@ -53,16 +53,22 @@ def download_bi(page, click_timeout=60000, timeout_geral=1000):
     return save_path
 
 def obter_inicio_e_fim_do_mes(nome_mes, ano_texto):
-
-    meses_pt = {
-        "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4,
-        "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8,
-        "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
+    meses_map = {
+        "janeiro": 1, "fevereiro": 2, "março": 3, "marco": 3, "abril": 4,
+        "maio": 5, "junho": 6, "julho": 7, "agosto": 8,
+        "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12,
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12
     }
     
-    numero_mes = meses_pt.get(nome_mes)
-    ano = int(ano_texto)
+    chave = str(nome_mes or "").strip().lower()
+    if chave.isdigit():
+        numero_mes = int(chave)
+    else:
+        numero_mes = meses_map.get(chave, 1)
 
+    ano = int(ano_texto)
     ultimo_dia = calendar.monthrange(ano, numero_mes)[1]
 
     data_inicio = f"01/{str(numero_mes).zfill(2)}/{ano}"

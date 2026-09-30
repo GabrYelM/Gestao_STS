@@ -615,7 +615,7 @@ function montarHtmlProfissionais(dados, idPrefixo) {
       <td><button type="button" class="btn-expandir" onclick="alternarProfissional(this, '${encodeURIComponent(p.nome_profissional)}', '${encodeURIComponent(p.cbo_codigo || '')}')" title="Ver procedimentos">+</button></td>
       <td><strong>${p.nome_profissional}</strong></td>
       <td>${p.cbo_codigo ? (p.cbo_nome ? p.cbo_codigo + ' - ' + p.cbo_nome : p.cbo_codigo) : ''}</td>
-      <td><strong>${qtdFormatada}</strong></td>
+      <td class="col-apurado-prof"><strong>${qtdFormatada}</strong></td>
     </tr>
     <tr class="linha-detalhe-profissional" id="${idLinha}" style="display:none">
       <td></td>
@@ -624,6 +624,93 @@ function montarHtmlProfissionais(dados, idPrefixo) {
   });
   html += '</tbody></table>';
   return html;
+}
+
+function formatarNumeroPtBr(num) {
+  if (num === null || num === undefined || num === '') return '-';
+  return Number(num).toLocaleString('pt-BR');
+}
+
+function mostrarToast(mensagem, tipo = 'sucesso') {
+  let container = document.getElementById('toast-container-sts');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container-sts';
+    container.style.cssText = 'position:fixed; bottom:24px; right:24px; z-index:99999; display:flex; flex-direction:column; gap:8px; pointer-events:none;';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  const bg = tipo === 'erro' ? '#dc2626' : '#15803d';
+  toast.style.cssText = `background:${bg}; color:#ffffff; padding:10px 16px; border-radius:6px; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.15); opacity:0; transform:translateY(10px); transition:all 0.25s ease; pointer-events:auto; display:flex; align-items:center; gap:8px; max-width:400px;`;
+  const icone = tipo === 'erro' ? '⚠️' : '✓';
+  toast.innerHTML = `<span style="font-size:15px; font-weight:bold;">${icone}</span><span>${mensagem}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; }, 10);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(10px)';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+function atualizarLinhaResumoNoDom(trResumo, linha) {
+  if (!trResumo || !linha) return;
+  const tds = trResumo.querySelectorAll('td');
+  if (tds.length < 12) return;
+
+  // 1. Apurado STS
+  tds[5].innerHTML = `<strong>${formatarNumeroPtBr(linha.valor_apurado || 0)}</strong>`;
+
+  // 2. Declarado
+  tds[6].textContent = linha.valor_declarado !== null && linha.valor_declarado !== undefined
+    ? formatarNumeroPtBr(linha.valor_declarado)
+    : '-';
+
+  // 3. Divergência
+  const div = linha.divergencia;
+  if (div === 0) {
+    tds[7].innerHTML = '<span style="color:var(--cor-sucesso);font-weight:600">0</span>';
+  } else if (div > 0) {
+    tds[7].innerHTML = `<span style="color:#8a6100;font-weight:600">+${formatarNumeroPtBr(div)}</span>`;
+  } else if (div < 0) {
+    tds[7].innerHTML = `<span style="color:var(--cor-perigo);font-weight:600">${formatarNumeroPtBr(div)}</span>`;
+  } else {
+    tds[7].innerHTML = '<span style="color:var(--cor-texto-muted)">-</span>';
+  }
+
+  // 4. Meta
+  tds[8].textContent = linha.valor_meta !== null && linha.valor_meta !== undefined
+    ? formatarNumeroPtBr(linha.valor_meta)
+    : '-';
+
+  // 5. Barra Meta
+  if (linha.percentual_meta !== null && linha.percentual_meta !== undefined) {
+    const pct = linha.percentual_meta;
+    const largura = Math.min(pct, 100);
+    tds[9].innerHTML = `
+      <div class="barra-meta-container">
+        <span class="barra-meta-valor">${pct}%</span>
+        <div class="barra-meta-bg">
+          <div class="barra-meta-fill ${linha.status_classe || ''}" style="width: ${largura}%"></div>
+        </div>
+      </div>`;
+  } else {
+    tds[9].innerHTML = '<span style="color:var(--cor-texto-muted)">-</span>';
+  }
+
+  // 6. Badge Status Meta
+  tds[10].innerHTML = `<span class="badge ${linha.status_classe || ''}">${linha.status_rotulo || '-'}</span>`;
+
+  // 7. Badge Auditoria WebSaass
+  tds[11].innerHTML = `<span class="badge ${linha.auditoria_classe || ''}">${linha.auditoria_rotulo || '-'}</span>`;
+
+  // Efeito suave de destaque na linha pai recalculada
+  trResumo.style.transition = 'background-color 0.4s ease';
+  const corOriginal = trResumo.style.backgroundColor;
+  trResumo.style.backgroundColor = '#ecfdf5';
+  setTimeout(() => {
+    trResumo.style.backgroundColor = corOriginal;
+  }, 1200);
 }
 
 function montarHtmlProcedimentos(dados, contexto) {
@@ -657,7 +744,7 @@ function montarHtmlProcedimentos(dados, contexto) {
         <td><strong style="color:var(--cor-sucesso,#15803d);">${qtdFormatada}</strong></td>
         <td style="text-align:center;">
           <button type="button" class="btn-remover-proc"
-                  onclick="desvincularProcedimentoDoPainel('${p.codigo}', '${nomeEscapado}', '${contexto?.indicadorId || ''}', '${contexto?.subgrupoId || ''}', '${contexto?.periodo || ''}', this)"
+                  onclick="desvincularProcedimentoDoPainel('${p.codigo}', '${nomeEscapado}', this)"
                   style="background:transparent; border:1px solid #fca5a5; color:#b91c1c; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:3px; transition:all 0.2s;"
                   onmouseover="this.style.background='#fef2f2'"
                   onmouseout="this.style.background='transparent'"
@@ -690,7 +777,7 @@ function montarHtmlProcedimentos(dados, contexto) {
         <td><strong>${qtdFormatada}</strong></td>
         <td style="text-align:center;">
           <button type="button" class="btn-vincular-proc"
-                  onclick="vincularProcedimentoDoPainel('${p.codigo}', '${nomeEscapado}', '${contexto?.indicadorId || ''}', '${contexto?.subgrupoId || ''}', '${contexto?.periodo || ''}', this)"
+                  onclick="vincularProcedimentoDoPainel('${p.codigo}', '${nomeEscapado}', this)"
                   style="background:transparent; border:1px solid #93c5fd; color:#1d4ed8; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:3px; transition:all 0.2s;"
                   onmouseover="this.style.background='#eff6ff'"
                   onmouseout="this.style.background='transparent'"
@@ -707,80 +794,120 @@ function montarHtmlProcedimentos(dados, contexto) {
   return html;
 }
 
-async function desvincularProcedimentoDoPainel(codigo, nome, indicadorId, subgrupoId, periodo, btn) {
+async function aplicarAcaoProcedimento(tipo, codigo, nome, btn) {
+  if (!btn) return;
+  const trDetalheProf = btn.closest('tr.linha-detalhe-profissional');
+  const celulaProf = trDetalheProf ? trDetalheProf.querySelector('.conteudo-detalhe-profissional') : null;
+  const contexto = celulaProf?._contexto || {};
+  const trProf = trDetalheProf ? trDetalheProf.previousElementSibling : null;
+  const trDetalhePai = btn.closest('tr.linha-detalhe');
+  const trResumo = trDetalhePai ? trDetalhePai.previousElementSibling : null;
+
+  const indicadorId = contexto.indicadorId || trResumo?.dataset.indicadorId;
+  const subgrupoId = contexto.subgrupoId || trResumo?.dataset.subgrupoId || null;
+  const estabelecimentoIds = contexto.estabelecimentoIds || trResumo?.dataset.estabelecimentoIds || '';
+  const cboCodigo = contexto.cboCodigo || trResumo?.dataset.cboCodigo || '';
+  const periodo = contexto.periodo || trResumo?.dataset.periodo;
+  const profissional = contexto.profissional || '';
+  const cboProfissional = contexto.cboProfissional || '';
+
   if (!indicadorId || !codigo) return;
-  const msg = `Deseja realmente remover o procedimento:\n\n[${codigo}] ${nome}\n\ndeste indicador? Ele deixará de ser contabilizado na apuração.`;
+
+  const url = tipo === 'vincular'
+    ? '{{ url_for("painel.vincular_procedimento") }}'
+    : '{{ url_for("painel.desvincular_procedimento") }}';
+
+  const textoAcao = tipo === 'vincular' ? 'vincular' : 'remover';
+  const textoGerundio = tipo === 'vincular' ? 'Vinculando...' : 'Removendo...';
+  const msg = tipo === 'vincular'
+    ? `Deseja vincular o procedimento:\n\n[${codigo}] ${nome}\n\na este indicador? Ele passará a ser contabilizado na apuração.`
+    : `Deseja realmente remover o procedimento:\n\n[${codigo}] ${nome}\n\ndeste indicador? Ele deixará de ser contabilizado na apuração.`;
+
   if (!confirm(msg)) return;
 
+  const htmlOriginal = btn.innerHTML;
   btn.disabled = true;
-  btn.innerText = 'Removendo...';
+  btn.innerText = textoGerundio;
 
   try {
-    const resp = await fetch('{{ url_for("painel.desvincular_procedimento") }}', {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         indicador_id: indicadorId,
         subgrupo_id: subgrupoId || null,
+        estabelecimento_ids: estabelecimentoIds,
+        cbo_codigo: cboCodigo,
         cod_procedimento: codigo,
         periodo: periodo,
       }),
     });
     const res = await resp.json();
     if (res.ok) {
-      cacheDetalhe.clear();
-      cacheProfissional.clear();
-      sessionStorage.setItem('stspe_reabrir_pos_acao', JSON.stringify({
-        indicadorId, subgrupoId, periodo
-      }));
-      window.location.reload();
+      // 1. Limpa caches
+      if (trResumo) {
+        cacheDetalhe.delete(chaveLinha(trResumo));
+      }
+      const chaveProf = [indicadorId, estabelecimentoIds, subgrupoId, cboCodigo, periodo, profissional, cboProfissional].join('|');
+      cacheProfissional.delete(chaveProf);
+
+      // 2. Atualiza os dados da linha-resumo pai no DOM
+      if (trResumo && res.linha) {
+        atualizarLinhaResumoNoDom(trResumo, res.linha);
+      }
+
+      // 3. Recarrega o detalhe do profissional sem recarregar a tela
+      if (celulaProf && profissional) {
+        const params = new URLSearchParams({
+          indicador_id: indicadorId,
+          estabelecimento_ids: estabelecimentoIds,
+          subgrupo_id: subgrupoId || '',
+          cbo_codigo: cboCodigo,
+          periodo: periodo,
+          profissional: profissional,
+          cbo_profissional: cboProfissional,
+        });
+        const respProf = await fetch('{{ url_for("painel.profissional_detalhe") }}?' + params.toString());
+        const dadosProf = await respProf.json();
+        cacheProfissional.set(chaveProf, dadosProf);
+        celulaProf.innerHTML = montarHtmlProcedimentos(dadosProf, contexto);
+
+        // Atualiza a coluna de apurado deste profissional na linha dele
+        let somaProf = 0;
+        (dadosProf.procedimentos || []).forEach(p => {
+          if (p.considerado !== false) {
+            somaProf += Number(p.apurado || 0);
+          }
+        });
+        if (trProf) {
+          const celulaApuradoProf = trProf.querySelector('.col-apurado-prof');
+          if (celulaApuradoProf) {
+            celulaApuradoProf.innerHTML = `<strong>${somaProf.toLocaleString('pt-BR')}</strong>`;
+          }
+        }
+      }
+
+      mostrarToast(res.mensagem || `Procedimento ${codigo} atualizado com sucesso!`, 'sucesso');
     } else {
-      alert('Erro ao remover procedimento: ' + (res.mensagem || 'Falha na operação.'));
+      alert(`Erro ao ${textoAcao} procedimento: ` + (res.mensagem || 'Falha na operação.'));
       btn.disabled = false;
-      btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg> Remover';
+      btn.innerHTML = htmlOriginal;
     }
   } catch (e) {
     alert('Erro de comunicação: ' + e);
     btn.disabled = false;
+    btn.innerHTML = htmlOriginal;
   }
 }
 
-async function vincularProcedimentoDoPainel(codigo, nome, indicadorId, subgrupoId, periodo, btn) {
-  if (!indicadorId || !codigo) return;
-  const msg = `Deseja vincular o procedimento:\n\n[${codigo}] ${nome}\n\na este indicador? Ele passará a ser contabilizado na apuração.`;
-  if (!confirm(msg)) return;
+function desvincularProcedimentoDoPainel(codigo, nome, arg3, arg4, arg5, arg6) {
+  const btn = (arg3 instanceof HTMLElement) ? arg3 : arg6;
+  aplicarAcaoProcedimento('desvincular', codigo, nome, btn);
+}
 
-  btn.disabled = true;
-  btn.innerText = 'Vinculando...';
-
-  try {
-    const resp = await fetch('{{ url_for("painel.vincular_procedimento") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        indicador_id: indicadorId,
-        subgrupo_id: subgrupoId || null,
-        cod_procedimento: codigo,
-        periodo: periodo,
-      }),
-    });
-    const res = await resp.json();
-    if (res.ok) {
-      cacheDetalhe.clear();
-      cacheProfissional.clear();
-      sessionStorage.setItem('stspe_reabrir_pos_acao', JSON.stringify({
-        indicadorId, subgrupoId, periodo
-      }));
-      window.location.reload();
-    } else {
-      alert('Erro ao vincular procedimento: ' + (res.mensagem || 'Falha na operação.'));
-      btn.disabled = false;
-      btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg> Vincular';
-    }
-  } catch (e) {
-    alert('Erro de comunicação: ' + e);
-    btn.disabled = false;
-  }
+function vincularProcedimentoDoPainel(codigo, nome, arg3, arg4, arg5, arg6) {
+  const btn = (arg3 instanceof HTMLElement) ? arg3 : arg6;
+  aplicarAcaoProcedimento('vincular', codigo, nome, btn);
 }
 
 async function carregarDetalhe(trResumo) {
@@ -865,9 +992,14 @@ async function alternarProfissional(botao, profissionalCodificado, cboProfission
     }
     const contexto = {
       indicadorId: botao.dataset.indicadorId,
+      estabelecimentoIds: botao.dataset.estabelecimentoIds,
       subgrupoId: botao.dataset.subgrupoId,
+      cboCodigo: botao.dataset.cboCodigo,
       periodo: botao.dataset.periodo,
+      profissional: profissional,
+      cboProfissional: cboProfissional,
     };
+    celula._contexto = contexto;
     celula.innerHTML = montarHtmlProcedimentos(dados, contexto);
     celula.dataset.carregado = '1';
   }
