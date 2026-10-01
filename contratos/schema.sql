@@ -536,7 +536,8 @@ CREATE TABLE staging_dtic_rel134 (
     mes                  TEXT,
     num_participantes    TEXT,
     cod_proced_sigtap    TEXT,
-    procedimento_sigtap  TEXT
+    procedimento_sigtap  TEXT,
+    emulti               TEXT
 );
 CREATE INDEX idx_staging_dtic_rel134_importacao ON staging_dtic_rel134(importacao_id);
 CREATE INDEX idx_staging_dtic_rel134_periodo ON staging_dtic_rel134(periodo_referencia);
@@ -770,4 +771,18 @@ CREATE TABLE IF NOT EXISTS de_para_websaass_unidade (
     estabelecimento_id  INTEGER NOT NULL REFERENCES estabelecimentos(id)
 );
 CREATE INDEX IF NOT EXISTS idx_depara_ws_estab ON de_para_websaass_unidade(estabelecimento_id);
+
+-- ----------------------------------------------------------------------------
+-- 8. TABELA DE DE-PARA UNIDADES REL_134 (eMulti - P12/P22)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS de_para_unidades_rel134 (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    unidade_origem_id   INTEGER NOT NULL REFERENCES estabelecimentos(id),
+    unidade_destino_id  INTEGER NOT NULL REFERENCES estabelecimentos(id),
+    observacao          TEXT,
+    criado_em           TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(unidade_origem_id)
+);
+CREATE INDEX IF NOT EXISTS idx_depara_rel134_orig ON de_para_unidades_rel134(unidade_origem_id);
+CREATE INDEX IF NOT EXISTS idx_depara_rel134_dest ON de_para_unidades_rel134(unidade_destino_id);
 

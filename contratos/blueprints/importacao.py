@@ -165,15 +165,26 @@ def _montar_mensagem_at02(prefixo, resumo):
 DETECCAO_POR_NOME_ARQUIVO = [
     ("at-02", "AT02"),
     ("at-08", "AT08"),
+    ("at08", "AT08"),
     ("at-11", "AT11"),
+    ("at11", "AT11"),
     ("at-39", "AT39"),
+    ("at39", "AT39"),
     ("at-40", "AT40"),
+    ("at40", "AT40"),
     ("at-48", "AT48"),
+    ("at48", "AT48"),
     ("at-49", "AT49"),
+    ("at49", "AT49"),
     ("at-57", "AT57"),
+    ("at57", "AT57"),
     ("at-61", "AT61"),
+    ("at61", "AT61"),
     ("visita_domiciliar_periodica", "VISITA_DOMICILIAR"),
     ("atividade_coletiva_por_profissional", "DTIC_REL134"),
+    ("atividade_coletiva", "DTIC_REL134"),
+    ("rel_134", "DTIC_REL134"),
+    ("rel134", "DTIC_REL134"),
     ("esus_atend_domiciliar", "DTIC_REL130"),
     ("questionario ad", "SISAD"),
     ("questionário ad", "SISAD"),
@@ -817,4 +828,232 @@ def upload_at57():
         flash(f"Erro ao importar SIGA AT-57: {exc}", "erro")
 
     return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at61", methods=["POST"])
+def upload_at61():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT61", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT61")
+        registrar_log(db, "AT61", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-61 (Atividades Individuais eMulti) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P11 e P21.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-61: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at48", methods=["POST"])
+def upload_at48():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT48", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT48")
+        registrar_log(db, "AT48", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-48 (Pacientes Atendidos PAI) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas ao indicador P25.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-48: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at49", methods=["POST"])
+def upload_at49():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT49", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT49")
+        registrar_log(db, "AT49", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-49 (Pacientes Atendidos em CAPS) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas ao indicador P29.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-49: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at11", methods=["POST"])
+def upload_at11():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT11", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT11")
+        registrar_log(db, "AT11", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-11 (Contagem de Pacientes CER) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P36 e P37.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-11: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at08", methods=["POST"])
+def upload_at08():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT08", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT08")
+        registrar_log(db, "AT08", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-08 (Proporção de Atendimento em Relação às Vagas Ofertadas - CAPS) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas ao indicador P27.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-08: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at39", methods=["POST"])
+def upload_at39():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT39", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT39")
+        registrar_log(db, "AT39", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-39 (Contagem de Pacientes APD) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas ao indicador P41.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-39: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/at40", methods=["POST"])
+def upload_at40():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_bi_siga("AT40", caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "AT40")
+        registrar_log(db, "AT40", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SIGA AT-40 (Contagem de Pacientes CER por CBO) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas ao indicador P38.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SIGA AT-40: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/rel134", methods=["POST"])
+def upload_rel134():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_dtic_rel134(caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "DTIC_REL134")
+        registrar_log(db, "DTIC_REL134", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"DTIC REL_134 (Atividades Coletivas eMulti) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P12/P22 por CBO.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar DTIC REL_134: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+
+
 

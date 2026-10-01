@@ -593,6 +593,39 @@ async function abrirDetalheAlerta(tipo, titulo) {
     color: var(--cor-neutro, #6c757d) !important;
     font-weight: 600;
   }
+
+  /* Abas do Drill-down Inline */
+  .btn-aba-detalhe {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    padding: 4px 11px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s ease;
+  }
+  .btn-aba-detalhe:hover {
+    background: #e2e8f0;
+    color: #1e293b;
+  }
+  .btn-aba-detalhe.ativa {
+    background: #2563eb;
+    color: white;
+    border-color: #1d4ed8;
+    box-shadow: 0 1px 3px rgba(37,99,235,0.25);
+  }
+  .btn-aba-detalhe.ativa .badge {
+    background: rgba(255,255,255,0.25) !important;
+    color: white !important;
+  }
+  .tabela-at02-cbo tbody tr:hover {
+    background: #f8fafc;
+  }
 </style>
 
 <script>
@@ -603,7 +636,7 @@ function chaveLinha(tr) {
   return [tr.dataset.indicadorId, tr.dataset.estabelecimentoIds, tr.dataset.subgrupoId, tr.dataset.cboCodigo, tr.dataset.periodo].join('|');
 }
 
-function montarHtmlProfissionais(dados, idPrefixo) {
+function montarHtmlTabelaProfissionais(dados, idPrefixo) {
   if (dados.profissionais.length === 0) {
     return '<p style="font-size:12px;color:var(--cor-texto-muted);margin:0">Nenhum profissional encontrado (ou a linha é de uma fonte sem detalhe por profissional, como o Webssas).</p>';
   }
@@ -624,6 +657,254 @@ function montarHtmlProfissionais(dados, idPrefixo) {
   });
   html += '</tbody></table>';
   return html;
+}
+
+function alternarAbaDetalhe(btn, tipo) {
+  const container = btn.closest('.detalhe-container');
+  if (!container) return;
+  container.querySelectorAll('.btn-aba-detalhe').forEach(b => b.classList.remove('ativa'));
+  btn.classList.add('ativa');
+
+  const painelProf = container.querySelector('.painel-aba-profissionais');
+  const painelAt02 = container.querySelector('.painel-aba-at02');
+
+  if (tipo === 'profissionais') {
+    if (painelProf) painelProf.style.display = '';
+    if (painelAt02) painelAt02.style.display = 'none';
+  } else if (tipo === 'at02') {
+    if (painelProf) painelProf.style.display = 'none';
+    if (painelAt02) {
+      painelAt02.style.display = '';
+      painelAt02.style.marginTop = '0';
+      painelAt02.style.borderTop = 'none';
+      painelAt02.style.paddingTop = '0';
+    }
+  } else { // ambos
+    if (painelProf) painelProf.style.display = '';
+    if (painelAt02) {
+      painelAt02.style.display = '';
+      painelAt02.style.marginTop = '16px';
+      painelAt02.style.borderTop = '1px dashed #cbd5e1';
+      painelAt02.style.paddingTop = '14px';
+    }
+  }
+}
+
+function alternarProcedimentoAt02(botao) {
+  const tr = botao.closest('tr');
+  const trDetalhe = tr ? tr.nextElementSibling : null;
+  if (!trDetalhe || !trDetalhe.classList.contains('linha-detalhe-proc-at02')) return;
+  const aberto = trDetalhe.style.display !== 'none';
+  if (aberto) {
+    trDetalhe.style.display = 'none';
+    botao.textContent = '+';
+  } else {
+    trDetalhe.style.display = '';
+    botao.textContent = '−';
+  }
+}
+
+function filtrarTabelaAt02(input) {
+  const container = input.closest('.painel-aba-at02');
+  if (!container) return;
+  const termo = input.value.toLowerCase().trim();
+  const linhasProc = container.querySelectorAll('tbody tr.linha-proc-at02');
+  let visiveis = 0;
+  let somaVisiveis = 0;
+
+  linhasProc.forEach(tr => {
+    const trDetalhe = tr.nextElementSibling;
+    const textoProc = tr.textContent.toLowerCase();
+    const textoDetalhe = trDetalhe ? trDetalhe.textContent.toLowerCase() : '';
+    const match = !termo || textoProc.includes(termo) || textoDetalhe.includes(termo);
+
+    tr.style.display = match ? '' : 'none';
+    if (trDetalhe && trDetalhe.classList.contains('linha-detalhe-proc-at02')) {
+      if (!match) {
+        trDetalhe.style.display = 'none';
+      } else if (termo && textoDetalhe.includes(termo) && !textoProc.includes(termo)) {
+        // Quando a busca bate com o nome do profissional, expande automaticamente a sublinha
+        trDetalhe.style.display = '';
+        const btn = tr.querySelector('.btn-expandir');
+        if (btn) btn.textContent = '−';
+      }
+    }
+
+    if (match) {
+      visiveis++;
+      const qtd = Number(tr.dataset.qtd || 0);
+      somaVisiveis += qtd;
+    }
+  });
+
+  const contador = container.querySelector('.contador-at02-filtrado');
+  if (contador) {
+    if (termo) {
+      contador.textContent = `(${visiveis} procedimentos · ${somaVisiveis.toLocaleString('pt-BR')} prod.)`;
+    } else {
+      contador.textContent = '';
+    }
+  }
+}
+
+function montarHtmlLinhaDetalhe(dados, idPrefixo) {
+  const htmlProfissionais = montarHtmlTabelaProfissionais(dados, idPrefixo);
+
+  if (!dados.tem_cbo) {
+    return htmlProfissionais;
+  }
+
+  const procsAt02 = dados.procedimentos_cbo_at02 || [];
+  const totalAt02 = dados.total_at02 || 0;
+  const cboRotulo = dados.cbo_codigo ? (dados.cbo_nome ? `${dados.cbo_codigo} - ${dados.cbo_nome}` : dados.cbo_codigo) : 'CBOs Relacionados';
+
+  let htmlAt02 = '';
+  if (procsAt02.length === 0) {
+    htmlAt02 = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge badge-cinza" style="font-size:11px; font-weight:700;">SIGA AT-02</span>
+          <strong style="font-size:12px; color:#1e293b;">Procedimentos do CBO no AT-02</strong>
+        </div>
+      </div>
+      <div style="padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; color:var(--cor-texto-muted); font-size:12px;">
+        Nenhum procedimento registrado no <strong>SIGA AT-02</strong> para este CBO nesta unidade/competência que não esteja já contabilizado.
+      </div>`;
+  } else {
+    htmlAt02 = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge" style="background:#fef3c7; color:#92400e; font-size:11px; font-weight:700; border:1px solid #fde68a;">SIGA AT-02 Informativo</span>
+          <strong style="font-size:12px; color:#1e293b;">Procedimentos deste CBO no AT-02 não contabilizados neste indicador</strong>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="contador-at02-filtrado" style="font-size:11px; color:#2563eb; font-weight:600;"></span>
+          <span style="font-size:11px; color:var(--cor-texto-muted);">
+            Total realizado no AT-02: <strong style="color:#0f172a;">${formatarNumeroPtBr(totalAt02)}</strong> (${procsAt02.length} procedimentos distintos)
+          </span>
+          <input type="text" class="filtro-at02-input" placeholder="🔍 Filtrar procedimento ou profissional..." 
+                 oninput="filtrarTabelaAt02(this)" 
+                 style="font-size:11.5px; padding:3px 8px; border:1px solid #cbd5e1; border-radius:4px; width:220px;">
+        </div>
+      </div>
+      <div style="max-height:420px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px; background:white;">
+        <table class="tabela-at02-cbo" style="margin:0; width:100%; font-size:12px; border-collapse:collapse;">
+          <thead style="position:sticky; top:0; background:#f1f5f9; z-index:2; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+            <tr>
+              <th style="width:36px; padding:6px 6px; text-align:center;"></th>
+              <th style="width:110px; padding:6px 10px; text-align:left;">Código</th>
+              <th style="padding:6px 10px; text-align:left;">Procedimento</th>
+              <th style="width:120px; padding:6px 10px; text-align:left;">Origem</th>
+              <th style="width:140px; padding:6px 10px; text-align:left;">Profissionais</th>
+              <th style="width:100px; padding:6px 10px; text-align:right;">Qtd AT-02</th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+    procsAt02.forEach((p, idx) => {
+      const badgeOrigem = p.municipal
+        ? '<span class="badge badge-amarelo" style="font-size:10px; font-weight:600">SMS-SP Municipal</span>'
+        : '<span class="badge badge-cinza" style="font-size:10px">SIGTAP Federal</span>';
+      const qtdFormatada = Number(p.quantidade_total || 0).toLocaleString('pt-BR');
+      const qtdProfs = (p.profissionais || []).length;
+      const rotuloProfs = qtdProfs === 1 ? '1 profissional' : `${qtdProfs} profissionais`;
+
+      let linhasProfHtml = '';
+      (p.profissionais || []).forEach(prof => {
+        linhasProfHtml += `
+          <tr style="border-bottom:1px solid #f8fafc;">
+            <td style="padding:5px 10px;"><strong>${prof.profissional}</strong></td>
+            <td style="padding:5px 10px; text-align:right; font-weight:600; color:#1e293b;">${Number(prof.quantidade || 0).toLocaleString('pt-BR')}</td>
+          </tr>`;
+      });
+
+      htmlAt02 += `
+            <tr class="linha-proc-at02" data-qtd="${p.quantidade_total || 0}" style="border-bottom:1px solid #f1f5f9;">
+              <td style="text-align:center; padding:5px 6px;">
+                <button type="button" class="btn-expandir" onclick="alternarProcedimentoAt02(this)" title="Ver profissionais deste procedimento">+</button>
+              </td>
+              <td style="padding:6px 10px;"><code>${p.codigo || '-'}</code></td>
+              <td style="padding:6px 10px;">${p.nome || '-'}</td>
+              <td style="padding:6px 10px;">${badgeOrigem}</td>
+              <td style="padding:6px 10px;">
+                <span class="badge badge-cinza" style="font-size:10px; font-weight:600; cursor:pointer;" onclick="alternarProcedimentoAt02(this.closest('tr').querySelector('.btn-expandir'))" title="Clique para expandir">
+                  👥 ${rotuloProfs}
+                </span>
+              </td>
+              <td style="padding:6px 10px; text-align:right; font-weight:700; color:#0f172a;">${qtdFormatada}</td>
+            </tr>
+            <tr class="linha-detalhe-proc-at02" style="display:none; background:#f8fafc;">
+              <td></td>
+              <td colspan="5" style="padding:6px 12px 10px 12px;">
+                <div style="background:white; border:1px solid #e2e8f0; border-radius:6px; overflow:hidden;">
+                  <div style="padding:5px 10px; background:#f1f5f9; font-size:11px; font-weight:700; color:#475569; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Profissionais que realizaram o procedimento [${p.codigo}]</span>
+                    <span style="font-weight:600; color:var(--cor-texto-muted);">${rotuloProfs}</span>
+                  </div>
+                  <table style="width:100%; margin:0; font-size:11.5px; border-collapse:collapse;">
+                    <thead>
+                      <tr style="border-bottom:1px solid #e2e8f0; background:#fbfcfe;">
+                        <th style="padding:4px 10px; text-align:left; color:var(--cor-texto-muted);">Nome do Profissional</th>
+                        <th style="padding:4px 10px; text-align:right; width:120px; color:var(--cor-texto-muted);">Qtd no AT-02</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${linhasProfHtml}
+                    </tbody>
+                  </table>
+                </div>
+              </td>
+            </tr>`;
+    });
+
+    htmlAt02 += `
+          </tbody>
+          <tfoot style="position:sticky; bottom:0; background:#f8fafc; font-weight:700; border-top:2px solid #e2e8f0;">
+            <tr>
+              <td colspan="5" style="padding:6px 10px; text-align:right; color:var(--cor-texto-muted);">Total de Produção no AT-02:</td>
+              <td style="padding:6px 10px; text-align:right; color:#0f172a; font-size:12.5px;">${formatarNumeroPtBr(totalAt02)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:var(--cor-texto-muted); display:flex; justify-content:space-between;">
+        <span>ℹ️ <em>Esta tabela é meramente visual e informativa para auditoria de produção lançada no AT-02.</em></span>
+      </div>`;
+  }
+
+  return `
+    <div class="detalhe-container" style="background:#fafaf9; padding:8px 12px; border-radius:6px; border:1px solid #e5e7eb;">
+      <div class="detalhe-abas-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; gap:6px; align-items:center;">
+          <button type="button" class="btn-aba-detalhe btn-aba-prof ativa" onclick="alternarAbaDetalhe(this, 'profissionais')">
+            👥 Profissionais do Indicador <span class="badge badge-cinza" style="font-size:10px; margin-left:4px;">${dados.profissionais.length}</span>
+          </button>
+          <button type="button" class="btn-aba-detalhe btn-aba-at02" onclick="alternarAbaDetalhe(this, 'at02')">
+            📋 Procedimentos CBO no AT-02 <span class="badge badge-amarelo" style="font-size:10px; margin-left:4px;">${procsAt02.length} (${formatarNumeroPtBr(totalAt02)})</span>
+          </button>
+          <button type="button" class="btn-aba-detalhe btn-aba-ambos" onclick="alternarAbaDetalhe(this, 'ambos')">
+            📑 Visão Completa (Empilhada)
+          </button>
+        </div>
+        <div style="font-size:11.5px; color:var(--cor-texto-muted); display:flex; align-items:center; gap:6px;">
+          <span>CBO Relacionado:</span>
+          <span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:600; font-size:11px;">${cboRotulo}</span>
+        </div>
+      </div>
+
+      <div class="painel-aba-profissionais">
+        ${htmlProfissionais}
+      </div>
+
+      <div class="painel-aba-at02" style="display:none; margin-top:16px; padding-top:14px; border-top:1px dashed #cbd5e1;">
+        ${htmlAt02}
+      </div>
+    </div>
+  `;
+}
+
+function montarHtmlProfissionais(dados, idPrefixo) {
+  return montarHtmlLinhaDetalhe(dados, idPrefixo);
 }
 
 function formatarNumeroPtBr(num) {

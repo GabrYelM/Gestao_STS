@@ -348,6 +348,86 @@
                           <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
                         </div>
                       </form>
+
+                      <!-- AT-61 eMulti Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at61') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-61 (Atividades Individuais eMulti)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-48 PAI Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at48') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-48 (Pacientes Atendidos PAI)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-49 CAPS Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at49') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-49 (Pacientes Atendidos em CAPS)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-08 CAPS Vagas Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at08') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-08 (Vagas Acolhimento Noturno CAPS)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-11 CER Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at11') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-11 (Contagem de Pacientes CER)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-39 APD Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at39') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-39 (Contagem de Pacientes APD)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- AT-40 CER CBO Individual -->
+                      <form method="post" action="{{ url_for('importacao.upload_at40') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SIGA AT-40 (Contagem de Pacientes CER por CBO)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- DTIC REL_134 (Atividades Coletivas eMulti) -->
+                      <form method="post" action="{{ url_for('importacao.upload_rel134') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: DTIC REL_134 (Atividades Coletivas eMulti - P12/P22)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
                     </div>
                   </div>
 
@@ -361,9 +441,17 @@
                           <select name="fonte" class="form-select form-select-sm" required>
                             <option value="TODAS">Todas as Fontes</option>
                             <option value="AT02">SIGA AT-02</option>
+                            <option value="AT08">SIGA AT-08 (CAPS)</option>
                             <option value="WEBSSAS">WebSaass</option>
                             <option value="VISITA_DOMICILIAR">Visita Domiciliar</option>
+                            <option value="AT11">SIGA AT-11 (CER)</option>
+                            <option value="AT39">SIGA AT-39 (APD)</option>
+                            <option value="AT40">SIGA AT-40 (CER CBO)</option>
+                            <option value="AT48">SIGA AT-48 (PAI)</option>
+                            <option value="AT49">SIGA AT-49 (CAPS)</option>
                             <option value="AT57">SIGA AT-57 (PICs)</option>
+                            <option value="AT61">SIGA AT-61 (eMulti)</option>
+                            <option value="DTIC_REL134">DTIC REL_134 (eMulti P12/P22)</option>
                           </select>
                         </div>
                         <div class="col-6">

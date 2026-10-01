@@ -320,8 +320,35 @@ def _resolver_cbo(db, cod_cbo_sus, nome_cbo1):
             return row["codigo"]
     if not nome_cbo1:
         return None
+    import unicodedata
+    def _norm(s):
+        return "".join(c for c in unicodedata.normalize("NFD", str(s).lower()) if unicodedata.category(c) != "Mn").strip()
+
+    cbo_norm = _norm(nome_cbo1)
+    mapa_especial = {
+        "assistente social": "251605",
+        "farmaceutico": "223405",
+        "fisioterapeuta": "223605",
+        "fisioterapeuta geral": "223605",
+        "fonoaudiologo": "223810",
+        "medico ginecologista e obstetra": "225250",
+        "medico ginecologista": "225250",
+        "medico psiquiatra": "225133",
+        "nutricionista": "223710",
+        "profissional de educacao fisica na saude": "224140",
+        "psicologo clinico": "251510",
+        "psicologo": "251510",
+        "terapeuta ocupacional": "223905",
+    }
+    if cbo_norm in mapa_especial:
+        return mapa_especial[cbo_norm]
+
     row = db.execute("SELECT codigo FROM cbo WHERE lower(nome_categoria) = lower(?)", (nome_cbo1,)).fetchone()
-    return row["codigo"] if row else None
+    if row:
+        return row["codigo"]
+
+    row_like = db.execute("SELECT codigo FROM cbo WHERE lower(nome_categoria) LIKE lower(?) LIMIT 1", (f"{cbo_norm}%",)).fetchone()
+    return row_like["codigo"] if row_like else None
 
 
 def _garantir_procedimento(db, codigo, nome):
@@ -955,6 +982,8 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                     total += 1
                     qty = int(r["quantidade_pacientes"] or r["quantidade"] or 0)
                     estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"], ind["id"])
+                    if not estab_id:
+                        estab_id = _resolver_estabelecimento_por_nome(db, r["nome_estabelecimento"])
                     if estab_id and qty > 0:
                         db.execute(
                             """INSERT INTO fato_apuracao (
@@ -963,14 +992,40 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                             (fonte_id, r["importacao_id"], estab_id, ind["id"], periodo_norm, qty),
                         )
                         vinculadas += 1
+
+                # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id FROM metas m WHERE m.indicador_id = ?", (ind["id"],)
+                ).fetchall()
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (ind["id"], eid, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
+                        db.execute(
+                            """INSERT INTO fato_apuracao (
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, ind["id"], periodo_norm),
+                        )
 
         elif fat == "AT49":
             ind = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P29', 'P029') LIMIT 1").fetchone()
             if ind:
-                linhas = db.execute(
-                    "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT49' AND (ano_mes = ? OR ano = ?)",
-                    (periodo_norm, ano),
-                ).fetchall()
+                query = "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT49' AND (ano_mes = ? OR ano_mes LIKE ?)"
+                params = [periodo_norm, f"%{periodo_norm}%"]
+                if importacao_id:
+                    query += " AND importacao_id = ?"
+                    params.append(importacao_id)
+                linhas = db.execute(query, params).fetchall()
                 for r in linhas:
                     total += 1
                     qty = int(r["quantidade_pacientes"] or 0)
@@ -984,33 +1039,108 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         )
                         vinculadas += 1
 
-        elif fat == "AT11":
-            ind = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P36', 'P036') LIMIT 1").fetchone()
-            if ind:
-                linhas = db.execute(
-                    "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT11' AND (ano_mes = ? OR ano_mes LIKE ?)",
-                    (periodo_norm, f"%{periodo_norm}%"),
+                # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id FROM metas m WHERE m.indicador_id = ?", (ind["id"],)
                 ).fetchall()
-                for r in linhas:
-                    total += 1
-                    qty = int(r["quantidade_pacientes"] or 0)
-                    estab_id = _resolver_estabelecimento_por_nome(db, r["nome_estabelecimento"])
-                    if estab_id and qty > 0:
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (ind["id"], eid, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
                         db.execute(
                             """INSERT INTO fato_apuracao (
                                    fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
-                               ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
-                            (fonte_id, r["importacao_id"], estab_id, ind["id"], periodo_norm, qty),
+                               ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, ind["id"], periodo_norm),
                         )
-                        vinculadas += 1
+
+        elif fat == "AT11":
+            ind_p36 = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P36', 'P036') LIMIT 1").fetchone()
+            ind_p37 = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P37', 'P037') LIMIT 1").fetchone()
+
+            query = "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT11' AND (ano_mes = ? OR ano_mes LIKE ?)"
+            params = [periodo_norm, f"%{periodo_norm}%"]
+            if importacao_id:
+                query += " AND importacao_id = ?"
+                params.append(importacao_id)
+            linhas = db.execute(query, params).fetchall()
+            for r in linhas:
+                total += 1
+                qty_pac = float(r["quantidade_pacientes"] or 0)
+                qty_proc = float(r["quantidade"] or 0)
+                estab_id = _resolver_estabelecimento_por_nome(db, r["nome_estabelecimento"])
+                if not estab_id and r["cod_cnes"]:
+                    estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+
+                if not estab_id:
+                    continue
+
+                # P36: contagem de pacientes
+                if ind_p36 and qty_pac > 0:
+                    db.execute(
+                        """INSERT INTO fato_apuracao (
+                               fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                           ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
+                        (fonte_id, r["importacao_id"], estab_id, ind_p36["id"], periodo_norm, int(qty_pac)),
+                    )
+                    vinculadas += 1
+
+                # P37: quantidade de procedimentos dividida pela quantia de pacientes
+                if ind_p37 and qty_pac > 0:
+                    media_proc_usu = round(qty_proc / qty_pac, 2)
+                    db.execute(
+                        """INSERT INTO fato_apuracao (
+                               fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                           ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
+                        (fonte_id, r["importacao_id"], estab_id, ind_p37["id"], periodo_norm, media_proc_usu),
+                    )
+                    vinculadas += 1
+
+            # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+            for ind_item in (ind_p36, ind_p37):
+                if not ind_item:
+                    continue
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id FROM metas m WHERE m.indicador_id = ?", (ind_item["id"],)
+                ).fetchall()
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (ind_item["id"], eid, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
+                        db.execute(
+                            """INSERT INTO fato_apuracao (
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, ind_item["id"], periodo_norm),
+                        )
 
         elif fat == "AT39":
             ind = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P41', 'P041') LIMIT 1").fetchone()
             if ind:
-                linhas = db.execute(
-                    "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT39' AND (ano_mes = ? OR ano = ?)",
-                    (periodo_norm, ano),
-                ).fetchall()
+                query = "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT39' AND (ano_mes = ? OR ano_mes LIKE ?)"
+                params = [periodo_norm, f"%{periodo_norm}%"]
+                if importacao_id:
+                    query += " AND importacao_id = ?"
+                    params.append(importacao_id)
+                linhas = db.execute(query, params).fetchall()
                 for r in linhas:
                     total += 1
                     qty = int(r["quantidade_pacientes"] or 0)
@@ -1024,19 +1154,80 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         )
                         vinculadas += 1
 
+                # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id FROM metas m WHERE m.indicador_id = ?", (ind["id"],)
+                ).fetchall()
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (ind["id"], eid, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
+                        db.execute(
+                            """INSERT INTO fato_apuracao (
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, ind["id"], periodo_norm),
+                        )
+
+
         elif fat == "AT40":
+            # Garante que os CBOs com metas do P38 estejam vinculados na tabela indicador_cbo
+            cbos_p38 = ["223605", "223810", "251510", "223905", "239425", "251605", "223505"]
             ind = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P38', 'P038') LIMIT 1").fetchone()
             if ind:
-                linhas = db.execute(
-                    "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT40' AND (ano_mes = ? OR ano = ?)",
-                    (periodo_norm, ano),
-                ).fetchall()
+                for c in cbos_p38:
+                    db.execute("INSERT OR IGNORE INTO indicador_cbo (indicador_id, cbo_codigo, curinga) VALUES (?, ?, 0)", (ind["id"], c))
+
+                query = "SELECT * FROM staging_bi_siga WHERE fonte_at = 'AT40' AND (ano_mes = ? OR ano_mes LIKE ?)"
+                params = [periodo_norm, f"%{periodo_norm}%"]
+                if importacao_id:
+                    query += " AND importacao_id = ?"
+                    params.append(importacao_id)
+                linhas = db.execute(query, params).fetchall()
+
+                def _resolver_cbo_at40(nome_cbo):
+                    if not nome_cbo:
+                        return False, None
+                    import unicodedata
+                    def _norm_s(s):
+                        return "".join(c for c in unicodedata.normalize("NFD", str(s).lower()) if unicodedata.category(c) != "Mn").strip()
+                    norm = _norm_s(nome_cbo)
+                    if "fisioterapeuta" in norm:
+                        return True, "223605"
+                    if "fonoaudiologo" in norm:
+                        return True, "223810"
+                    if "psicologo" in norm:
+                        return True, "251510"
+                    if "psicopedagogo" in norm:
+                        return True, "239425"
+                    if "terapeuta ocupacional" in norm:
+                        return True, "223905"
+                    if "assistente social" in norm:
+                        return True, "251605"
+                    if "enfermeiro" in norm:
+                        return True, "223505"
+                    if norm.startswith("medico") or "medico" in norm:
+                        return True, None
+                    return False, None
+
                 for r in linhas:
                     total += 1
                     qty = int(r["quantidade"] or 0)
                     estab_id = _resolver_estabelecimento_por_nome(db, r["nome_estabelecimento"])
-                    cbo_cod = _resolver_cbo(db, None, r["cbo_nome"])
-                    if estab_id and qty > 0:
+                    if not estab_id and r["cod_cnes"]:
+                        estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+
+                    valido, cbo_cod = _resolver_cbo_at40(r["cbo_nome"])
+                    if estab_id and valido and qty > 0:
                         db.execute(
                             """INSERT INTO fato_apuracao (
                                    fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
@@ -1044,6 +1235,33 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                             (fonte_id, r["importacao_id"], estab_id, cbo_cod, ind["id"], periodo_norm, qty),
                         )
                         vinculadas += 1
+
+                # Garante linha com quantidade=0 para estabelecimentos e CBOs com meta no período sem produção
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id, m.cbo_codigo FROM metas m WHERE m.indicador_id = ?", (ind["id"],)
+                ).fetchall()
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    cbo_m = mr["cbo_codigo"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? 
+                             AND ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?)
+                             AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (ind["id"], eid, cbo_m, cbo_m, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
+                        db.execute(
+                            """INSERT INTO fato_apuracao (
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, ?, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, cbo_m, ind["id"], periodo_norm),
+                        )
 
         elif fat == "AT57":
             ind_p09 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P09'").fetchone()
@@ -1171,44 +1389,156 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         )
 
         elif fat == "AT61":
+            ind_p11 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P11'").fetchone()
+            ind_p21 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P21'").fetchone()
+
+            # Limpa apuração anterior deste período para P11 e P21
+            if ind_p11 and ind_p21:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE periodo = ? AND indicador_id IN (?, ?) AND tipo_registro = 'apurado'",
+                    (periodo_norm, ind_p11["id"], ind_p21["id"]),
+                )
+            elif ind_p11:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE periodo = ? AND indicador_id = ? AND tipo_registro = 'apurado'",
+                    (periodo_norm, ind_p11["id"]),
+                )
+            elif ind_p21:
+                db.execute(
+                    "DELETE FROM fato_apuracao WHERE periodo = ? AND indicador_id = ? AND tipo_registro = 'apurado'",
+                    (periodo_norm, ind_p21["id"]),
+                )
+
             linhas = db.execute(
-                """SELECT cod_cnes, nome_estabelecimento, cbo_nome, sum(quantidade) as total, max(importacao_id) as imp_id
+                """SELECT cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome,
+                          sum(quantidade) as total, max(importacao_id) as imp_id
                    FROM staging_bi_siga
                    WHERE fonte_at = 'AT61' AND (ano_mes = ? OR ano_mes LIKE ?)
-                   GROUP BY cod_cnes, nome_estabelecimento, cbo_nome""",
+                   GROUP BY cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome""",
                 (periodo_norm, f"%{periodo_norm}%"),
             ).fetchall()
+
+            termos_nao_ubs = ("caps", "cecco", "cer", "cnr", "hospital dia", "teleassistencia")
             for r in linhas:
                 total += 1
                 qty = int(r["total"] or 0)
-                estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+                if qty <= 0:
+                    continue
+
+                nome_origem_low = (r["nome_estabelecimento"] or "").lower()
+                if any(t in nome_origem_low for t in termos_nao_ubs):
+                    continue
+
+                # 1. Verifica vínculo em indicador_unidade_origem
+                estab_id = None
+                ind_escolhido = None
+                for ind_cand in (ind_p11, ind_p21):
+                    if not ind_cand:
+                        continue
+                    v_row = db.execute(
+                        """SELECT uo.estabelecimento_id FROM indicador_unidade_origem uo
+                           WHERE uo.indicador_id = ? AND lower(trim(uo.nome_origem)) = lower(trim(?))""",
+                        (ind_cand["id"], r["nome_estabelecimento"]),
+                    ).fetchone()
+                    if v_row:
+                        estab_id = v_row["estabelecimento_id"]
+                        ind_escolhido = ind_cand
+                        break
+
+                # 2. Resolução da unidade base pelo CNES da equipe eMulti
                 if not estab_id:
-                    estab_id = _resolver_estabelecimento_por_nome(db, r["nome_estabelecimento"])
-                if estab_id and qty > 0:
-                    servicos = [s[0].upper() for s in db.execute(
-                        "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (estab_id,)
-                    ).fetchall()]
-                    p_code = "P11" if "ESF" in servicos else "P21"
-                    ind_row = db.execute("SELECT id FROM indicadores WHERE codigo = ?", (p_code,)).fetchone()
-                    cbo_cod = _resolver_cbo(db, None, r["cbo_nome"])
-                    if ind_row:
+                    cnes_clean = str(r["cod_cnes"] or "").strip().lstrip("0")
+                    estab_base = db.execute(
+                        """SELECT id, nome FROM estabelecimentos
+                           WHERE ltrim(cod_cnes, '0') = ?
+                             AND (upper(nome) LIKE 'UBS%' OR upper(nome) LIKE 'AMA/UBS%')
+                           ORDER BY id LIMIT 1""",
+                        (cnes_clean,),
+                    ).fetchone()
+                    if estab_base:
+                        estab_id = estab_base["id"]
+                    else:
+                        estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+
+                if not estab_id:
+                    continue
+
+                estab_row = db.execute("SELECT nome FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                estab_nome = (estab_row["nome"] if estab_row else "").upper()
+                if any(t in estab_nome.lower() for t in termos_nao_ubs):
+                    continue
+
+                servicos = [s[0].upper() for s in db.execute(
+                    "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (estab_id,)
+                ).fetchall()]
+                is_ubs = "UBS" in estab_nome or any("UBS" in s or "ESF" in s or "TRAD" in s for s in servicos)
+                if not is_ubs:
+                    continue
+
+                if not ind_escolhido:
+                    is_esf = any("ESF" in s for s in servicos)
+                    ind_escolhido = ind_p11 if is_esf else ind_p21
+
+                if not ind_escolhido:
+                    continue
+
+                cbo_cod = _resolver_cbo(db, None, r["cbo_nome"])
+                proc_cod = (r["procedimento_codigo"] or "").rstrip("A").strip()
+                if proc_cod:
+                    _garantir_procedimento(db, proc_cod, r["procedimento_nome"])
+
+                db.execute(
+                    """INSERT INTO fato_apuracao (
+                           fonte_id, importacao_id, estabelecimento_id, cbo_codigo, procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'apurado')""",
+                    (fonte_id, r["imp_id"], estab_id, cbo_cod, proc_cod or None, ind_escolhido["id"], periodo_norm, qty),
+                )
+                vinculadas += 1
+
+            # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+            for ind_item in (ind_p11, ind_p21):
+                if not ind_item:
+                    continue
+                iid = ind_item["id"]
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id, m.cbo_codigo FROM metas m WHERE m.indicador_id = ?", (iid,)
+                ).fetchall()
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    cbo_m = mr["cbo_codigo"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?)
+                             AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (iid, eid, cbo_m, cbo_m, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
                         db.execute(
                             """INSERT INTO fato_apuracao (
-                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
-                               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'apurado')""",
-                            (fonte_id, r["imp_id"], estab_id, cbo_cod, ind_row["id"], periodo_norm, qty),
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, cbo_m, iid, periodo_norm),
                         )
-                        vinculadas += 1
 
         elif fat == "AT08":
             ind = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P27', 'P027') LIMIT 1").fetchone()
             if ind:
-                linhas = db.execute(
-                    """SELECT nome_estabelecimento, sum(quantidade) as total, max(importacao_id) as imp_id
-                       FROM staging_bi_siga
-                       WHERE fonte_at = 'AT08' AND lower(procedimento_nome) LIKE '%acolhimento%noturno%'
-                       GROUP BY nome_estabelecimento""",
-                ).fetchall()
+                query = """SELECT nome_estabelecimento, sum(quantidade) as total, max(importacao_id) as imp_id
+                           FROM staging_bi_siga
+                           WHERE fonte_at = 'AT08' 
+                             AND (ano_mes = ? OR ano_mes LIKE ?)
+                             AND lower(procedimento_nome) LIKE '%acolhimento%noturno%'"""
+                params = [periodo_norm, f"%{periodo_norm}%"]
+                if importacao_id:
+                    query += " AND importacao_id = ?"
+                    params.append(importacao_id)
+                query += " GROUP BY nome_estabelecimento"
+                linhas = db.execute(query, params).fetchall()
                 for r in linhas:
                     total += 1
                     qty = int(r["total"] or 0)
@@ -1222,6 +1552,30 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         )
                         vinculadas += 1
 
+                # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
+                metas_rows = db.execute(
+                    "SELECT DISTINCT m.estabelecimento_id FROM metas m WHERE m.indicador_id = ?", (ind["id"],)
+                ).fetchall()
+                for mr in metas_rows:
+                    eid = mr["estabelecimento_id"]
+                    existe = db.execute(
+                        """SELECT 1 FROM fato_apuracao 
+                           WHERE indicador_id = ? AND estabelecimento_id = ? AND periodo = ? AND tipo_registro = 'apurado'
+                           LIMIT 1""",
+                        (ind["id"], eid, periodo_norm),
+                    ).fetchone()
+                    if not existe:
+                        max_imp = db.execute(
+                            "SELECT max(id) as imp_id FROM importacoes WHERE fonte_id = ?", (fonte_id,)
+                        ).fetchone()
+                        imp_id = max_imp["imp_id"] if max_imp and max_imp["imp_id"] else 1
+                        db.execute(
+                            """INSERT INTO fato_apuracao (
+                                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
+                               ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                            (fonte_id, imp_id, eid, ind["id"], periodo_norm),
+                        )
+
         resumos[fat] = {"total_linhas": total, "linhas_vinculadas": vinculadas}
 
     db.commit()
@@ -1229,48 +1583,175 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
 
 
 def calcular_dtic_rel134(db, periodo, importacao_id=None):
-    """Gera fato_apuracao para P12 (ESF) e P22 (UBS) Atividades Coletivas eMulti."""
+    """
+    Gera fato_apuracao para P12 (ESF) e P22 (TRAD) Atividades Coletivas eMulti
+    a partir do staging_dtic_rel134.
+    Aplica os 5 filtros:
+      1. Supervisão Sudeste - Penha (supervisao LIKE '%penha%')
+      2. emulti = 'SIM'
+      3. data_atividade dentro do mês sendo consolidado (ano/mes correspondentes)
+      4. num_participantes > 1
+      5. tipo_atividade desconsiderando reuniões (NOT LIKE '%reuni%')
+    Aplica a tabela de redirecionamento de unidades (de_para_unidades_rel134),
+    onde a produção de unidade participante vai para a unidade base da eMulti.
+    Agrupa por (estabelecimento_destino, cbo) gerando registros com cbo_codigo.
+    Garante os CBOs de eMulti em indicador_cbo e preenche metas zeradas.
+    """
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='DTIC_REL134'").fetchone()["id"]
     periodo_norm = _normalizar_periodo(periodo)
     db.execute("DELETE FROM fato_apuracao WHERE periodo = ? AND fonte_id = ?", (periodo_norm, fonte_id))
 
-    emulti_cbos = ("251605", "223405", "223605", "223810", "225250", "225133", "223710", "224140", "251510", "223905")
+    emulti_cbos = (
+        "251605", "223405", "223445", "223605", "223710",
+        "223810", "223905", "224140", "225133", "225250", "251510"
+    )
+
     ind_p12 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P12' LIMIT 1").fetchone()
     ind_p22 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P22' LIMIT 1").fetchone()
 
-    query = f"""SELECT cnes, nome_unidade, cbo_prof, count(*) as total, max(importacao_id) as imp_id
-               FROM staging_dtic_rel134
-               WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)
-                 AND (supervisao LIKE '%PENHA%' OR cnes IN (SELECT cod_cnes FROM estabelecimentos WHERE cod_cnes IS NOT NULL))
-                 AND cbo_prof IN ({','.join(['?'] * len(emulti_cbos))})
-               GROUP BY cnes, nome_unidade, cbo_prof"""
-    params = [periodo_norm, f"%{periodo_norm}%", *emulti_cbos]
+    # Garantir que P12 e P22 tenham os CBOs em indicador_cbo para que a view resultados_indicador agrupe por CBO
+    for ind_row in (ind_p12, ind_p22):
+        if ind_row:
+            iid = ind_row["id"]
+            for cbo in emulti_cbos:
+                db.execute(
+                    """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                       SELECT ?, ?, 0
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                       )""",
+                    (iid, cbo, iid, cbo),
+                )
+
+    # Carregar redirecionamentos específicos do REL 134
+    redirecionamentos = {}
+    for row in db.execute("SELECT unidade_origem_id, unidade_destino_id FROM de_para_unidades_rel134").fetchall():
+        redirecionamentos[row["unidade_origem_id"]] = row["unidade_destino_id"]
+
+    ano_ref = periodo_norm[:4]
+    mes_ref = periodo_norm[4:6]
+    mes_sem_zero = str(int(mes_ref))
+
+    # Staging query com os 5 filtros
+    query = """
+        SELECT cnes, nome_unidade, cbo_prof, data_atividade, ano, mes, importacao_id
+        FROM staging_dtic_rel134
+        WHERE LOWER(COALESCE(supervisao, '')) LIKE '%penha%'
+          AND UPPER(TRIM(COALESCE(emulti, ''))) = 'SIM'
+          AND CAST(COALESCE(num_participantes, '0') AS INTEGER) > 1
+          AND LOWER(COALESCE(tipo_atividade, '')) NOT LIKE '%reuni%'
+          AND (
+                (substr(data_atividade, 7, 4) = ? AND substr(data_atividade, 4, 2) = ?)
+                OR (ano = ? AND (mes = ? OR mes = ?))
+                OR periodo_referencia = ?
+          )
+    """
+    params = [ano_ref, mes_ref, ano_ref, mes_ref, mes_sem_zero, periodo_norm]
+    if importacao_id:
+        query += " AND importacao_id = ?"
+        params.append(importacao_id)
+
     linhas = db.execute(query, params).fetchall()
 
-    total = 0
-    vinculadas = 0
+    # Agrupar produção por (unidade_destino_id, cbo_codigo)
+    producao_agrupada = {}
+    total_linhas_filtradas = 0
+
     for r in linhas:
-        total += 1
-        qty = int(r["total"] or 0)
-        estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cnes"])
-        if not estab_id:
-            estab_id = _resolver_estabelecimento_por_nome(db, r["nome_unidade"])
-        if estab_id and qty > 0:
-            servicos = [s[0].upper() for s in db.execute(
-                "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (estab_id,)
-            ).fetchall()]
-            indicador_id = ind_p12["id"] if "ESF" in servicos else (ind_p22["id"] if ind_p22 else ind_p12["id"])
-            cbo_cod = str(r["cbo_prof"]).split(".")[0].strip()
+        # Checagem da data
+        data_ativ = (r["data_atividade"] or "").strip()
+        ano_row = (r["ano"] or "").strip()
+        mes_row = (r["mes"] or "").strip()
+        eh_do_mes = False
+        if len(data_ativ) >= 10:
+            partes = data_ativ.split("/")
+            if len(partes) == 3 and partes[2] == ano_ref and partes[1].zfill(2) == mes_ref:
+                eh_do_mes = True
+        if not eh_do_mes and ano_row == ano_ref and mes_row.zfill(2) == mes_ref:
+            eh_do_mes = True
+        if not eh_do_mes:
+            continue
+
+        total_linhas_filtradas += 1
+
+        origem_id, _ = _resolver_estabelecimento_por_cnes(db, r["cnes"])
+        if not origem_id:
+            origem_id = _resolver_estabelecimento_por_nome(db, r["nome_unidade"])
+        if not origem_id:
+            continue
+
+        destino_id = redirecionamentos.get(origem_id, origem_id)
+        cbo_cod = str(r["cbo_prof"] or "").split(".")[0].strip()
+        if not cbo_cod:
+            continue
+
+        chave = (destino_id, cbo_cod)
+        if chave not in producao_agrupada:
+            producao_agrupada[chave] = {"qtd": 0, "imp_id": r["importacao_id"]}
+        producao_agrupada[chave]["qtd"] += 1
+        if r["importacao_id"]:
+            producao_agrupada[chave]["imp_id"] = r["importacao_id"]
+
+    # Gravar na fato_apuracao
+    vinculadas = 0
+    max_imp_geral = importacao_id
+    for (destino_id, cbo_cod), dados in producao_agrupada.items():
+        qty = dados["qtd"]
+        imp_id = dados["imp_id"] or importacao_id or 1
+        if not max_imp_geral and dados["imp_id"]:
+            max_imp_geral = dados["imp_id"]
+
+        # Determinar se vai para P12 ou P22
+        tem_meta_12 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 12", (destino_id,)).fetchone()
+        tem_meta_22 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 22", (destino_id,)).fetchone()
+        if tem_meta_12 and not tem_meta_22:
+            indicador_id = ind_p12["id"] if ind_p12 else 12
+        elif tem_meta_22 and not tem_meta_12:
+            indicador_id = ind_p22["id"] if ind_p22 else 22
+        else:
+            if db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 12 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone():
+                indicador_id = ind_p12["id"] if ind_p12 else 12
+            elif db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 22 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone():
+                indicador_id = ind_p22["id"] if ind_p22 else 22
+            else:
+                servicos = [s[0].upper() for s in db.execute(
+                    "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (destino_id,)
+                ).fetchall()]
+                indicador_id = ind_p12["id"] if "ESF" in servicos else (ind_p22["id"] if ind_p22 else (ind_p12["id"] if ind_p12 else 12))
+
+        db.execute(
+            """INSERT INTO fato_apuracao (
+                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                   periodo, quantidade, tipo_registro
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, 'apurado')""",
+            (fonte_id, imp_id, destino_id, cbo_cod, indicador_id, periodo_norm, qty),
+        )
+        vinculadas += qty
+
+    # Inserir linhas com apurado=0 para metas cadastradas de P12/P22 sem produção no mês
+    metas_emulti = db.execute(
+        """SELECT DISTINCT m.estabelecimento_id, m.indicador_id, m.cbo_codigo
+           FROM metas m
+           WHERE m.indicador_id IN (12, 22) AND m.cbo_codigo IS NOT NULL"""
+    ).fetchall()
+    for m in metas_emulti:
+        existe = db.execute(
+            """SELECT 1 FROM fato_apuracao
+               WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?
+               LIMIT 1""",
+            (periodo_norm, m["estabelecimento_id"], m["indicador_id"], m["cbo_codigo"]),
+        ).fetchone()
+        if not existe:
             db.execute(
                 """INSERT INTO fato_apuracao (
-                       fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 'apurado')""",
-                (fonte_id, r["imp_id"], estab_id, cbo_cod, indicador_id, periodo_norm, qty),
+                       fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                       periodo, quantidade, tipo_registro
+                   ) VALUES (?, ?, ?, ?, ?, ?, 0, 'apurado')""",
+                (fonte_id, max_imp_geral or 1, m["estabelecimento_id"], m["cbo_codigo"], m["indicador_id"], periodo_norm),
             )
-            vinculadas += 1
 
     db.commit()
-    return {"total_linhas": total, "linhas_vinculadas": vinculadas}
+    return {"total_linhas": total_linhas_filtradas, "linhas_vinculadas": vinculadas}
 
 
 def calcular_dtic_rel130(db, periodo, importacao_id=None):

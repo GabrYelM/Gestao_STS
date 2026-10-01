@@ -201,6 +201,113 @@ def portaria_partial():
     )
 
 
+@bp.route("/rel134/partial", methods=["GET"])
+def rel134_partial():
+    db = get_db()
+    estabelecimentos = db.execute(
+        "SELECT id, cod_cnes, nome FROM estabelecimentos ORDER BY nome ASC"
+    ).fetchall()
+    redirecionamentos = db.execute(
+        """SELECT r.id, r.unidade_origem_id, r.unidade_destino_id, r.observacao, r.criado_em,
+                  eo.nome AS origem_nome, eo.cod_cnes AS origem_cnes,
+                  ed.nome AS destino_nome, ed.cod_cnes AS destino_cnes
+           FROM de_para_unidades_rel134 r
+           JOIN estabelecimentos eo ON eo.id = r.unidade_origem_id
+           JOIN estabelecimentos ed ON ed.id = r.unidade_destino_id
+           ORDER BY eo.nome ASC"""
+    ).fetchall()
+    return render_template(
+        "contratos/cadastros/rel134.html",
+        estabelecimentos=estabelecimentos,
+        redirecionamentos=redirecionamentos,
+        partial=True,
+    )
+
+
+@bp.route("/rel134/salvar", methods=["POST"])
+def rel134_salvar():
+    db = get_db()
+    unidade_origem_id = request.form.get("unidade_origem_id", type=int)
+    unidade_destino_id = request.form.get("unidade_destino_id", type=int)
+    observacao = (request.form.get("observacao") or "").strip() or None
+
+    if not unidade_origem_id or not unidade_destino_id:
+        flash("Selecione a unidade de origem e a unidade de destino.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+    if unidade_origem_id == unidade_destino_id:
+        flash("A unidade de origem não pode ser a mesma unidade de destino.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+    try:
+        db.execute(
+            """INSERT INTO de_para_unidades_rel134 (unidade_origem_id, unidade_destino_id, observacao)
+               VALUES (?, ?, ?)
+               ON CONFLICT(unidade_origem_id) DO UPDATE SET
+                   unidade_destino_id = excluded.unidade_destino_id,
+                   observacao = excluded.observacao""",
+            (unidade_origem_id, unidade_destino_id, observacao),
+        )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Vínculo de redirecionamento salvo com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao salvar vínculo: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+
+@bp.route("/rel134/<int:id>/excluir", methods=["POST"])
+def rel134_excluir(id):
+    db = get_db()
+    try:
+        db.execute("DELETE FROM de_para_unidades_rel134 WHERE id = ?", (id,))
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Vínculo de redirecionamento excluído com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao excluir vínculo: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+
+@bp.route("/rel134/padrao_penha", methods=["POST"])
+def rel134_padrao_penha():
+    db = get_db()
+    padrao = [
+        (5, 53, "AMA/UBS Nóbrega -> Base UBS AE Carvalho"),
+        (55, 61, "UBS Villalobo -> Base UBS Pe Anchieta"),
+        (59, 62, "UBS São Nicolau -> Base UBS Vila Aricanduva"),
+        (66, 60, "UBS Vila Guilhermina -> Base UBS Arthur Alvim"),
+        (54, 4, "UBS Patriarca -> Base AMA/UBS Chácara Cruzeiro"),
+        (21, 56, "AMA/UBS Cangaíba -> Base UBS Eng Goulart"),
+        (57, 63, "UBS Eng Trindade -> Base UBS Vila Esperança"),
+        (64, 65, "UBS Emilio -> Base UBS Vila Granada"),
+        (6, 58, "AMA/UBS Vila Silvia -> Base UBS São Francisco I"),
+        (52, 67, "UBS Maringá -> Base UBS Vila Matilde"),
+    ]
+    try:
+        for orig, dest, obs in padrao:
+            db.execute(
+                """INSERT INTO de_para_unidades_rel134 (unidade_origem_id, unidade_destino_id, observacao)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(unidade_origem_id) DO UPDATE SET
+                       unidade_destino_id = excluded.unidade_destino_id,
+                       observacao = excluded.observacao""",
+                (orig, dest, obs),
+            )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Mapeamento padrão territorial STS Penha (10 pares eMulti) carregado com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao carregar mapeamento padrão: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+
 # ---------------------------------------------------------------------------
 # ESTABELECIMENTOS
 # ---------------------------------------------------------------------------

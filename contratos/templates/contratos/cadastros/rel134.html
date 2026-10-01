@@ -1,0 +1,166 @@
+{% extends "contratos/_partial_base.html" if partial else "contratos/base.html" %}
+{% block title %}Mapeamento de Unidades eMulti (REL 134) - STSPE Prod Monitor{% endblock %}
+{% block contrato_content %}
+
+<div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+  <div>
+    <h2 class="h4 mb-1 fw-bold text-dark">
+      <i class="fa-solid fa-people-arrows text-primary me-2"></i>Mapeamento de Unidades eMulti (DTIC REL_134 ➔ P12/P22)
+    </h2>
+    <p class="text-muted small mb-0">
+      Redirecionamento de produção: procedimentos realizados em <strong>unidades participantes</strong> da eMulti são creditados na <strong>unidade base</strong> da equipe multiprofissional.
+      <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-1">Efeito exclusivo no relatório DTIC REL_134</span>
+    </p>
+  </div>
+</div>
+
+<!-- Highlights / Resumo -->
+<div class="highlights mb-3">
+  <div class="stat-card">
+    <div class="stat-valor text-primary">{{ redirecionamentos|length }}</div>
+    <div class="stat-rotulo">Vínculos Mapeados</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-valor text-success">{{ redirecionamentos|map(attribute='unidade_destino_id')|unique|list|length }}</div>
+    <div class="stat-rotulo">Unidades Base Distintas</div>
+  </div>
+  <div class="stat-card" style="border-left-color: #2563eb; background-color: #f0f7ff;">
+    <div class="d-flex align-items-center justify-content-between">
+      <div>
+        <span class="badge bg-primary mb-1"><i class="fa-solid fa-map-location-dot me-1"></i>Padrão STS Penha</span>
+        <div class="text-dark small fw-bold">10 Pares Territoriais Pré-configurados</div>
+      </div>
+      <form method="post" action="{{ url_for('cadastros.rel134_padrao_penha') }}" class="ms-2">
+        <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Deseja carregar ou atualizar os 10 pares padrão da STS Penha?')">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Carregar Padrão Penha
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Barra de Ferramentas -->
+<div class="toolbar mb-3">
+  <button type="button" class="btn btn-secondary btn-sm" onclick="alternarPainelRel134('painel-novo-vinculo')">
+    <i class="fa-solid fa-plus me-1 text-success"></i> ＋ Novo Vínculo Origem ➔ Base
+  </button>
+  <span class="espaco"></span>
+  <span class="toolbar-texto" id="contador-tabela-rel134">Total: {{ redirecionamentos|length }} vínculo(s)</span>
+</div>
+
+<!-- Painel Formulário Novo Vínculo -->
+<div id="painel-novo-vinculo" class="painel-acao mb-3" style="display: none;">
+  <div class="card border-primary shadow-sm">
+    <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between py-2">
+      <span class="fw-bold small"><i class="fa-solid fa-link me-2"></i>Cadastrar / Atualizar Redirecionamento eMulti</span>
+      <button type="button" class="btn-close btn-close-white btn-sm" onclick="alternarPainelRel134('painel-novo-vinculo')"></button>
+    </div>
+    <div class="card-body p-3">
+      <form method="post" action="{{ url_for('cadastros.rel134_salvar') }}">
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label class="form-label small fw-bold">Unidade de Origem (Participante):</label>
+            <select name="unidade_origem_id" class="form-select form-select-sm" required>
+              <option value="">-- Selecione a unidade onde a atividade é executada --</option>
+              {% for e in estabelecimentos %}
+              <option value="{{ e.id }}">{{ e.nome }} {% if e.cod_cnes %}(CNES: {{ e.cod_cnes }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text" style="font-size: 11px;">Unidade que consta no registro do relatório DTIC REL_134.</div>
+          </div>
+
+          <div class="col-md-5">
+            <label class="form-label small fw-bold">Unidade de Destino (Base da eMulti):</label>
+            <select name="unidade_destino_id" class="form-select form-select-sm" required>
+              <option value="">-- Selecione a Unidade Base que receberá a produção --</option>
+              {% for e in estabelecimentos %}
+              <option value="{{ e.id }}">{{ e.nome }} {% if e.cod_cnes %}(CNES: {{ e.cod_cnes }}){% endif %}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text" style="font-size: 11px;">Unidade que possui as metas e equipe eMulti cadastrada.</div>
+          </div>
+
+          <div class="col-md-2">
+            <label class="form-label small fw-bold">Observação:</label>
+            <input type="text" name="observacao" class="form-control form-control-sm" placeholder="Ex: Par territorial eMulti">
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-3">
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="alternarPainelRel134('painel-novo-vinculo')">Cancelar</button>
+          <button type="submit" class="btn btn-sm btn-primary">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Salvar Vínculo
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Tabela de Vínculos -->
+<div class="card border-0 shadow-sm rounded-3">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0" id="tabela-rel134" style="font-size: 13px;">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 40px;" class="text-center">#</th>
+          <th>Unidade de Origem (Participante)</th>
+          <th style="width: 50px;" class="text-center"></th>
+          <th>Unidade de Destino (Base eMulti)</th>
+          <th>Observação</th>
+          <th style="width: 100px;" class="text-center">Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in redirecionamentos %}
+        <tr>
+          <td class="text-center text-muted small">{{ loop.index }}</td>
+          <td>
+            <strong>{{ r.origem_nome }}</strong>
+            {% if r.origem_cnes %}
+            <br><span class="badge bg-secondary-subtle text-secondary-emphasis" style="font-size: 10.5px;">CNES: {{ r.origem_cnes }}</span>
+            {% endif %}
+          </td>
+          <td class="text-center text-primary">
+            <i class="fa-solid fa-arrow-right"></i>
+          </td>
+          <td>
+            <strong class="text-primary">{{ r.destino_nome }}</strong>
+            {% if r.destino_cnes %}
+            <br><span class="badge bg-primary-subtle text-primary-emphasis" style="font-size: 10.5px;">CNES: {{ r.destino_cnes }}</span>
+            {% endif %}
+          </td>
+          <td class="text-muted small">
+            {{ r.observacao or '-' }}
+          </td>
+          <td class="text-center">
+            <form method="post" action="{{ url_for('cadastros.rel134_excluir', id=r.id) }}" style="display: inline;" onsubmit="return confirm('Deseja excluir este redirecionamento?')">
+              <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Excluir redirecionamento">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-4 text-muted">
+            <i class="fa-solid fa-circle-info fa-2x mb-2 text-secondary"></i>
+            <p class="mb-1">Nenhum vínculo de redirecionamento cadastrado.</p>
+            <p class="small text-muted mb-0">Clique no botão <strong>"Carregar Padrão Penha"</strong> acima para preencher automaticamente com os 10 pares territoriais da supervisão Penha.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function alternarPainelRel134(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+}
+</script>
+
+{% endblock %}

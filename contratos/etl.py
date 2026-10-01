@@ -218,6 +218,34 @@ def _encontrar_cabecalho_at02(linhas):
     raise ValueError(f"Cabeçalho '{CABECALHO_ESPERADO_AT02}' não encontrado no arquivo AT-02.")
 
 
+def _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_atual_id, staging_tabela=None):
+    """
+    Remove importações antigas da mesma fonte e período com segurança,
+    sem violar chaves estrangeiras em fato_apuracao ou tabelas de staging.
+    """
+    rows = db.execute(
+        "SELECT id FROM importacoes WHERE fonte_id = ? AND periodo_referencia = ? AND id != ?",
+        (fonte_id, periodo_referencia, importacao_atual_id),
+    ).fetchall()
+    if not rows:
+        return
+    old_ids = [r["id"] for r in rows]
+    placeholders = ",".join("?" for _ in old_ids)
+    try:
+        db.execute(
+            f"UPDATE fato_apuracao SET importacao_id = ? WHERE importacao_id IN ({placeholders})",
+            (importacao_atual_id, *old_ids),
+        )
+    except Exception:
+        pass
+    if staging_tabela:
+        try:
+            db.execute(f"DELETE FROM {staging_tabela} WHERE importacao_id IN ({placeholders})", tuple(old_ids))
+        except Exception:
+            pass
+    db.execute(f"DELETE FROM importacoes WHERE id IN ({placeholders})", tuple(old_ids))
+
+
 def importar_at02(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
     """
     Lê o CSV do AT-02 e grava em staging_at02.
@@ -291,6 +319,7 @@ def importar_at02(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
         "UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?",
         (linhas_importadas, importacao_id),
     )
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_at02")
     db.commit()
 
     return importacao_id, linhas_importadas
@@ -515,6 +544,7 @@ def importar_visita_domiciliar(caminho_arquivo, periodo_referencia, db, nome_arq
         "UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?",
         (linhas_importadas, importacao_id),
     )
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_visita_domiciliar")
     db.commit()
 
     return importacao_id, linhas_importadas
@@ -635,12 +665,24 @@ def _parse_numero_bi_siga(valor):
         return None
 
 
-def _encontrar_cabecalho_bi_siga(linhas, ancora):
+def _encontrar_cabecalho_bi_siga(linhas, ancora, fonte_at=None):
     import unicodedata
     def _norm(s):
         return "".join(c for c in unicodedata.normalize("NFD", str(s).lower()) if unicodedata.category(c) != "Mn").strip()
 
     ancora_norm = _norm(ancora)
+
+    # Para AT48, garante expressamente a seleção da 2ª tabela (que contém CNES e ano_mes detalhado)
+    if fonte_at == "AT48":
+        candidatos = []
+        for i, linha in enumerate(linhas):
+            if linha:
+                linha_norm = [_norm(c) for c in linha]
+                if any(ancora_norm in c for c in linha_norm) and any("cnes" in c for c in linha_norm):
+                    candidatos.append(i)
+        if candidatos:
+            return candidatos[-1]
+
     for i, linha in enumerate(linhas):
         if linha and _norm(linha[0]) == ancora_norm:
             return i
@@ -658,7 +700,7 @@ def importar_bi_siga(fonte_at, caminho_arquivo, periodo_referencia, db, nome_arq
     with abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="utf-8-sig", extensao_preferida=".csv") as f:
         linhas = list(csv.reader(f, delimiter=";"))
 
-    idx_cabecalho = _encontrar_cabecalho_bi_siga(linhas, config["ancora"])
+    idx_cabecalho = _encontrar_cabecalho_bi_siga(linhas, config["ancora"], fonte_at=fonte_at)
     cabecalho = [c.strip() for c in linhas[idx_cabecalho]]
     dados = linhas[idx_cabecalho + 1:]
 
@@ -714,6 +756,12 @@ def importar_bi_siga(fonte_at, caminho_arquivo, periodo_referencia, db, nome_arq
         if not valores["ano_mes"]:
             valores["ano_mes"] = periodo_referencia
 
+        # Para AT48, garante que apenas linhas de unidades com CNES válido sejam importadas
+        if fonte_at == "AT48":
+            cnes_raw = (valores.get("cod_cnes") or "").strip()
+            if not cnes_raw or not cnes_raw.isdigit():
+                continue
+
         for campo_numerico in ("quantidade", "quantidade_pacientes", "quantidade_vaga_ofertada"):
             valores[campo_numerico] = _parse_numero_bi_siga(valores[campo_numerico])
 
@@ -729,6 +777,7 @@ def importar_bi_siga(fonte_at, caminho_arquivo, periodo_referencia, db, nome_arq
         "UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?",
         (linhas_importadas, importacao_id),
     )
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_bi_siga")
     db.commit()
 
     return importacao_id, linhas_importadas
@@ -762,29 +811,47 @@ def importar_dtic_rel134(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     )
     importacao_id = cursor.lastrowid
 
+    insert_sql = """INSERT INTO staging_dtic_rel134 (
+                       importacao_id, periodo_referencia, coordenadoria, supervisao, oss, tipo_atividade,
+                       cnes, nome_unidade, cns_prof, nome_profissional, cbo_prof, cbo,
+                       data_atividade, ano, mes, num_participantes, cod_proced_sigtap,
+                       procedimento_sigtap, emulti
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+    batch = []
     total = 0
     for linha in linhas:
-        db.execute(
-            """INSERT INTO staging_dtic_rel134 (
-                   importacao_id, periodo_referencia, coordenadoria, supervisao, oss, tipo_atividade,
-                   cnes, unidade, cns_profissional, nome_profissional, cod_cbo, cbo,
-                   cod_procedimento, procedimento, data, tema_para_saude, publico_alvo,
-                   numero_participantes
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                importacao_id, periodo_referencia,
-                _campo_outras(linha, "coordenadoria"), _campo_outras(linha, "supervisao"), _campo_outras(linha, "oss"),
-                _campo_outras(linha, "tipo_atividade"), _campo_outras(linha, "cnes"), _campo_outras(linha, "unidade"),
-                _campo_outras(linha, "cns_profissional"), _campo_outras(linha, "nome_profissional"),
-                _campo_outras(linha, "cod_cbo"), _campo_outras(linha, "cbo"),
-                _campo_outras(linha, "cod_procedimento"), _campo_outras(linha, "procedimento"),
-                _campo_outras(linha, "data"), _campo_outras(linha, "tema_para_saude"), _campo_outras(linha, "publico_alvo"),
-                int(linha["numero_participantes"]) if linha.get("numero_participantes") else None,
-            ),
-        )
+        batch.append((
+            importacao_id,
+            periodo_referencia,
+            _campo_outras(linha, "coordenadoria"),
+            _campo_outras(linha, "supervisao"),
+            _campo_outras(linha, "oss"),
+            _campo_outras(linha, "tipo_atividade"),
+            _campo_outras(linha, "cnes"),
+            _campo_outras(linha, "nome_unidade") or _campo_outras(linha, "unidade"),
+            _campo_outras(linha, "cns_prof") or _campo_outras(linha, "cns_profissional"),
+            _campo_outras(linha, "nome_profissional"),
+            _campo_outras(linha, "cbo_prof") or _campo_outras(linha, "cod_cbo"),
+            _campo_outras(linha, "cbo"),
+            _campo_outras(linha, "data_atividade") or _campo_outras(linha, "data"),
+            _campo_outras(linha, "ano"),
+            _campo_outras(linha, "mes"),
+            _campo_outras(linha, "num_participantes") or _campo_outras(linha, "numero_participantes"),
+            _campo_outras(linha, "cod_proced_sigtap") or _campo_outras(linha, "cod_procedimento"),
+            _campo_outras(linha, "procedimento_sigtap") or _campo_outras(linha, "procedimento"),
+            _campo_outras(linha, "emulti"),
+        ))
         total += 1
+        if len(batch) >= 10000:
+            db.executemany(insert_sql, batch)
+            batch = []
+
+    if batch:
+        db.executemany(insert_sql, batch)
 
     db.execute("UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?", (total, importacao_id))
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_dtic_rel134")
     db.commit()
     return importacao_id, total
 

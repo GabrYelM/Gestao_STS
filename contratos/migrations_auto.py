@@ -634,11 +634,31 @@ def aplicar_migracoes_pendentes(conn):
                    mes                  TEXT,
                    num_participantes    TEXT,
                    cod_proced_sigtap    TEXT,
-                   procedimento_sigtap  TEXT
+                   procedimento_sigtap  TEXT,
+                   emulti               TEXT
                )"""
         )
         conn.execute("CREATE INDEX idx_staging_dtic_rel134_importacao ON staging_dtic_rel134(importacao_id)")
         conn.execute("CREATE INDEX idx_staging_dtic_rel134_periodo ON staging_dtic_rel134(periodo_referencia)")
+        aplicou_algo = True
+
+    if not _coluna_existe(conn, "staging_dtic_rel134", "emulti"):
+        conn.execute("ALTER TABLE staging_dtic_rel134 ADD COLUMN emulti TEXT")
+        aplicou_algo = True
+
+    if not _tabela_existe(conn, "de_para_unidades_rel134"):
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS de_para_unidades_rel134 (
+                   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                   unidade_origem_id   INTEGER NOT NULL REFERENCES estabelecimentos(id),
+                   unidade_destino_id  INTEGER NOT NULL REFERENCES estabelecimentos(id),
+                   observacao          TEXT,
+                   criado_em           TEXT DEFAULT CURRENT_TIMESTAMP,
+                   UNIQUE(unidade_origem_id)
+               )"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_depara_rel134_orig ON de_para_unidades_rel134(unidade_origem_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_depara_rel134_dest ON de_para_unidades_rel134(unidade_destino_id)")
         aplicou_algo = True
 
     if not _tabela_existe(conn, "staging_dtic_rel130"):

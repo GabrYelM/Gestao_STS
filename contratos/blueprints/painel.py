@@ -77,17 +77,22 @@ def status_auditoria(apurado, declarado, meta):
     dec = declarado or 0
     dif = ap - dec
 
+    if isinstance(dif, float) and not dif.is_integer():
+        dif_str = f"{dif:+.2f}"
+    else:
+        dif_str = f"{int(dif):+d}"
+
     if ap == 0 and dec == 0:
         return ("Sem produção", "badge-cinza", 0)
     if ap == dec:
         return ("Conforme (OK)", "badge-verde", 0)
     if dec > 0 and ap == 0:
-        return (f"Não apurado ({dif:+d})", "badge-vermelho", dif)
+        return (f"Não apurado ({dif_str})", "badge-vermelho", dif)
     if ap > 0 and dec == 0:
-        return (f"Não declarado ({dif:+d})", "badge-amarelo", dif)
+        return (f"Não declarado ({dif_str})", "badge-amarelo", dif)
     if dif > 0:
-        return (f"Apurado maior ({dif:+d})", "badge-amarelo", dif)
-    return (f"Declarado maior ({dif:+d})", "badge-vermelho", dif)
+        return (f"Apurado maior ({dif_str})", "badge-amarelo", dif)
+    return (f"Declarado maior ({dif_str})", "badge-vermelho", dif)
 
 
 def _resultados_com_status(db):
@@ -523,27 +528,58 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
         return [{"nome_profissional": f"Consolidado SIGA ({desc})", "cbo_codigo": cbo_codigo, "cbo_nome": desc, "apurado": tot}]
 
     if ind_cod in ("P11", "P21"):
-        fonte = "AT61"
-        marc_cnes = ",".join("?" * len(cnes_list)) if cnes_list else "''"
-        row = db.execute(
-            f"""SELECT SUM(quantidade) AS tot FROM staging_bi_siga
-                WHERE fonte_at = ? AND (ano_mes = ? OR ano_mes LIKE ?) AND cod_cnes IN ({marc_cnes})""",
-            [fonte, str(periodo or ""), f"%{periodo}%", *cnes_list],
-        ).fetchone()
-        tot = int(row["tot"]) if row and row["tot"] is not None else 0
-        desc = "Grupos e Atendimentos"
-        return [{"nome_profissional": f"Consolidado SIGA ({desc})", "cbo_codigo": cbo_codigo, "cbo_nome": desc, "apurado": tot}]
+        # Obter nome oficial do CBO
+        cbo_nome_real = None
+        if cbo_codigo:
+            c_row = db.execute("SELECT nome_categoria FROM cbo WHERE codigo = ?", (cbo_codigo,)).fetchone()
+            if c_row and c_row["nome_categoria"]:
+                cbo_nome_real = c_row["nome_categoria"]
+        if not cbo_nome_real:
+            cbo_nome_real = "Atividades Individuais eMulti"
 
-    # 5. Outros SSRS (P25 [PAI], P29 [CAPS], P36 [CER], P38 [CEO], P41 [APD], P27 [URSI])
-    if ind_cod in ("P25", "P29", "P36", "P38", "P41", "P27"):
+        # Obter apurado específico deste CBO na linha via fato_apuracao
         marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
-        row = db.execute(
-            f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
-               WHERE indicador_id = ? AND estabelecimento_id IN ({marc_estabs}) AND periodo = ? AND tipo_registro = 'apurado'""",
-            [indicador_id, *estabelecimento_ids, str(periodo or "")],
-        ).fetchone()
+        params_fato = [indicador_id, *estabelecimento_ids, str(periodo or "")]
+        sql_fato = f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
+                       WHERE indicador_id = ? AND estabelecimento_id IN ({marc_estabs}) AND periodo = ? AND tipo_registro = 'apurado'"""
+        if cbo_codigo:
+            sql_fato += " AND cbo_codigo = ?"
+            params_fato.append(cbo_codigo)
+        row = db.execute(sql_fato, params_fato).fetchone()
         tot = int(row["tot"]) if row and row["tot"] is not None else 0
-        return [{"nome_profissional": f"Consolidado SIGA ({ind_nome})", "cbo_codigo": cbo_codigo, "cbo_nome": ind_nome, "apurado": tot}]
+
+        return [{"nome_profissional": "Consolidado SIGA (eMulti)", "cbo_codigo": cbo_codigo, "cbo_nome": cbo_nome_real, "apurado": tot}]
+
+    # 5. Outros SSRS (P25 [PAI], P29 [CAPS], P36 [CER], P37 [CER Proced/Usu], P38 [CER CBO], P41 [APD], P27 [URSI])
+    if ind_cod in ("P25", "P29", "P36", "P37", "P38", "P41", "P27"):
+        marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
+        params_fato = [indicador_id, *estabelecimento_ids, str(periodo or "")]
+        sql_fato = f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
+                       WHERE indicador_id = ? AND estabelecimento_id IN ({marc_estabs}) AND periodo = ? AND tipo_registro = 'apurado'"""
+        if cbo_codigo:
+            sql_fato += " AND cbo_codigo = ?"
+            params_fato.append(cbo_codigo)
+        elif ind_cod == "P38":
+            sql_fato += " AND cbo_codigo IS NULL"
+
+        row = db.execute(sql_fato, params_fato).fetchone()
+        tot = row["tot"] if row and row["tot"] is not None else 0
+        if isinstance(tot, float) and tot.is_integer():
+            tot = int(tot)
+        elif isinstance(tot, float):
+            tot = round(tot, 2)
+        elif tot is not None:
+            tot = int(tot)
+
+        nome_prof_desc = ind_nome
+        if cbo_codigo:
+            c_row = db.execute("SELECT nome_categoria FROM cbo WHERE codigo = ?", (cbo_codigo,)).fetchone()
+            if c_row and c_row["nome_categoria"]:
+                nome_prof_desc = f"{ind_nome} - {c_row['nome_categoria']}"
+        elif ind_cod == "P38":
+            nome_prof_desc = f"{ind_nome} - Equipe Médica"
+
+        return [{"nome_profissional": f"Consolidado SIGA ({nome_prof_desc})", "cbo_codigo": cbo_codigo, "cbo_nome": nome_prof_desc, "apurado": tot}]
 
     # 6. AT-02 padrão
     procedimentos = _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id)
@@ -666,12 +702,27 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
     # 5. Grupos (P11, P21)
     if ind_cod in ("P11", "P21"):
         marc_cnes = ",".join("?" * len(cnes_list)) if cnes_list else "''"
+        cbo_alvo = cbo_codigo or cbo_profissional
+        nomes_cbo = []
+        if cbo_alvo:
+            from contratos.funcoes import _resolver_cbo
+            nomes_distintos = [r[0] for r in db.execute("SELECT DISTINCT cbo_nome FROM staging_bi_siga WHERE cbo_nome IS NOT NULL").fetchall()]
+            nomes_cbo = [n for n in nomes_distintos if _resolver_cbo(db, None, n) == str(cbo_alvo)]
+
         sql = f"""SELECT '' AS codigo, s.procedimento_nome AS nome, SUM(s.quantidade) AS apurado
                   FROM staging_bi_siga s
-                  WHERE s.fonte_at = 'AT61' AND (s.ano_mes = ? OR s.ano_mes LIKE ?) AND s.cod_cnes IN ({marc_cnes})
+                  WHERE s.fonte_at = 'AT61' AND (s.ano_mes = ? OR s.ano_mes LIKE ?) AND s.cod_cnes IN ({marc_cnes})"""
+        params = [str(periodo or ""), f"%{periodo}%", *cnes_list]
+
+        if nomes_cbo:
+            marc_nomes = ",".join("?" * len(nomes_cbo))
+            sql += f" AND s.cbo_nome IN ({marc_nomes})"
+            params.extend(nomes_cbo)
+
+        sql += """
                   GROUP BY s.procedimento_nome
                   ORDER BY apurado DESC"""
-        rows = db.execute(sql, [str(periodo or ""), f"%{periodo}%", *cnes_list]).fetchall()
+        rows = db.execute(sql, params).fetchall()
         return [{**dict(r), "considerado": True} for r in rows]
 
     # 6. Outros SSRS (P25, P29, P36, P38, P41, P27)
@@ -797,18 +848,157 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
     return resultado
 
 
+def _procedimentos_at02_do_cbo(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id=None):
+    """
+    Retorna os procedimentos registrados no SIGA AT-02 para o CBO e unidade(s)
+    desta linha na competência, que NÃO estão sendo contabilizados no indicador.
+    Tabela meramente visual e informativa para auditoria e identificação de lançamentos incorretos.
+    """
+    if not estabelecimento_ids:
+        return [], [], False, "", "", 0
+
+    ind_cod, ind_nome, cnes_list, cmes_list = _obter_info_linha(db, indicador_id, estabelecimento_ids)
+    unidades = list(set(cnes_list + cmes_list))
+    if not unidades:
+        return [], [], False, "", "", 0
+
+    cbo_codigo = (cbo_codigo or "").strip()
+    cbos_alvo = []
+    cbo_nome = ""
+
+    if cbo_codigo:
+        cbos_alvo = [cbo_codigo]
+        c_row = db.execute("SELECT nome_categoria FROM cbo WHERE codigo = ?", (cbo_codigo,)).fetchone()
+        if c_row and c_row["nome_categoria"]:
+            cbo_nome = c_row["nome_categoria"]
+    else:
+        # Se não há CBO explícito na linha, verificar se o indicador tem CBOs específicos cadastrados
+        ind_cbos = db.execute(
+            "SELECT cbo_codigo FROM indicador_cbo WHERE indicador_id = ? AND curinga != 1",
+            (indicador_id,)
+        ).fetchall()
+        cbos_alvo = [c["cbo_codigo"].strip() for c in ind_cbos if c["cbo_codigo"]]
+        if cbos_alvo:
+            cbo_nome = f"{len(cbos_alvo)} CBOs vinculados"
+
+    if not cbos_alvo:
+        return [], [], False, "", "", 0
+
+    # Descobrir fonte do indicador para saber se ele é baseado no AT-02
+    ind_info = db.execute(
+        """SELECT i.fonte_dados, f.nome as fonte_nome 
+           FROM indicadores i 
+           LEFT JOIN fontes_dados f ON f.id = i.fonte_id 
+           WHERE i.id = ?""",
+        (indicador_id,)
+    ).fetchone()
+    fonte_nome = (ind_info["fonte_nome"] or "").upper() if ind_info else ""
+    fonte_dados = (ind_info["fonte_dados"] or "").upper() if ind_info else ""
+    eh_fonte_at02 = ("AT02" in fonte_nome) or ("AT-02" in fonte_dados) or ("AT02" in fonte_dados)
+
+    codigos_considerados = []
+    if eh_fonte_at02:
+        procs_linha = _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id)
+        codigos_considerados = [p["codigo"] for p in procs_linha if p and p["codigo"]]
+
+    # Query em staging_at02
+    marc_unid = ",".join("?" * len(unidades))
+    marc_cbos = ",".join("?" * len(cbos_alvo))
+
+    sql = f"""
+        SELECT s.cod_procedimento AS codigo,
+               COALESCE(NULLIF(s.nome_procedimento, ''), p.nome, s.cod_procedimento) AS nome,
+               s.nome_profissional AS profissional,
+               s.cod_cbo_sus AS cbo_codigo,
+               COALESCE(c.nome_categoria, s.nome_cbo1, s.cod_cbo_sus) AS cbo_nome,
+               SUM(s.quantidade) AS quantidade
+        FROM staging_at02 s
+        LEFT JOIN procedimentos p ON p.codigo = s.cod_procedimento
+        LEFT JOIN cbo c ON c.codigo = s.cod_cbo_sus
+        WHERE s.ano_mes = ?
+          AND (s.cod_cmes IN ({marc_unid}) OR s.cod_cnes IN ({marc_unid}))
+          AND s.cod_cbo_sus IN ({marc_cbos})
+    """
+    params = [str(periodo or ""), *unidades, *unidades, *cbos_alvo]
+
+    if codigos_considerados:
+        marc_cons = ",".join("?" * len(codigos_considerados))
+        sql += f" AND s.cod_procedimento NOT IN ({marc_cons})"
+        params.extend(codigos_considerados)
+
+    sql += """
+        GROUP BY s.cod_procedimento, s.nome_procedimento, p.nome, s.nome_profissional, s.cod_cbo_sus, c.nome_categoria, s.nome_cbo1
+        ORDER BY quantidade DESC, s.cod_procedimento, s.nome_profissional
+    """
+
+    rows = db.execute(sql, params).fetchall()
+
+    # Agrupa por procedimento para exibição hierárquica (Procedimento -> Profissionais)
+    from collections import OrderedDict
+    grupos = OrderedDict()
+    for r in rows:
+        cod = str(r["codigo"] or "").strip()
+        nome = str(r["nome"] or "").strip()
+        nome_upper = nome.upper()
+        is_municipal = bool(
+            cod.startswith(("0301019", "0101019", "0307019", "030905"))
+            or "MAE PAULISTANA" in nome_upper
+            or "MUNICIPAL" in nome_upper
+            or "SALA DO IDOSO" in nome_upper
+        )
+        if cod not in grupos:
+            grupos[cod] = {
+                "codigo": cod,
+                "nome": nome,
+                "municipal": is_municipal,
+                "quantidade_total": 0,
+                "profissionais": [],
+            }
+        qtd = int(r["quantidade"] or 0)
+        grupos[cod]["quantidade_total"] += qtd
+        grupos[cod]["profissionais"].append({
+            "profissional": r["profissional"] or "Não identificado",
+            "quantidade": qtd,
+        })
+
+    # Ordena os procedimentos pelo total realizado decrescente
+    procs_agrupados = sorted(grupos.values(), key=lambda x: x["quantidade_total"], reverse=True)
+    # Ordena profissionais dentro de cada procedimento por quantidade decrescente
+    for p in procs_agrupados:
+        p["profissionais"].sort(key=lambda x: x["quantidade"], reverse=True)
+
+    total_qtd = sum(p["quantidade_total"] for p in procs_agrupados)
+    return procs_agrupados, cbos_alvo, True, cbo_codigo, cbo_nome, total_qtd
+
 
 @bp.route("/linha_detalhe")
 def linha_detalhe():
     """Nível 1 do drill-down inline: profissionais de uma linha específica
-    do painel, para expansão via JS - ver painel.html."""
+    do painel e procedimentos do CBO no AT-02 para conferência visual."""
     db = get_db()
+    indicador_id = request.args.get("indicador_id")
+    est_ids = _ids_da_linha(request.args)
+    cbo_codigo = request.args.get("cbo_codigo") or None
+    periodo = request.args.get("periodo")
+    subgrupo_id = _subgrupo_da_linha(request.args.get("subgrupo_id"))
+
     profissionais = _profissionais_da_linha(
-        db, request.args.get("indicador_id"), _ids_da_linha(request.args),
-        request.args.get("cbo_codigo") or None, request.args.get("periodo"),
-        _subgrupo_da_linha(request.args.get("subgrupo_id")),
+        db, indicador_id, est_ids,
+        cbo_codigo, periodo, subgrupo_id,
     )
-    return jsonify({"profissionais": [dict(p) for p in profissionais]})
+
+    procs_at02, cbos_alvo, tem_cbo, cbo_cod_rotulo, cbo_nome_rotulo, total_at02 = _procedimentos_at02_do_cbo(
+        db, indicador_id, est_ids, cbo_codigo, periodo, subgrupo_id,
+    )
+
+    return jsonify({
+        "profissionais": [dict(p) for p in profissionais],
+        "procedimentos_cbo_at02": procs_at02,
+        "tem_cbo": tem_cbo,
+        "cbo_codigo": cbo_cod_rotulo or (", ".join(cbos_alvo) if cbos_alvo else ""),
+        "cbo_nome": cbo_nome_rotulo,
+        "total_at02": total_at02,
+    })
 
 
 @bp.route("/profissional_detalhe")
