@@ -713,6 +713,14 @@ def aplicar_migracoes_pendentes(conn):
         conn.execute("CREATE INDEX idx_staging_sisad_periodo ON staging_sisad(periodo_referencia)")
         aplicou_algo = True
 
+    if _tabela_existe(conn, "staging_sisad"):
+        if not _coluna_existe(conn, "staging_sisad", "tipo_acompanhamento"):
+            conn.execute("ALTER TABLE staging_sisad ADD COLUMN tipo_acompanhamento TEXT")
+            aplicou_algo = True
+        if not _coluna_existe(conn, "staging_sisad", "procedencia"):
+            conn.execute("ALTER TABLE staging_sisad ADD COLUMN procedencia TEXT")
+            aplicou_algo = True
+
     # ============================== v14 / v15 / v18 ==============================
     if _migrar_v14(conn):
         aplicou_algo = True
@@ -956,6 +964,111 @@ def _migrar_v18(conn):
         SET nome = 'CONSULTA DE RETORNO NA ATENÇÃO ESPECIALIZADA'
         WHERE codigo = '0301019231'
     """)
+
+    # Garantir que P30 (EMAD) e P33 (EMAP) tenham seus CBOs vinculados na tabela indicador_cbo
+    # para que a view resultados_indicador e o painel separem por CBO
+    p30_row = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P30' LIMIT 1").fetchone()
+    p33_row = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P33' LIMIT 1").fetchone()
+    if p30_row:
+        p30_id = p30_row[0] if isinstance(p30_row, (tuple, list)) else p30_row["id"]
+        for cbo in ("223505", "223605", "225125", "322230"):
+            conn.execute(
+                """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                   SELECT ?, ?, 0
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                   )""",
+                (p30_id, cbo, p30_id, cbo),
+            )
+    if p33_row:
+        p33_id = p33_row[0] if isinstance(p33_row, (tuple, list)) else p33_row["id"]
+        for cbo in ("223605", "223710", "223810", "251510", "251605"):
+            conn.execute(
+                """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                   SELECT ?, ?, 0
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                   )""",
+                (p33_id, cbo, p33_id, cbo),
+            )
+
+    # Tabela de Portes de Procedimentos (Hospitais Dia AIH e Atenção Especializada BPA)
+    if not _tabela_existe(conn, "procedimento_portes"):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS procedimento_portes (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo              TEXT NOT NULL UNIQUE,
+                codigo_formatado    TEXT,
+                nome                TEXT NOT NULL,
+                instrumento         TEXT,
+                porte               TEXT NOT NULL,
+                grupo               TEXT,
+                ativo               INTEGER DEFAULT 1,
+                observacao          TEXT,
+                atualizado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_procedimento_portes_cod ON procedimento_portes(codigo);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_procedimento_portes_porte ON procedimento_portes(porte);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_procedimento_portes_inst ON procedimento_portes(instrumento);")
+        aplicou = True
+
+    # Se tabela estiver vazia, popula com os portes padrão da Portaria AEA 2025
+    qtd_portes = conn.execute("SELECT COUNT(*) FROM procedimento_portes").fetchone()[0]
+    if qtd_portes == 0:
+        try:
+            from contratos.portes_dados import carregar_portes_padrao
+            carregar_portes_padrao(conn, sobrescrever=False)
+            aplicou = True
+        except Exception as e:
+            print(f"[contratos] Erro ao carregar portes padrão: {e}")
+
+    # -------------------------------------------------------------------------
+    # DTIC REL_164 / REL_136 - Produção Hospital Dia (Cirurgias de Porte e BPA)
+    # -------------------------------------------------------------------------
+    if not _tabela_existe(conn, "staging_dtic_rel164"):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS staging_dtic_rel164 (
+                id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+                importacao_id               INTEGER NOT NULL REFERENCES importacoes(id),
+                periodo_referencia          TEXT,
+                data_atendimento            TEXT,
+                coordenadoria               TEXT,
+                supervisao                  TEXT,
+                estabelecimento_executante  TEXT,
+                oss                         TEXT,
+                cod_procedimento            TEXT,
+                procedimento                TEXT,
+                definicao                   TEXT,
+                cns_paciente                TEXT,
+                nome_paciente               TEXT,
+                data_nasc                   TEXT,
+                codigo_cbo                  TEXT,
+                descricao_cbo               TEXT,
+                total                       INTEGER DEFAULT 1
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_staging_dtic_rel164_importacao ON staging_dtic_rel164(importacao_id);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_staging_dtic_rel164_periodo ON staging_dtic_rel164(periodo_referencia);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_staging_dtic_rel164_proc ON staging_dtic_rel164(cod_procedimento);")
+        aplicou = True
+
+    # Garantir fonte de dados DTIC_REL164
+    conn.execute("""
+        INSERT OR IGNORE INTO fontes_dados (nome, descricao, granularidade, formato_arquivo, ativo)
+        VALUES ('DTIC_REL164', 'DTIC (REL_164)', 'procedimento', 'csv', 1)
+    """)
+    conn.execute("UPDATE fontes_dados SET descricao = 'DTIC (REL_164)' WHERE nome = 'DTIC_REL164'")
+
+    # Vincular indicadores P45, P46, P47 à fonte DTIC_REL164
+    fonte_rel164 = conn.execute("SELECT id FROM fontes_dados WHERE nome = 'DTIC_REL164' LIMIT 1").fetchone()
+    if fonte_rel164:
+        f_id = fonte_rel164[0] if isinstance(fonte_rel164, (tuple, list)) else fonte_rel164["id"]
+        conn.execute("""
+            UPDATE indicadores
+            SET fonte_id = ?, fonte_dados = 'DTIC (REL_164)'
+            WHERE codigo IN ('P45', 'P46', 'P47') AND (fonte_id IS NULL OR fonte_id != ?)
+        """, (f_id, f_id))
 
     return aplicou
 

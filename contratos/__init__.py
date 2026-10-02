@@ -85,6 +85,10 @@ def init_app(app):
             "INSERT OR IGNORE INTO fontes_dados (nome, descricao, granularidade, formato_arquivo) "
             "VALUES ('SISAD', 'SISAD', 'indicador', 'xlsx')"
         )
+        conn.execute(
+            "INSERT OR IGNORE INTO fontes_dados (nome, descricao, granularidade, formato_arquivo) "
+            "VALUES ('DTIC_REL164', 'DTIC (REL_164)', 'procedimento', 'csv')"
+        )
         for nome_categoria in ("PERTENCE", "CER", "NAO_PERTENCE"):
             conn.execute(
                 "INSERT OR IGNORE INTO categorias_estabelecimento (nome) VALUES (?)",

@@ -1632,21 +1632,17 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
     mes_ref = periodo_norm[4:6]
     mes_sem_zero = str(int(mes_ref))
 
-    # Staging query com os 5 filtros
+    # Staging query com os 5 filtros utilizando estritamente as colunas ano e mes para o período
     query = """
-        SELECT cnes, nome_unidade, cbo_prof, data_atividade, ano, mes, importacao_id
+        SELECT cnes, nome_unidade, cbo_prof, num_participantes, ano, mes, importacao_id
         FROM staging_dtic_rel134
         WHERE LOWER(COALESCE(supervisao, '')) LIKE '%penha%'
           AND UPPER(TRIM(COALESCE(emulti, ''))) = 'SIM'
           AND CAST(COALESCE(num_participantes, '0') AS INTEGER) > 1
           AND LOWER(COALESCE(tipo_atividade, '')) NOT LIKE '%reuni%'
-          AND (
-                (substr(data_atividade, 7, 4) = ? AND substr(data_atividade, 4, 2) = ?)
-                OR (ano = ? AND (mes = ? OR mes = ?))
-                OR periodo_referencia = ?
-          )
+          AND ano = ? AND (mes = ? OR mes = ?)
     """
-    params = [ano_ref, mes_ref, ano_ref, mes_ref, mes_sem_zero, periodo_norm]
+    params = [ano_ref, mes_ref, mes_sem_zero]
     if importacao_id:
         query += " AND importacao_id = ?"
         params.append(importacao_id)
@@ -1655,24 +1651,9 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
 
     # Agrupar produção por (unidade_destino_id, cbo_codigo)
     producao_agrupada = {}
-    total_linhas_filtradas = 0
+    total_linhas_filtradas = len(linhas)
 
     for r in linhas:
-        # Checagem da data
-        data_ativ = (r["data_atividade"] or "").strip()
-        ano_row = (r["ano"] or "").strip()
-        mes_row = (r["mes"] or "").strip()
-        eh_do_mes = False
-        if len(data_ativ) >= 10:
-            partes = data_ativ.split("/")
-            if len(partes) == 3 and partes[2] == ano_ref and partes[1].zfill(2) == mes_ref:
-                eh_do_mes = True
-        if not eh_do_mes and ano_row == ano_ref and mes_row.zfill(2) == mes_ref:
-            eh_do_mes = True
-        if not eh_do_mes:
-            continue
-
-        total_linhas_filtradas += 1
 
         origem_id, _ = _resolver_estabelecimento_por_cnes(db, r["cnes"])
         if not origem_id:
@@ -1680,10 +1661,19 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
         if not origem_id:
             continue
 
-        destino_id = redirecionamentos.get(origem_id, origem_id)
         cbo_cod = str(r["cbo_prof"] or "").split(".")[0].strip()
         if not cbo_cod:
             continue
+
+        # Para Farmacêutico (2234) e Assistente Social (2516), a relação com a unidade base NÃO deve ser considerada
+        if cbo_cod.startswith("2234"):
+            destino_id = origem_id
+            cbo_cod = "223405"
+        elif cbo_cod.startswith("2516"):
+            destino_id = origem_id
+            cbo_cod = "251605"
+        else:
+            destino_id = redirecionamentos.get(origem_id, origem_id)
 
         chave = (destino_id, cbo_cod)
         if chave not in producao_agrupada:
@@ -1758,21 +1748,56 @@ def calcular_dtic_rel130(db, periodo, importacao_id=None):
     """Gera fato_apuracao para P30 (EMAD) e P33 (EMAP) Atendimento Domiciliar eSUS."""
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='DTIC_REL130'").fetchone()["id"]
     periodo_norm = _normalizar_periodo(periodo)
+    ano_ref = periodo_norm[:4] if len(periodo_norm) >= 4 else ""
+    mes_ref = periodo_norm[4:6] if len(periodo_norm) >= 6 else ""
+
     db.execute("DELETE FROM fato_apuracao WHERE periodo = ? AND fonte_id = ?", (periodo_norm, fonte_id))
 
     ind_p30 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P30' LIMIT 1").fetchone()
     ind_p33 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P33' LIMIT 1").fetchone()
 
-    query = """SELECT cnes, unidade, nome_equipe, count(*) as total, max(importacao_id) as imp_id
+    # Garantir que P30 e P33 tenham os CBOs vinculados em indicador_cbo para separação por CBO na view e no painel
+    p30_cbos = ("223505", "223605", "225125", "322230")
+    p33_cbos = ("223605", "223710", "223810", "251510", "251605")
+
+    if ind_p30:
+        for cbo in p30_cbos:
+            db.execute(
+                """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                   SELECT ?, ?, 0
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                   )""",
+                (ind_p30["id"], cbo, ind_p30["id"], cbo),
+            )
+
+    if ind_p33:
+        for cbo in p33_cbos:
+            db.execute(
+                """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                   SELECT ?, ?, 0
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                   )""",
+                (ind_p33["id"], cbo, ind_p33["id"], cbo),
+            )
+
+    query = """SELECT cnes, unidade, nome_equipe, cod_cbo,
+                      COUNT(DISTINCT codigo_atendimento) AS total,
+                      MAX(importacao_id) AS imp_id
                FROM staging_dtic_rel130
                WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)
-                 AND (supervisao LIKE '%PENHA%' OR cnes IN (SELECT cod_cnes FROM estabelecimentos WHERE cod_cnes IS NOT NULL))
-               GROUP BY cnes, unidade, nome_equipe"""
-    params = [periodo_norm, f"%{periodo_norm}%"]
+                 AND (supervisao LIKE '%PENHA%' OR supervisao LIKE '%penha%')
+                 AND substr(data_cadastro, 7, 4) = ?
+                 AND substr(data_cadastro, 4, 2) = ?
+               GROUP BY cnes, unidade, nome_equipe, cod_cbo"""
+    params = [periodo_norm, f"%{periodo_norm}%", ano_ref, mes_ref]
     linhas = db.execute(query, params).fetchall()
 
     total = 0
     vinculadas = 0
+    max_imp_id = importacao_id
+
     for r in linhas:
         total += 1
         qty = int(r["total"] or 0)
@@ -1790,17 +1815,351 @@ def calcular_dtic_rel130(db, periodo, importacao_id=None):
         estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cnes"], indicador_id)
         if not estab_id:
             estab_id = _resolver_estabelecimento_por_nome(db, r["unidade"])
-        if estab_id and qty > 0:
+        if not estab_id:
+            continue
+
+        cbo_cod = (r["cod_cbo"] or "").strip() or None
+        if not max_imp_id and r["imp_id"]:
+            max_imp_id = r["imp_id"]
+
+        if qty > 0:
             db.execute(
                 """INSERT INTO fato_apuracao (
                        fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
-                   ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
-                (fonte_id, r["imp_id"], estab_id, indicador_id, periodo_norm, qty),
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, 'apurado')""",
+                (fonte_id, r["imp_id"] or max_imp_id or 1, estab_id, cbo_cod, indicador_id, periodo_norm, qty),
             )
-            vinculadas += 1
+            vinculadas += qty
+
+    # Inserir linhas com apurado=0 para metas cadastradas de P30/P33 sem produção no mês
+    ind_ids = [i["id"] for i in (ind_p30, ind_p33) if i]
+    if ind_ids:
+        marc_inds = ",".join("?" * len(ind_ids))
+        metas = db.execute(
+            f"""SELECT DISTINCT m.estabelecimento_id, m.cbo_codigo, m.indicador_id
+               FROM metas m
+               WHERE m.indicador_id IN ({marc_inds}) AND m.cbo_codigo IS NOT NULL""",
+            ind_ids,
+        ).fetchall()
+        for m in metas:
+            existe = db.execute(
+                """SELECT 1 FROM fato_apuracao
+                   WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?
+                   LIMIT 1""",
+                (periodo_norm, m["estabelecimento_id"], m["indicador_id"], m["cbo_codigo"]),
+            ).fetchone()
+            if not existe:
+                db.execute(
+                    """INSERT INTO fato_apuracao (
+                           fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                           periodo, quantidade, tipo_registro
+                       ) VALUES (?, ?, ?, ?, ?, ?, 0, 'apurado')""",
+                    (fonte_id, max_imp_id or 1, m["estabelecimento_id"], m["cbo_codigo"], m["indicador_id"], periodo_norm),
+                )
 
     db.commit()
     return {"total_linhas": total, "linhas_vinculadas": vinculadas}
+
+
+def calcular_sisad(db, periodo, importacao_id=None):
+    """
+    Gera fato_apuracao para os indicadores da fonte SISAD:
+      - P31: Número de Pacientes Ativos da EMAD (por unidade EMAD: ativos até o fim do mês + óbitos do mês)
+      - P32: Desospitalização por Procedência (por unidade EMAD: procedência HOSPITAL no mês)
+      - P34: Número de Pacientes Ativos da EMAP (UBS Jardim Maringá: soma dos ativos de todas as EMADs)
+    """
+    import calendar
+    from collections import defaultdict
+    from datetime import datetime
+
+    fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='SISAD'").fetchone()["id"]
+    periodo_norm = _normalizar_periodo(periodo)
+    ano = int(periodo_norm[:4])
+    mes = int(periodo_norm[4:6])
+    ultimo_dia = calendar.monthrange(ano, mes)[1]
+    dt_limite = datetime(ano, mes, ultimo_dia, 23, 59, 59)
+
+    db.execute("DELETE FROM fato_apuracao WHERE periodo = ? AND fonte_id = ?", (periodo_norm, fonte_id))
+
+    ind_p31 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P31' LIMIT 1").fetchone()
+    ind_p32 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P32' LIMIT 1").fetchone()
+    ind_p34 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P34' LIMIT 1").fetchone()
+
+    # Mapeamento oficial de unidades SISAD para estabelecimentos
+    mapa_unidades = {
+        "EMAD GRANADA": 65,  # UBS Vila Granada-Alfredo F Paulino Filho
+        "EMAD UBS CANGAÍBA": 21,  # Ama/Ubs Integrada Cangaiba - Dr. Carlos Gentile De Mello
+        "EMAD UBS CANGAIBA": 21,
+        "EMAD UBS INTEGRAL TALARICO/MARINGA": 52,  # Ubs Jardim Maringa - Vila Talarico
+        "EMAD UBS SÃO NICOLAU": 59,  # Ubs Jardim Sao Nicolau
+        "EMAD UBS SAO NICOLAU": 59,
+    }
+
+    # Estabelecimento da EMAP (UBS Jardim Maringá)
+    estab_emap_id = 52
+
+    linhas = db.execute(
+        """SELECT importacao_id, unidade, tipo_acompanhamento, situacao,
+                  data_admissao, procedencia, data_obito
+           FROM staging_sisad
+           WHERE periodo_referencia = ? OR periodo_referencia LIKE ?""",
+        (periodo_norm, f"%{periodo_norm}%"),
+    ).fetchall()
+
+    def parse_dt(d):
+        if not d:
+            return None
+        if isinstance(d, datetime):
+            return d
+        d_str = str(d).strip()
+        for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(d_str[:10], fmt)
+            except Exception:
+                pass
+        return None
+
+    ativos_esq = defaultdict(int)
+    obitos_dir = defaultdict(int)
+    desosp_verm = defaultdict(int)
+    max_imp_id = importacao_id
+
+    for r in linhas:
+        if not max_imp_id and r["importacao_id"]:
+            max_imp_id = r["importacao_id"]
+
+        u_raw = (r["unidade"] or "").strip().upper()
+        if not u_raw:
+            continue
+
+        tipo = (r["tipo_acompanhamento"] or r["situacao"] or "").strip().upper()
+        proc = (r["procedencia"] or "").strip().upper()
+        dt_adm = parse_dt(r["data_admissao"])
+        dt_ob = parse_dt(r["data_obito"])
+
+        # 1. Tabela Azul Esquerda: Tipo == ATIVO e Data de Admissao <= fim do mes
+        if tipo == "ATIVO" and dt_adm and dt_adm <= dt_limite:
+            ativos_esq[u_raw] += 1
+
+        # 2. Tabela Azul Direita: Tipo == INATIVO e Data de Obito no mes/ano da competencia
+        if tipo == "INATIVO" and dt_ob and dt_ob.year == ano and dt_ob.month == mes:
+            obitos_dir[u_raw] += 1
+
+        # 3. Tabela Vermelha: Tipo == ATIVO e Procedencia == HOSPITAL e Data de Admissao no mes/ano da competencia
+        if tipo == "ATIVO" and proc == "HOSPITAL" and dt_adm and dt_adm.year == ano and dt_adm.month == mes:
+            desosp_verm[u_raw] += 1
+
+    vinculadas = 0
+    total_ativos_emad_soma = 0
+
+    # Gravar P31 (Ativos EMAD: soma tabela azul esq + azul dir) e P32 (Deshospitalização)
+    todas_emad_nomes = set(list(ativos_esq.keys()) + list(obitos_dir.keys()) + list(desosp_verm.keys()))
+
+    for u_nome in todas_emad_nomes:
+        estab_id = mapa_unidades.get(u_nome)
+        if not estab_id:
+            estab_id = _resolver_estabelecimento_por_nome(db, u_nome)
+        if not estab_id:
+            continue
+
+        qtd_ativos = ativos_esq[u_nome] + obitos_dir[u_nome]
+        total_ativos_emad_soma += qtd_ativos
+
+        if ind_p31 and qtd_ativos > 0:
+            db.execute(
+                """INSERT INTO fato_apuracao (
+                       fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                       periodo, quantidade, tipo_registro
+                   ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
+                (fonte_id, max_imp_id or 1, estab_id, ind_p31["id"], periodo_norm, qtd_ativos),
+            )
+            vinculadas += qtd_ativos
+
+        qtd_desosp = desosp_verm[u_nome]
+        if ind_p32 and qtd_desosp > 0:
+            db.execute(
+                """INSERT INTO fato_apuracao (
+                       fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                       periodo, quantidade, tipo_registro
+                   ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
+                (fonte_id, max_imp_id or 1, estab_id, ind_p32["id"], periodo_norm, qtd_desosp),
+            )
+            vinculadas += qtd_desosp
+
+    # Gravar P34 (EMAP Ativos = soma de todas as EMADs na UBS Jardim Maringá)
+    if ind_p34 and total_ativos_emad_soma > 0:
+        db.execute(
+            """INSERT INTO fato_apuracao (
+                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                   periodo, quantidade, tipo_registro
+               ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
+            (fonte_id, max_imp_id or 1, estab_emap_id, ind_p34["id"], periodo_norm, total_ativos_emad_soma),
+        )
+        vinculadas += total_ativos_emad_soma
+
+    # Inserir linhas com apurado=0 para metas cadastradas de P31/P32/P34 sem produção no mês
+    ind_ids = [i["id"] for i in (ind_p31, ind_p32, ind_p34) if i]
+    if ind_ids:
+        marc_inds = ",".join("?" * len(ind_ids))
+        metas = db.execute(
+            f"""SELECT DISTINCT m.estabelecimento_id, m.indicador_id
+               FROM metas m
+               WHERE m.indicador_id IN ({marc_inds})""",
+            ind_ids,
+        ).fetchall()
+        for m in metas:
+            existe = db.execute(
+                """SELECT 1 FROM fato_apuracao
+                   WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo IS NULL
+                   LIMIT 1""",
+                (periodo_norm, m["estabelecimento_id"], m["indicador_id"]),
+            ).fetchone()
+            if not existe:
+                db.execute(
+                    """INSERT INTO fato_apuracao (
+                           fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
+                           periodo, quantidade, tipo_registro
+                       ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
+                    (fonte_id, max_imp_id or 1, m["estabelecimento_id"], m["indicador_id"], periodo_norm),
+                )
+
+    db.commit()
+    return {"total_linhas": len(linhas), "linhas_vinculadas": vinculadas}
+
+
+def calcular_dtic_rel164(db, periodo, importacao_id=None):
+    """
+    Gera fato_apuracao para os indicadores do Hospital Dia (REL 164 / 136):
+      - P45: Cirurgias de Pequeno Porte (AIH) -> DEFINICAO contendo 'PEQUENO PORTE'
+      - P46: Cirurgias de Médio Porte (AIH) -> DEFINICAO contendo 'MEDIO PORTE' ou 'MÉDIO PORTE'
+      - P47: Pequenas Cirurgias (BPA) -> DEFINICAO contendo 'PEQUENAS CIRURGIAS'
+    Regras:
+      1. Filtrado para STS-Penha -> Estabelecimento: Hospital Dia Penha Hatiro Shimomoto (id 44 / CNES 2751933).
+      2. Classificação direta pela coluna DEFINICAO da staging_dtic_rel164 (sem cruzar com tabela de códigos).
+      3. Caso não haja produção apurada no mês para P45, P46 ou P47, grava registro com quantidade = 0.
+    """
+    fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='DTIC_REL164'").fetchone()["id"]
+    periodo_norm = _normalizar_periodo(periodo)
+
+    db.execute("DELETE FROM fato_apuracao WHERE periodo = ? AND fonte_id = ?", (periodo_norm, fonte_id))
+
+    ind_p45 = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P45', 'P045') LIMIT 1").fetchone()
+    ind_p46 = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P46', 'P046') LIMIT 1").fetchone()
+    ind_p47 = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P47', 'P047') LIMIT 1").fetchone()
+
+    # Estabelecimento Hospital Dia Penha (id 44 / CNES 2751933)
+    estab_row = db.execute(
+        """SELECT id FROM estabelecimentos 
+           WHERE upper(nome) LIKE '%HOSPITAL DIA%PENHA%' AND cod_cmes = '2751933'
+           LIMIT 1"""
+    ).fetchone()
+    if not estab_row:
+        estab_row = db.execute(
+            """SELECT id FROM estabelecimentos 
+               WHERE upper(nome) LIKE '%HOSPITAL DIA%PENHA%'
+               ORDER BY (id = 44) DESC LIMIT 1"""
+        ).fetchone()
+    estab_id = estab_row["id"] if estab_row else 44
+
+    # Buscar dados do staging filtrando onde a coluna definicao está preenchida
+    query = """
+        SELECT cod_procedimento, procedimento, definicao,
+               SUM(COALESCE(total, 1)) AS total_qtd,
+               MAX(importacao_id) AS imp_id
+        FROM staging_dtic_rel164
+        WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)
+          AND definicao IS NOT NULL AND TRIM(definicao) != ''
+    """
+    params = [periodo_norm, f"%{periodo_norm}%"]
+    if importacao_id:
+        query += " AND importacao_id = ?"
+        params.append(importacao_id)
+    query += " GROUP BY cod_procedimento, procedimento, definicao"
+
+    linhas = db.execute(query, params).fetchall()
+
+    total_linhas = len(linhas)
+    vinculadas = 0
+    max_imp_id = importacao_id
+
+    # Rastrear quais indicadores receberam produção
+    indicadores_com_producao = set()
+
+    for r in linhas:
+        def_upper = (r["definicao"] or "").upper().strip()
+        target_ind = None
+
+        if "PEQUENAS CIRURGIAS" in def_upper:
+            target_ind = ind_p47["id"] if ind_p47 else None
+        elif "MEDIO PORTE" in def_upper or "MÉDIO PORTE" in def_upper:
+            target_ind = ind_p46["id"] if ind_p46 else None
+        elif "PEQUENO PORTE" in def_upper:
+            target_ind = ind_p45["id"] if ind_p45 else None
+
+        if not target_ind:
+            continue
+
+        qtd = int(r["total_qtd"] or 0)
+        if qtd <= 0:
+            continue
+
+        cod_raw = (r["cod_procedimento"] or "").strip()
+        nome_proc = (r["procedimento"] or "").strip() or f"Procedimento {cod_raw}"
+
+        # Garantir cadastro do procedimento em procedimentos
+        if cod_raw:
+            db.execute(
+                """INSERT INTO procedimentos (codigo, nome)
+                   VALUES (?, ?)
+                   ON CONFLICT(codigo) DO NOTHING""",
+                (cod_raw, nome_proc),
+            )
+            # Garantir vínculo do procedimento no indicador
+            db.execute(
+                """INSERT INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo)
+                   SELECT ?, ?, 'inclusao'
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM indicador_procedimento
+                       WHERE indicador_id = ? AND procedimento_codigo = ?
+                   )""",
+                (target_ind, cod_raw, target_ind, cod_raw),
+            )
+
+        if not max_imp_id and r["imp_id"]:
+            max_imp_id = r["imp_id"]
+
+        db.execute(
+            """INSERT INTO fato_apuracao (
+                   fonte_id, importacao_id, estabelecimento_id, cbo_codigo,
+                   procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+               ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'apurado')""",
+            (fonte_id, r["imp_id"] or max_imp_id or 1, estab_id, cod_raw or None, target_ind, periodo_norm, qtd),
+        )
+        vinculadas += qtd
+        indicadores_com_producao.add(target_ind)
+
+    # Inserir quantidade=0 para os indicadores P45, P46, P47 que não tiveram produção no mês
+    for ind in (ind_p45, ind_p46, ind_p47):
+        if not ind:
+            continue
+        if ind["id"] not in indicadores_com_producao:
+            existe = db.execute(
+                """SELECT 1 FROM fato_apuracao
+                   WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ?
+                   LIMIT 1""",
+                (periodo_norm, estab_id, ind["id"]),
+            ).fetchone()
+            if not existe:
+                db.execute(
+                    """INSERT INTO fato_apuracao (
+                           fonte_id, importacao_id, estabelecimento_id, cbo_codigo,
+                           procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+                       ) VALUES (?, ?, ?, NULL, NULL, ?, ?, 0, 'apurado')""",
+                    (fonte_id, max_imp_id or 1, estab_id, ind["id"], periodo_norm),
+                )
+
+    db.commit()
+    return {"total_linhas": total_linhas, "linhas_vinculadas": vinculadas}
 
 
 def recalcular_periodo(db, periodo, fonte_nome):
@@ -1816,6 +2175,8 @@ def recalcular_periodo(db, periodo, fonte_nome):
         resumos["BI_SIGA"] = calcular_bi_siga(db, periodo_norm)
         resumos["DTIC_REL134"] = calcular_dtic_rel134(db, periodo_norm)
         resumos["DTIC_REL130"] = calcular_dtic_rel130(db, periodo_norm)
+        resumos["SISAD"] = calcular_sisad(db, periodo_norm)
+        resumos["DTIC_REL164"] = calcular_dtic_rel164(db, periodo_norm)
         return resumos
 
     if fn == "AT02":
@@ -1831,6 +2192,10 @@ def recalcular_periodo(db, periodo, fonte_nome):
         return calcular_dtic_rel134(db, periodo_norm)
     elif fn == "DTIC_REL130":
         return calcular_dtic_rel130(db, periodo_norm)
+    elif fn == "SISAD":
+        return calcular_sisad(db, periodo_norm)
+    elif fn in ("DTIC_REL164", "REL164", "REL_164", "REL136", "REL_136", "HOSPITAL_DIA"):
+        return calcular_dtic_rel164(db, periodo_norm)
     else:
         raise ValueError(f"Não há rotina de cálculo para a fonte: {fonte_nome}")
 

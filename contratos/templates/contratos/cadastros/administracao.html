@@ -42,6 +42,11 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-portes" data-bs-toggle="tab" data-bs-target="#portes" type="button" role="tab" data-url="{{ url_for('cadastros.portes_partial') }}">
+                    <i class="fa-solid fa-shapes me-1"></i> Portes de Procedimento (AEA)
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tab-importar" data-bs-toggle="tab" data-bs-target="#importar" type="button" role="tab" data-url="{{ url_for('importacao.formulario') }}">
                     <i class="fa-solid fa-file-import me-1"></i> Importar base de dados
                 </button>
@@ -70,6 +75,7 @@
             <div class="tab-pane fade" id="profissionais" role="tabpanel"></div>
             <div class="tab-pane fade" id="portaria" role="tabpanel"></div>
             <div class="tab-pane fade" id="rel134" role="tabpanel"></div>
+            <div class="tab-pane fade" id="portes" role="tabpanel"></div>
             <div class="tab-pane fade" id="importar" role="tabpanel"></div>
             <div class="tab-pane fade" id="backup" role="tabpanel"></div>
             <div class="tab-pane fade" id="logs" role="tabpanel"></div>

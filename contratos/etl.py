@@ -40,7 +40,9 @@ def abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="utf-8-sig", extensao_p
       - Abre o arquivo diretamente do disco com open().
     """
     if isinstance(caminho_arquivo, str) and (
-        caminho_arquivo.lower().endswith(".zip") or (os.path.exists(caminho_arquivo) and zipfile.is_zipfile(caminho_arquivo))
+        caminho_arquivo.lower().endswith(".zip")
+        or (not caminho_arquivo.lower().endswith((".csv", ".txt", ".xml", ".tsv", ".json"))
+            and os.path.exists(caminho_arquivo) and zipfile.is_zipfile(caminho_arquivo))
     ):
         with zipfile.ZipFile(caminho_arquivo) as z:
             candidatos = [
@@ -72,7 +74,9 @@ def abrir_binario_arquivo_ou_zip(caminho_arquivo, extensao_preferida=".xlsx"):
     Útil para leitura com openpyxl ou ferramentas que exigem stream binário.
     """
     if isinstance(caminho_arquivo, str) and (
-        caminho_arquivo.lower().endswith(".zip") or (os.path.exists(caminho_arquivo) and zipfile.is_zipfile(caminho_arquivo))
+        caminho_arquivo.lower().endswith(".zip")
+        or (not caminho_arquivo.lower().endswith((".xlsx", ".xlsm", ".xls", ".ods"))
+            and os.path.exists(caminho_arquivo) and zipfile.is_zipfile(caminho_arquivo))
     ):
         with zipfile.ZipFile(caminho_arquivo) as z:
             candidatos = [
@@ -857,10 +861,6 @@ def importar_dtic_rel134(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
 
 
 def importar_dtic_rel130(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
-    with abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="cp1252", extensao_preferida=".csv") as f:
-        leitor = csv.DictReader(f, delimiter=";")
-        linhas = list(leitor)
-
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome = 'DTIC_REL130'").fetchone()["id"]
 
     db.execute("DELETE FROM staging_dtic_rel130 WHERE periodo_referencia = ?", (periodo_referencia,))
@@ -872,28 +872,52 @@ def importar_dtic_rel130(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     )
     importacao_id = cursor.lastrowid
 
-    total = 0
-    for linha in linhas:
-        db.execute(
-            """INSERT INTO staging_dtic_rel130 (
+    p_norm = "".join(filter(str.isdigit, str(periodo_referencia or "")))
+    ano_ref = p_norm[:4] if len(p_norm) >= 4 else None
+    mes_ref = p_norm[4:6] if len(p_norm) >= 6 else None
+
+    insert_sql = """INSERT INTO staging_dtic_rel130 (
                    importacao_id, periodo_referencia, coordenadoria, supervisao, oss,
                    cnes, unidade, codigo_atendimento, cns_profissional, nome_profissional,
                    cod_cbo, cbo, nome_equipe, data_cadastro,
                    cod_procedimento, procedimento
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+    total = 0
+    batch = []
+    with abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="cp1252", extensao_preferida=".csv") as f:
+        leitor = csv.DictReader(f, delimiter=";")
+        for linha in leitor:
+            sup = (_campo_outras(linha, "supervisao") or "").strip()
+            if "penha" not in sup.lower():
+                continue
+
+            dt = (_campo_outras(linha, "data_cadastro") or "").strip()
+            if ano_ref and mes_ref and len(dt) >= 10:
+                dt_mes = dt[3:5]
+                dt_ano = dt[6:10]
+                if dt_mes != mes_ref or dt_ano != ano_ref:
+                    continue
+
+            batch.append((
                 importacao_id, periodo_referencia,
-                _campo_outras(linha, "coordenadoria"), _campo_outras(linha, "supervisao"), _campo_outras(linha, "oss"),
+                _campo_outras(linha, "coordenadoria"), sup, _campo_outras(linha, "oss"),
                 _campo_outras(linha, "cnes"), _campo_outras(linha, "unidade"), _campo_outras(linha, "codigo_atendimento"),
                 _campo_outras(linha, "cns_profissional"), _campo_outras(linha, "nome_profissional"),
                 _campo_outras(linha, "cod_cbo"), _campo_outras(linha, "cbo"), _campo_outras(linha, "nome_equipe"),
-                _campo_outras(linha, "data_cadastro"),
+                dt,
                 _campo_outras(linha, "cod_procedimento"), _campo_outras(linha, "procedimento"),
-            ),
-        )
-        total += 1
+            ))
+            total += 1
+            if len(batch) >= 10000:
+                db.executemany(insert_sql, batch)
+                batch = []
+
+        if batch:
+            db.executemany(insert_sql, batch)
 
     db.execute("UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?", (total, importacao_id))
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_dtic_rel130")
     db.commit()
     return importacao_id, total
 
@@ -902,6 +926,7 @@ _SISAD_COLUNAS = [
     "ID", "Coordenadoria", "Supervisão", "Unidade", "Ubs de Referência", "Cartão SUS",
     "Nome", "Situação", "Classificação dos pacientes em Cuidados Paliativos",
     "Data da Criação", "Data de Admissao", "Data da Alta", "Motivo da Alta", "Data de Óbito",
+    "Tipo de Acompanhamento", "Procedencia",
 ]
 
 _SISAD_MAPA_CAMPO = {
@@ -911,18 +936,11 @@ _SISAD_MAPA_CAMPO = {
     "Classificação dos pacientes em Cuidados Paliativos": "classificacao_cuidados_paliativos",
     "Data da Criação": "data_criacao", "Data de Admissao": "data_admissao",
     "Data da Alta": "data_alta", "Motivo da Alta": "motivo_alta", "Data de Óbito": "data_obito",
+    "Tipo de Acompanhamento": "tipo_acompanhamento", "Procedencia": "procedencia",
 }
 
 
 def importar_sisad(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
-    with abrir_binario_arquivo_ou_zip(caminho_arquivo, extensao_preferida=".xlsx") as f:
-        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
-        ws = wb[wb.sheetnames[0]]
-
-        linhas_iter = ws.iter_rows(values_only=True)
-        cabecalho = [str(c).strip() if c else "" for c in next(linhas_iter)]
-        indices = {col: cabecalho.index(col) for col in _SISAD_COLUNAS if col in cabecalho}
-
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome = 'SISAD'").fetchone()["id"]
 
     db.execute("DELETE FROM staging_sisad WHERE periodo_referencia = ?", (periodo_referencia,))
@@ -935,31 +953,144 @@ def importar_sisad(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
     importacao_id = cursor.lastrowid
 
     campos_staging = list(_SISAD_MAPA_CAMPO.values())
-    total = 0
-    for linha in linhas_iter:
-        if linha is None or all(v is None for v in linha):
-            continue
-
-        def campo(col):
-            idx = indices.get(col)
-            if idx is None or idx >= len(linha):
-                return None
-            valor = linha[idx]
-            if isinstance(valor, str):
-                valor = valor.strip() or None
-            return valor
-
-        valores = {_SISAD_MAPA_CAMPO[col]: campo(col) for col in _SISAD_COLUNAS}
-
-        db.execute(
-            f"""INSERT INTO staging_sisad (
+    insert_sql = f"""INSERT INTO staging_sisad (
                     importacao_id, periodo_referencia, {', '.join(campos_staging)}
-                ) VALUES (?, ?, {', '.join(['?'] * len(campos_staging))})""",
-            (importacao_id, periodo_referencia, *[valores[c] for c in campos_staging]),
-        )
-        total += 1
+                 ) VALUES (?, ?, {', '.join(['?'] * len(campos_staging))})"""
+
+    total = 0
+    batch = []
+    with abrir_binario_arquivo_ou_zip(caminho_arquivo, extensao_preferida=".xlsx") as f:
+        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+
+        linhas_iter = ws.iter_rows(values_only=True)
+        cabecalho = [str(c).strip() if c else "" for c in next(linhas_iter)]
+        indices = {col: cabecalho.index(col) for col in _SISAD_COLUNAS if col in cabecalho}
+
+        for linha in linhas_iter:
+            if linha is None or all(v is None for v in linha):
+                continue
+
+            def campo(col):
+                idx = indices.get(col)
+                if idx is None or idx >= len(linha):
+                    return None
+                valor = linha[idx]
+                if valor is None:
+                    return None
+                if hasattr(valor, "strftime"):
+                    return valor.strftime("%Y-%m-%d")
+                if isinstance(valor, str):
+                    valor = valor.strip() or None
+                return str(valor) if valor is not None else None
+
+            valores = {_SISAD_MAPA_CAMPO[col]: campo(col) for col in _SISAD_COLUNAS}
+            batch.append((importacao_id, periodo_referencia, *[valores[c] for c in campos_staging]))
+            total += 1
+
+            if len(batch) >= 5000:
+                db.executemany(insert_sql, batch)
+                batch = []
+
+        if batch:
+            db.executemany(insert_sql, batch)
 
     db.execute("UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?", (total, importacao_id))
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_sisad")
+    db.commit()
+    return importacao_id, total
+
+
+def importar_dtic_rel164(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
+    """
+    Importa o arquivo de produção do Hospital Dia (REL_164 / REL_136) para staging_dtic_rel164.
+    Filtra estritamente:
+      - Supervisão STS Penha ('SUDESTE - PENHA' ou contendo 'penha')
+      - Data de atendimento no mês/ano da competência de importação
+    """
+    fonte_row = db.execute("SELECT id FROM fontes_dados WHERE nome = 'DTIC_REL164'").fetchone()
+    if not fonte_row:
+        raise ValueError("Fonte DTIC_REL164 não cadastrada no banco de dados.")
+    fonte_id = fonte_row["id"]
+
+    db.execute("DELETE FROM staging_dtic_rel164 WHERE periodo_referencia = ?", (periodo_referencia,))
+
+    cursor = db.execute(
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
+           VALUES (?, ?, ?, 'processando')""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+    )
+    importacao_id = cursor.lastrowid
+
+    p_norm = "".join(filter(str.isdigit, str(periodo_referencia or "")))
+    ano_ref = p_norm[:4] if len(p_norm) >= 4 else None
+    mes_ref = p_norm[4:6] if len(p_norm) >= 6 else None
+
+    insert_sql = """INSERT INTO staging_dtic_rel164 (
+                   importacao_id, periodo_referencia, data_atendimento, coordenadoria, supervisao,
+                   estabelecimento_executante, oss, cod_procedimento, procedimento,
+                   definicao, cns_paciente, nome_paciente, data_nasc, codigo_cbo,
+                   descricao_cbo, total
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+    total = 0
+    batch = []
+    with abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="latin1", extensao_preferida=".csv") as f:
+        leitor = csv.DictReader(f, delimiter=";")
+        for linha in leitor:
+            sup = (linha.get("SUPERVISAO") or linha.get("supervisao") or "").strip()
+            if "penha" not in sup.lower():
+                continue
+
+            dt = (linha.get("DATA_ATENDIMENTO") or linha.get("data_atendimento") or "").strip()
+            if ano_ref and mes_ref and len(dt) >= 10:
+                if "/" in dt[:10]:
+                    partes = dt[:10].split("/")
+                    if len(partes) == 3:
+                        if partes[1].zfill(2) != mes_ref or partes[2] != ano_ref:
+                            continue
+                elif "-" in dt[:10]:
+                    partes = dt[:10].split("-")
+                    if len(partes) == 3:
+                        if partes[1].zfill(2) != mes_ref or partes[0] != ano_ref:
+                            continue
+
+            tot_val = linha.get("TOTAL") or linha.get("total")
+            try:
+                tot_int = int(tot_val) if tot_val is not None and str(tot_val).strip() else 1
+            except (ValueError, TypeError):
+                tot_int = 1
+
+            cod_proc = (linha.get("COD_PROCEDIMENTO") or linha.get("cod_procedimento") or "").strip() or None
+
+            batch.append((
+                importacao_id,
+                periodo_referencia,
+                dt,
+                _campo_outras(linha, "COORDENADORIA") or _campo_outras(linha, "coordenadoria"),
+                sup,
+                _campo_outras(linha, "ESTABELECIMENTO_EXECUTANTE") or _campo_outras(linha, "estabelecimento_executante"),
+                _campo_outras(linha, "OSS") or _campo_outras(linha, "oss"),
+                cod_proc,
+                _campo_outras(linha, "PROCEDIMENTO") or _campo_outras(linha, "procedimento"),
+                _campo_outras(linha, "DEFINICAO") or _campo_outras(linha, "definicao"),
+                _campo_outras(linha, "CNS_PACIENTE") or _campo_outras(linha, "cns_paciente"),
+                _campo_outras(linha, "NOME_PACIENTE") or _campo_outras(linha, "nome_paciente"),
+                _campo_outras(linha, "DATA_NASC") or _campo_outras(linha, "data_nasc"),
+                _campo_outras(linha, "CODIGO_CBO") or _campo_outras(linha, "codigo_cbo"),
+                _campo_outras(linha, "DESCRICAO_CBO") or _campo_outras(linha, "descricao_cbo"),
+                tot_int,
+            ))
+            total += 1
+            if len(batch) >= 10000:
+                db.executemany(insert_sql, batch)
+                batch = []
+
+        if batch:
+            db.executemany(insert_sql, batch)
+
+    db.execute("UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?", (total, importacao_id))
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_dtic_rel164")
     db.commit()
     return importacao_id, total
 

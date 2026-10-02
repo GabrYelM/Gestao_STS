@@ -588,10 +588,36 @@ CREATE TABLE staging_sisad (
     data_admissao                           TEXT,
     data_alta                               TEXT,
     motivo_alta                             TEXT,
-    data_obito                              TEXT
+    data_obito                              TEXT,
+    tipo_acompanhamento                     TEXT,
+    procedencia                             TEXT
 );
 CREATE INDEX idx_staging_sisad_importacao ON staging_sisad(importacao_id);
 CREATE INDEX idx_staging_sisad_periodo ON staging_sisad(periodo_referencia);
+
+-- Produção Hospital Dia - DTIC REL_164 / REL_136 (CSV)
+CREATE TABLE staging_dtic_rel164 (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    importacao_id               INTEGER NOT NULL REFERENCES importacoes(id),
+    periodo_referencia          TEXT,   -- 'AAAAMM' informado no upload
+    data_atendimento            TEXT,
+    coordenadoria               TEXT,
+    supervisao                  TEXT,
+    estabelecimento_executante  TEXT,
+    oss                         TEXT,
+    cod_procedimento            TEXT,
+    procedimento                TEXT,
+    definicao                   TEXT,
+    cns_paciente                TEXT,
+    nome_paciente               TEXT,
+    data_nasc                   TEXT,
+    codigo_cbo                  TEXT,
+    descricao_cbo               TEXT,
+    total                       INTEGER DEFAULT 1
+);
+CREATE INDEX idx_staging_dtic_rel164_importacao ON staging_dtic_rel164(importacao_id);
+CREATE INDEX idx_staging_dtic_rel164_periodo ON staging_dtic_rel164(periodo_referencia);
+CREATE INDEX idx_staging_dtic_rel164_proc ON staging_dtic_rel164(cod_procedimento);
 
 -- FATO_APURACAO: formato comum para todas as fontes, após ETL de staging.
 -- Fontes granulares (AT-02) preenchem procedimento_codigo/cbo_codigo, e o
@@ -785,4 +811,23 @@ CREATE TABLE IF NOT EXISTS de_para_unidades_rel134 (
 );
 CREATE INDEX IF NOT EXISTS idx_depara_rel134_orig ON de_para_unidades_rel134(unidade_origem_id);
 CREATE INDEX IF NOT EXISTS idx_depara_rel134_dest ON de_para_unidades_rel134(unidade_destino_id);
+
+-- ----------------------------------------------------------------------------
+-- 9. TABELA DE PORTES DE PROCEDIMENTOS (Hospitais Dia AIH e AEA BPA)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS procedimento_portes (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    codigo              TEXT NOT NULL UNIQUE,
+    codigo_formatado    TEXT,
+    nome                TEXT NOT NULL,
+    instrumento         TEXT,
+    porte               TEXT NOT NULL,
+    grupo               TEXT,
+    ativo               INTEGER DEFAULT 1,
+    observacao          TEXT,
+    atualizado_em       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_procedimento_portes_cod ON procedimento_portes(codigo);
+CREATE INDEX IF NOT EXISTS idx_procedimento_portes_porte ON procedimento_portes(porte);
+CREATE INDEX IF NOT EXISTS idx_procedimento_portes_inst ON procedimento_portes(instrumento);
 

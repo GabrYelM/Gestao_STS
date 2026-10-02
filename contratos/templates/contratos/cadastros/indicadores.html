@@ -58,7 +58,7 @@
       <td>
         <select name="fonte_id" form="form-ind-{{ i.id }}" style="width:100%;min-width:170px" title="{{ i.fonte_dados or '' }}">
           <option value="">-- qualquer fonte --</option>
-          {% for f in fontes %}<option value="{{ f.id }}" {% if i.fonte_id == f.id %}selected{% endif %}>{{ f.nome }}</option>{% endfor %}
+          {% for f in fontes %}<option value="{{ f.id }}" {% if i.fonte_id == f.id %}selected{% endif %}>{{ f.descricao or f.nome }}</option>{% endfor %}
         </select>
         {% if not i.fonte_id and i.fonte_dados %}<div style="font-size:11px;color:var(--cor-texto-muted)" title="Texto antigo (livre) - escolha a fonte no seletor para o cálculo usá-la">texto antigo: {{ i.fonte_dados }}</div>{% endif %}
       </td>

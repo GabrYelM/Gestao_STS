@@ -428,6 +428,36 @@
                           <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
                         </div>
                       </form>
+
+                      <!-- DTIC REL_130 (Atenção Domiciliar eSUS) -->
+                      <form method="post" action="{{ url_for('importacao.upload_rel130') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: DTIC REL_130 (Atenção Domiciliar - P30/P33)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- SISAD (Questionário AD) -->
+                      <form method="post" action="{{ url_for('importacao.upload_sisad') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: SISAD (Questionário AD - P31/P32/P34)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".xlsx,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
+
+                      <!-- DTIC REL_164 / 136 (Produção Hospital Dia) -->
+                      <form method="post" action="{{ url_for('importacao.upload_rel164') }}" enctype="multipart/form-data" onsubmit="processando(this)" class="bg-white p-2 rounded border">
+                        <div class="fw-bold small text-dark mb-1">Upload Isolado: DTIC REL_164 / 136 (Hospital Dia - P45/P46/P47)</div>
+                        <div class="d-flex gap-2">
+                          <input type="file" name="arquivo" accept=".csv,.zip" class="form-control form-control-sm" required>
+                          <input type="text" name="periodo" placeholder="202601" class="form-control form-control-sm" style="max-width:110px" required>
+                          <button type="submit" class="btn btn-outline-primary btn-sm text-nowrap">Enviar</button>
+                        </div>
+                      </form>
                     </div>
                   </div>
 
@@ -452,6 +482,9 @@
                             <option value="AT57">SIGA AT-57 (PICs)</option>
                             <option value="AT61">SIGA AT-61 (eMulti)</option>
                             <option value="DTIC_REL134">DTIC REL_134 (eMulti P12/P22)</option>
+                            <option value="DTIC_REL130">DTIC REL_130 (Atenção Domiciliar P30/P33)</option>
+                            <option value="SISAD">SISAD (Questionário AD P31/P32/P34)</option>
+                            <option value="DTIC_REL164">DTIC REL_164 / 136 (Hospital Dia P45/P46/P47)</option>
                           </select>
                         </div>
                         <div class="col-6">

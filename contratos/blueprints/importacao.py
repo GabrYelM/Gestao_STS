@@ -11,6 +11,7 @@ from ..etl import (
     importar_bi_siga,
     importar_dtic_rel130,
     importar_dtic_rel134,
+    importar_dtic_rel164,
     importar_sisad,
     importar_visita_domiciliar,
     importar_webssas,
@@ -186,9 +187,17 @@ DETECCAO_POR_NOME_ARQUIVO = [
     ("rel_134", "DTIC_REL134"),
     ("rel134", "DTIC_REL134"),
     ("esus_atend_domiciliar", "DTIC_REL130"),
+    ("rel_130", "DTIC_REL130"),
+    ("rel130", "DTIC_REL130"),
     ("questionario ad", "SISAD"),
     ("questionário ad", "SISAD"),
-    ("rel_siga_producao_hospital_dia", "IGNORAR"),
+    ("rel_siga_producao_hospital_dia", "DTIC_REL164"),
+    ("producao_hospital_dia", "DTIC_REL164"),
+    ("hospital_dia", "DTIC_REL164"),
+    ("rel_164", "DTIC_REL164"),
+    ("rel164", "DTIC_REL164"),
+    ("rel_136", "DTIC_REL164"),
+    ("rel136", "DTIC_REL164"),
     ("demonstrativo de apontamentos", "WEBSSAS"),
     ("webssas", "WEBSSAS"),
 ]
@@ -303,8 +312,17 @@ def upload_multiplo():
                 )
             elif fonte == "SISAD":
                 _, n = importar_sisad(caminho_arquivo, periodo, db, nome_salvo)
+                resumo = recalcular_periodo(db, periodo, "SISAD")
                 linhas_resultado.append(
-                    f"📥 {arquivo.filename} (SISAD): {n} linhas importadas (staging)."
+                    f"✅ {arquivo.filename} (SISAD): {n} linhas importadas, "
+                    f"{resumo.get('linhas_vinculadas', 0)} vinculadas ao painel (P31, P32, P34)."
+                )
+            elif fonte == "DTIC_REL164":
+                _, n = importar_dtic_rel164(caminho_arquivo, periodo, db, nome_salvo)
+                resumo = recalcular_periodo(db, periodo, "DTIC_REL164")
+                linhas_resultado.append(
+                    f"✅ {arquivo.filename} (DTIC REL_164 / 136 - Hospital Dia): {n} linhas importadas, "
+                    f"{resumo.get('linhas_vinculadas', 0)} vinculadas ao painel (P45, P46, P47)."
                 )
         except Exception as exc:  # noqa: BLE001
             houve_erro = True
@@ -1052,6 +1070,91 @@ def upload_rel134():
         flash(f"Erro ao importar DTIC REL_134: {exc}", "erro")
 
     return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/rel130", methods=["POST"])
+def upload_rel130():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_dtic_rel130(caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "DTIC_REL130")
+        registrar_log(db, "DTIC_REL130", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"DTIC REL_130 (Atenção Domiciliar eSUS) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P30 e P33.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar DTIC REL_130: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/sisad", methods=["POST"])
+def upload_sisad():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo Excel (.xlsx) e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_sisad(caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "SISAD")
+        registrar_log(db, "SISAD", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"SISAD (Questionário AD) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P31, P32 e P34.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar SISAD: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
+
+@bp.route("/rel164", methods=["POST"])
+def upload_rel164():
+    arquivo = request.files.get("arquivo")
+    periodo = request.form.get("periodo")
+
+    if not arquivo or not periodo:
+        flash("Selecione o arquivo CSV e informe a competência (AAAAMM).", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho, nome_arquivo = _salvar_upload(arquivo)
+    db = get_db()
+
+    try:
+        importacao_id, linhas = importar_dtic_rel164(caminho, periodo, db, nome_arquivo)
+        resumo = recalcular_periodo(db, periodo, "DTIC_REL164")
+        registrar_log(db, "DTIC_REL164", periodo, resumo)
+        vinculadas = resumo.get("linhas_vinculadas", 0) if isinstance(resumo, dict) else 0
+        flash(
+            f"DTIC REL_164 / 136 (Produção Hospital Dia) importado: {linhas} linhas importadas, "
+            f"{vinculadas} apurações vinculadas aos indicadores P45, P46 e P47.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar DTIC REL_164: {exc}", "erro")
+
+    return redirect(url_for("importacao.formulario"))
+
 
 
 

@@ -68,7 +68,7 @@ def _csv_response(cabecalho, linhas, nome_arquivo):
 # ---------------------------------------------------------------------------
 
 ABAS_ADMINISTRACAO = (
-    "estabelecimentos", "cbo", "procedimentos", "profissionais", "portaria", "importar", "backup", "logs",
+    "estabelecimentos", "cbo", "procedimentos", "profissionais", "portaria", "rel134", "portes", "importar", "backup", "logs",
 )
 
 
@@ -306,6 +306,275 @@ def rel134_padrao_penha():
         flash(f"Erro ao carregar mapeamento padrão: {exc}", "erro")
 
     return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+
+# ---------------------------------------------------------------------------
+# PORTES DE PROCEDIMENTO (HOSPITAIS DIA & AEA)
+# ---------------------------------------------------------------------------
+
+def _formatar_cod_procedimento(cod):
+    c = normalizar_cod_procedimento(cod)
+    if len(c) == 10:
+        return f"{c[:2]}.{c[2:4]}.{c[4:6]}.{c[6:9]}-{c[9:]}"
+    return cod
+
+
+@bp.route("/portes/partial", methods=["GET"])
+def portes_partial():
+    db = get_db()
+    itens = db.execute(
+        """SELECT * FROM procedimento_portes 
+           ORDER BY 
+             CASE instrumento WHEN 'AIH' THEN 1 WHEN 'BPA' THEN 2 ELSE 3 END,
+             CASE porte 
+               WHEN 'Pequeno Porte' THEN 1 
+               WHEN 'Médio Porte' THEN 2 
+               WHEN 'Pequenas Cirurgias' THEN 3 
+               WHEN 'Procedimentos Clínicos' THEN 4 
+               WHEN 'Exames Diagnósticos / SADT' THEN 5 
+               ELSE 6 
+             END,
+             nome ASC"""
+    ).fetchall()
+
+    stats = {
+        "total": len(itens),
+        "aih_pequeno": sum(1 for i in itens if (i["instrumento"] or "").upper() == "AIH" and "PEQUENO" in (i["porte"] or "").upper()),
+        "aih_medio": sum(1 for i in itens if (i["instrumento"] or "").upper() == "AIH" and ("MÉDIO" in (i["porte"] or "").upper() or "MEDIO" in (i["porte"] or "").upper())),
+        "bpa_pequenas": sum(1 for i in itens if (i["instrumento"] or "").upper() == "BPA" and "PEQUENAS" in (i["porte"] or "").upper()),
+        "outros": sum(1 for i in itens if (i["instrumento"] or "").upper() == "BPA" and "PEQUENAS" not in (i["porte"] or "").upper()),
+    }
+
+    return render_template(
+        "contratos/cadastros/portes.html",
+        itens=itens,
+        stats=stats,
+        partial=True,
+    )
+
+
+@bp.route("/portes/novo", methods=["POST"])
+def novo_porte():
+    db = get_db()
+    cod_raw = (request.form.get("codigo") or "").strip()
+    codigo = normalizar_cod_procedimento(cod_raw)
+    if not codigo:
+        flash("Informe o código do procedimento.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="portes"))
+
+    codigo_fmt = _formatar_cod_procedimento(codigo)
+    nome = (request.form.get("nome") or "").strip()
+    if not nome:
+        p_row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (codigo,)).fetchone()
+        nome = p_row["nome"] if p_row and p_row["nome"] else codigo
+
+    instrumento = (request.form.get("instrumento") or "AIH").strip().upper()
+    porte = (request.form.get("porte") or "Pequeno Porte").strip()
+    grupo = (request.form.get("grupo") or "").strip() or None
+    observacao = (request.form.get("observacao") or "").strip() or None
+
+    try:
+        db.execute(
+            """INSERT INTO procedimento_portes (codigo, codigo_formatado, nome, instrumento, porte, grupo, ativo, observacao)
+               VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+               ON CONFLICT(codigo) DO UPDATE SET
+                   codigo_formatado = excluded.codigo_formatado,
+                   nome = excluded.nome,
+                   instrumento = excluded.instrumento,
+                   porte = excluded.porte,
+                   grupo = excluded.grupo,
+                   observacao = excluded.observacao,
+                   atualizado_em = CURRENT_TIMESTAMP""",
+            (codigo, codigo_fmt, nome, instrumento, porte, grupo, observacao),
+        )
+        db.commit()
+        flash(f"Procedimento {codigo_fmt} cadastrado/atualizado com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao cadastrar porte: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="portes"))
+
+
+@bp.route("/portes/<int:id>/editar", methods=["POST"])
+def editar_porte(id):
+    db = get_db()
+    nome = (request.form.get("nome") or "").strip()
+    instrumento = (request.form.get("instrumento") or "AIH").strip().upper()
+    porte = (request.form.get("porte") or "").strip()
+    grupo = (request.form.get("grupo") or "").strip() or None
+    ativo = 1 if request.form.get("ativo") in ("1", "true", "True") else 0
+    observacao = (request.form.get("observacao") or "").strip() or None
+
+    if not nome or not porte:
+        flash("Nome e Porte são obrigatórios.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="portes"))
+
+    try:
+        db.execute(
+            """UPDATE procedimento_portes 
+               SET nome = ?, instrumento = ?, porte = ?, grupo = ?, ativo = ?, observacao = ?, atualizado_em = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (nome, instrumento, porte, grupo, ativo, observacao, id),
+        )
+        db.commit()
+        flash("Porte de procedimento atualizado com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao atualizar porte: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="portes"))
+
+
+@bp.route("/portes/<int:id>/toggle", methods=["POST"])
+def toggle_porte(id):
+    db = get_db()
+    try:
+        db.execute(
+            "UPDATE procedimento_portes SET ativo = CASE WHEN ativo = 1 THEN 0 ELSE 1 END, atualizado_em = CURRENT_TIMESTAMP WHERE id = ?",
+            (id,),
+        )
+        db.commit()
+        flash("Status do procedimento alterado com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao alterar status: {exc}", "erro")
+    return redirect(url_for("cadastros.administracao", aba="portes"))
+
+
+@bp.route("/portes/<int:id>/excluir", methods=["POST"])
+def excluir_porte(id):
+    db = get_db()
+    try:
+        db.execute("DELETE FROM procedimento_portes WHERE id = ?", (id,))
+        db.commit()
+        flash("Procedimento removido da tabela de portes.", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao excluir procedimento: {exc}", "erro")
+    return redirect(url_for("cadastros.administracao", aba="portes"))
+
+
+@bp.route("/portes/bulk-excluir", methods=["POST"])
+def bulk_excluir_portes():
+    db = get_db()
+    ids = request.form.getlist("selecionados")
+    if not ids:
+        flash("Nenhum procedimento selecionado.", "aviso")
+        return redirect(url_for("cadastros.administracao", aba="portes"))
+
+    try:
+        marc = ",".join("?" * len(ids))
+        db.execute(f"DELETE FROM procedimento_portes WHERE id IN ({marc})", ids)
+        db.commit()
+        flash(f"{len(ids)} procedimento(s) excluído(s) da tabela de portes com sucesso.", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao excluir em massa: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="portes"))
+
+
+@bp.route("/portes/exportar-csv", methods=["GET"])
+def exportar_portes_csv():
+    db = get_db()
+    itens = db.execute(
+        "SELECT codigo, codigo_formatado, nome, instrumento, porte, grupo, ativo, observacao FROM procedimento_portes ORDER BY codigo"
+    ).fetchall()
+
+    import csv
+    import io
+    from flask import Response
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(["codigo", "codigo_formatado", "nome", "instrumento", "porte", "grupo", "ativo", "observacao"])
+    for r in itens:
+        writer.writerow([r["codigo"], r["codigo_formatado"], r["nome"], r["instrumento"], r["porte"], r["grupo"], r["ativo"], r["observacao"] or ""])
+
+    conteudo = output.getvalue().encode("utf-8-sig")
+    return Response(
+        conteudo,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=portes_procedimentos_aea.csv"},
+    )
+
+
+@bp.route("/portes/importar-csv", methods=["POST"])
+def importar_portes_csv():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo CSV.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="portes"))
+
+    import csv
+    import io
+
+    try:
+        db = get_db()
+        conteudo = arquivo.read().decode("utf-8-sig", errors="replace")
+        primeira_linha = conteudo.split("\n")[0] if conteudo else ""
+        delimitador = ";" if ";" in primeira_linha else ","
+        leitor = csv.DictReader(io.StringIO(conteudo), delimiter=delimitador)
+
+        total_importados = 0
+        for linha in leitor:
+            chaves = {k.strip().lower(): (v or "").strip() for k, v in linha.items() if k}
+            cod_raw = chaves.get("codigo") or chaves.get("cod") or chaves.get("código") or ""
+            codigo = normalizar_cod_procedimento(cod_raw)
+            if not codigo:
+                continue
+
+            codigo_fmt = chaves.get("codigo_formatado") or _formatar_cod_procedimento(codigo)
+            nome = chaves.get("nome") or chaves.get("procedimento") or ""
+            if not nome:
+                p_row = db.execute("SELECT nome FROM procedimentos WHERE codigo = ?", (codigo,)).fetchone()
+                nome = p_row["nome"] if p_row and p_row["nome"] else codigo
+
+            instrumento = (chaves.get("instrumento") or ("AIH" if codigo.startswith("04") else "BPA")).upper()
+            porte = chaves.get("porte") or chaves.get("classificacao") or chaves.get("classificação") or "Pequenas Cirurgias"
+            grupo = chaves.get("grupo") or None
+            ativo = 0 if chaves.get("ativo") in ("0", "inativo", "false", "nao", "não") else 1
+            obs = chaves.get("observacao") or chaves.get("obs") or None
+
+            db.execute(
+                """INSERT INTO procedimento_portes (codigo, codigo_formatado, nome, instrumento, porte, grupo, ativo, observacao)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(codigo) DO UPDATE SET
+                       codigo_formatado = excluded.codigo_formatado,
+                       nome = excluded.nome,
+                       instrumento = excluded.instrumento,
+                       porte = excluded.porte,
+                       grupo = excluded.grupo,
+                       ativo = excluded.ativo,
+                       observacao = excluded.observacao,
+                       atualizado_em = CURRENT_TIMESTAMP""",
+                (codigo, codigo_fmt, nome, instrumento, porte, grupo, ativo, obs),
+            )
+            total_importados += 1
+
+        db.commit()
+        flash(f"{total_importados} procedimento(s) importado(s)/atualizado(s) com sucesso na tabela de portes!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao importar CSV de portes: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="portes"))
+
+
+@bp.route("/portes/restaurar-padrao", methods=["POST"])
+def restaurar_portes_padrao():
+    db = get_db()
+    try:
+        from ..portes_dados import carregar_portes_padrao
+        total = carregar_portes_padrao(db, sobrescrever=True)
+        db.commit()
+        flash(f"Tabela de portes restaurada com sucesso com os {total} procedimentos oficiais da Portaria AEA!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao restaurar padrão da Portaria AEA: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="portes"))
 
 
 # ---------------------------------------------------------------------------

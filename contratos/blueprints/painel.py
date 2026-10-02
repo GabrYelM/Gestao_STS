@@ -477,21 +477,60 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
 
     # 2. Atividades Coletivas eMulti (P12 / P22)
     if ind_cod in ("P12", "P22"):
-        if not cnes_list:
-            return []
-        marc_cnes = ",".join("?" * len(cnes_list))
         p = str(periodo or "")
-        params = [p, f"%{p}%", *cnes_list]
-        sql = f"""SELECT s.nome_profissional, s.cbo_prof AS cbo_codigo, s.cbo AS cbo_nome,
+        ano_ref = p[:4] if len(p) >= 4 else ""
+        mes_ref = p[4:6] if len(p) >= 6 else ""
+        mes_sem_zero = str(int(mes_ref)) if mes_ref.isdigit() else mes_ref
+
+        # Farmacêutico (2234) e Assistente Social (2516) não utilizam redirecionamento para a base
+        eh_farmacia_ou_social = bool(cbo_codigo and str(cbo_codigo).strip().startswith(("2234", "2516")))
+
+        # Obter estabelecimentos da linha e estabelecimentos que redirecionam para ela
+        estabs_busca = list(estabelecimento_ids)
+        if estabelecimento_ids and not eh_farmacia_ou_social:
+            marc_dest = ",".join("?" * len(estabelecimento_ids))
+            rows_red = db.execute(
+                f"SELECT unidade_origem_id FROM de_para_unidades_rel134 WHERE unidade_destino_id IN ({marc_dest})",
+                estabelecimento_ids,
+            ).fetchall()
+            for r_red in rows_red:
+                if r_red["unidade_origem_id"] not in estabs_busca:
+                    estabs_busca.append(r_red["unidade_origem_id"])
+
+        cnes_busca = []
+        if estabs_busca:
+            marc_est = ",".join("?" * len(estabs_busca))
+            rows_c = db.execute(
+                f"SELECT DISTINCT cod_cnes FROM estabelecimentos WHERE id IN ({marc_est}) AND cod_cnes IS NOT NULL",
+                estabs_busca,
+            ).fetchall()
+            cnes_busca = [r["cod_cnes"].strip() for r in rows_c if r["cod_cnes"]]
+
+        if not cnes_busca:
+            return []
+
+        marc_cnes = ",".join("?" * len(cnes_busca))
+        sql = f"""SELECT s.nome_profissional, s.cbo_prof AS cbo_codigo, COALESCE(c.nome_categoria, s.cbo) AS cbo_nome,
                          COUNT(*) AS apurado
                   FROM staging_dtic_rel134 s
-                  WHERE (s.periodo_referencia = ? OR s.periodo_referencia LIKE ?)
+                  LEFT JOIN cbo c ON c.codigo = s.cbo_prof
+                  WHERE LOWER(COALESCE(s.supervisao, '')) LIKE '%penha%'
+                    AND UPPER(TRIM(COALESCE(s.emulti, ''))) = 'SIM'
+                    AND CAST(COALESCE(s.num_participantes, '0') AS INTEGER) > 1
+                    AND LOWER(COALESCE(s.tipo_atividade, '')) NOT LIKE '%reuni%'
+                    AND s.ano = ? AND (s.mes = ? OR s.mes = ?)
                     AND s.cnes IN ({marc_cnes})
                     AND s.nome_profissional IS NOT NULL"""
+        params = [ano_ref, mes_ref, mes_sem_zero, *cnes_busca]
         if cbo_codigo:
-            sql += " AND (s.cbo_prof = ? OR s.cbo_prof LIKE ?)"
-            params.extend([cbo_codigo, f"%{cbo_codigo}%"])
-        sql += " GROUP BY s.nome_profissional, s.cbo_prof ORDER BY apurado DESC"
+            if cbo_codigo.startswith("2234"):
+                sql += " AND s.cbo_prof LIKE '2234%'"
+            elif cbo_codigo.startswith("2516"):
+                sql += " AND s.cbo_prof LIKE '2516%'"
+            else:
+                sql += " AND (s.cbo_prof = ? OR s.cbo_prof LIKE ?)"
+                params.extend([cbo_codigo, f"{cbo_codigo}%"])
+        sql += " GROUP BY s.nome_profissional ORDER BY apurado DESC"
         return db.execute(sql, params).fetchall()
 
     # 3. Atendimento Domiciliar eSUS (P30 / P33)
@@ -500,15 +539,21 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
             return []
         marc_cnes = ",".join("?" * len(cnes_list))
         p = str(periodo or "")
+        ano_ref = p[:4] if len(p) >= 4 else ""
+        mes_ref = p[4:6] if len(p) >= 6 else ""
         equipe_filtro = "%EMAD%" if ind_cod == "P30" else "%EMAP%"
         params = [p, f"%{p}%", equipe_filtro, *cnes_list]
         sql = f"""SELECT s.nome_profissional, s.cod_cbo AS cbo_codigo, s.cbo AS cbo_nome,
-                         COUNT(*) AS apurado
+                         COUNT(DISTINCT s.codigo_atendimento) AS apurado
                   FROM staging_dtic_rel130 s
                   WHERE (s.periodo_referencia = ? OR s.periodo_referencia LIKE ?)
+                    AND (s.supervisao LIKE '%PENHA%' OR s.supervisao LIKE '%penha%')
                     AND s.nome_equipe LIKE ?
                     AND s.cnes IN ({marc_cnes})
                     AND s.nome_profissional IS NOT NULL"""
+        if ano_ref and mes_ref:
+            sql += " AND substr(s.data_cadastro, 7, 4) = ? AND substr(s.data_cadastro, 4, 2) = ?"
+            params.extend([ano_ref, mes_ref])
         if cbo_codigo:
             sql += " AND (s.cod_cbo = ? OR s.cod_cbo LIKE ?)"
             params.extend([cbo_codigo, f"%{cbo_codigo}%"])
@@ -550,8 +595,24 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
 
         return [{"nome_profissional": "Consolidado SIGA (eMulti)", "cbo_codigo": cbo_codigo, "cbo_nome": cbo_nome_real, "apurado": tot}]
 
-    # 5. Outros SSRS (P25 [PAI], P29 [CAPS], P36 [CER], P37 [CER Proced/Usu], P38 [CER CBO], P41 [APD], P27 [URSI])
-    if ind_cod in ("P25", "P29", "P36", "P37", "P38", "P41", "P27"):
+    # 5. Hospital Dia (P45, P46, P47 - REL 164)
+    if ind_cod in ("P45", "P46", "P47"):
+        marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
+        row = db.execute(
+            f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
+                WHERE indicador_id = ? AND estabelecimento_id IN ({marc_estabs}) AND periodo = ? AND tipo_registro = 'apurado'""",
+            [indicador_id, *estabelecimento_ids, str(periodo or "")],
+        ).fetchone()
+        tot = int(row["tot"]) if row and row["tot"] is not None else 0
+        return [{
+            "nome_profissional": "Consolidado Hospital Dia (REL 164)",
+            "cbo_codigo": cbo_codigo,
+            "cbo_nome": "Cirurgias Hospital Dia",
+            "apurado": tot,
+        }]
+
+    # 6. Outros consolidados (P25 [PAI], P29 [CAPS], P36 [CER], P37 [CER Proced/Usu], P38 [CER CBO], P41 [APD], P27 [URSI], P31 [SISAD EMAD Ativos], P32 [SISAD Desospitalizacao], P34 [SISAD EMAP Ativos])
+    if ind_cod in ("P25", "P29", "P36", "P37", "P38", "P41", "P27", "P31", "P32", "P34"):
         marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
         params_fato = [indicador_id, *estabelecimento_ids, str(periodo or "")]
         sql_fato = f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
@@ -579,7 +640,8 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
         elif ind_cod == "P38":
             nome_prof_desc = f"{ind_nome} - Equipe Médica"
 
-        return [{"nome_profissional": f"Consolidado SIGA ({nome_prof_desc})", "cbo_codigo": cbo_codigo, "cbo_nome": nome_prof_desc, "apurado": tot}]
+        rotulo_origem = "SISAD" if ind_cod in ("P31", "P32", "P34") else "SIGA"
+        return [{"nome_profissional": f"Consolidado {rotulo_origem} ({nome_prof_desc})", "cbo_codigo": cbo_codigo, "cbo_nome": nome_prof_desc, "apurado": tot}]
 
     # 6. AT-02 padrão
     procedimentos = _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id)
@@ -652,36 +714,101 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
 
     # 2. Atividades Coletivas eMulti (P12 / P22)
     if ind_cod in ("P12", "P22"):
-        marc_cnes = ",".join("?" * len(cnes_list)) if cnes_list else "''"
         p = str(periodo or "")
-        sql = f"""SELECT COALESCE(s.cod_proced_sigtap, '0101010010') AS codigo,
-                         COALESCE(s.procedimento_sigtap, 'Atividade Coletiva eMulti') AS nome,
-                         COUNT(*) AS apurado
+        ano_ref = p[:4] if len(p) >= 4 else ""
+        mes_ref = p[4:6] if len(p) >= 6 else ""
+        mes_sem_zero = str(int(mes_ref)) if mes_ref.isdigit() else mes_ref
+
+        cbo_alvo = cbo_codigo or cbo_profissional
+        eh_farmacia_ou_social = bool(cbo_alvo and str(cbo_alvo).strip().startswith(("2234", "2516")))
+
+        estabs_busca = list(estabelecimento_ids)
+        if estabelecimento_ids and not eh_farmacia_ou_social:
+            marc_dest = ",".join("?" * len(estabelecimento_ids))
+            rows_red = db.execute(
+                f"SELECT unidade_origem_id FROM de_para_unidades_rel134 WHERE unidade_destino_id IN ({marc_dest})",
+                estabelecimento_ids,
+            ).fetchall()
+            for r_red in rows_red:
+                if r_red["unidade_origem_id"] not in estabs_busca:
+                    estabs_busca.append(r_red["unidade_origem_id"])
+
+        cnes_busca = []
+        if estabs_busca:
+            marc_est = ",".join("?" * len(estabs_busca))
+            rows_c = db.execute(
+                f"SELECT DISTINCT cod_cnes FROM estabelecimentos WHERE id IN ({marc_est}) AND cod_cnes IS NOT NULL",
+                estabs_busca,
+            ).fetchall()
+            cnes_busca = [r["cod_cnes"].strip() for r in rows_c if r["cod_cnes"]]
+
+        if not cnes_busca:
+            return []
+
+        marc_cnes = ",".join("?" * len(cnes_busca))
+        sql = f"""SELECT s.nome_unidade,
+                         COALESCE(s.tipo_atividade, 'Atividade Coletiva') AS tipo_atividade,
+                         COUNT(*) AS apurado,
+                         SUM(CAST(COALESCE(s.num_participantes, '0') AS INTEGER)) AS num_participantes
                   FROM staging_dtic_rel134 s
-                  WHERE (s.periodo_referencia = ? OR s.periodo_referencia LIKE ?)
+                  WHERE LOWER(COALESCE(s.supervisao, '')) LIKE '%penha%'
+                    AND UPPER(TRIM(COALESCE(s.emulti, ''))) = 'SIM'
+                    AND CAST(COALESCE(s.num_participantes, '0') AS INTEGER) > 1
+                    AND LOWER(COALESCE(s.tipo_atividade, '')) NOT LIKE '%reuni%'
+                    AND s.ano = ? AND (s.mes = ? OR s.mes = ?)
                     AND s.cnes IN ({marc_cnes})
-                    AND s.nome_profissional = ?
-                  GROUP BY s.cod_proced_sigtap, s.procedimento_sigtap
-                  ORDER BY apurado DESC"""
-        rows = db.execute(sql, [p, f"%{p}%", *cnes_list, profissional]).fetchall()
-        return [{**dict(r), "considerado": True} for r in rows]
+                    AND s.nome_profissional = ?"""
+        params = [ano_ref, mes_ref, mes_sem_zero, *cnes_busca, profissional]
+        cbo_alvo = cbo_codigo or cbo_profissional
+        if cbo_alvo:
+            if str(cbo_alvo).startswith("2234"):
+                sql += " AND s.cbo_prof LIKE '2234%'"
+            elif str(cbo_alvo).startswith("2516"):
+                sql += " AND s.cbo_prof LIKE '2516%'"
+            else:
+                sql += " AND (s.cbo_prof = ? OR s.cbo_prof LIKE ?)"
+                params.extend([cbo_alvo, f"{cbo_alvo}%"])
+        sql += " GROUP BY s.nome_unidade, s.tipo_atividade ORDER BY apurado DESC, s.nome_unidade"
+        rows = db.execute(sql, params).fetchall()
+        return [
+            {
+                "nome_unidade": r["nome_unidade"],
+                "tipo_atividade": r["tipo_atividade"],
+                "num_participantes": r["num_participantes"],
+                "apurado": r["apurado"],
+                "is_atividade_rel134": True,
+                "considerado": True,
+            }
+            for r in rows
+        ]
 
     # 3. Atendimento Domiciliar eSUS (P30 / P33)
     if ind_cod in ("P30", "P33"):
         marc_cnes = ",".join("?" * len(cnes_list)) if cnes_list else "''"
         p = str(periodo or "")
+        ano_ref = p[:4] if len(p) >= 4 else ""
+        mes_ref = p[4:6] if len(p) >= 6 else ""
         equipe_filtro = "%EMAD%" if ind_cod == "P30" else "%EMAP%"
-        sql = f"""SELECT COALESCE(s.cod_procedimento, '-') AS codigo,
-                         COALESCE(s.procedimento, 'Atendimento Domiciliar') AS nome,
-                         COUNT(*) AS apurado
+        params = [p, f"%{p}%", equipe_filtro, *cnes_list, profissional]
+        sql = f"""SELECT COALESCE(NULLIF(s.cod_procedimento, ''), '-') AS codigo,
+                         COALESCE(NULLIF(s.procedimento, ''), 'Atendimento Domiciliar') AS nome,
+                         COUNT(DISTINCT s.codigo_atendimento) AS apurado
                   FROM staging_dtic_rel130 s
                   WHERE (s.periodo_referencia = ? OR s.periodo_referencia LIKE ?)
+                    AND (s.supervisao LIKE '%PENHA%' OR s.supervisao LIKE '%penha%')
                     AND s.nome_equipe LIKE ?
                     AND s.cnes IN ({marc_cnes})
-                    AND s.nome_profissional = ?
-                  GROUP BY s.cod_procedimento, s.procedimento
-                  ORDER BY apurado DESC"""
-        rows = db.execute(sql, [p, f"%{p}%", equipe_filtro, *cnes_list, profissional]).fetchall()
+                    AND s.nome_profissional = ?"""
+        if ano_ref and mes_ref:
+            sql += " AND substr(s.data_cadastro, 7, 4) = ? AND substr(s.data_cadastro, 4, 2) = ?"
+            params.extend([ano_ref, mes_ref])
+        cbo_alvo = cbo_codigo or cbo_profissional
+        if cbo_alvo:
+            sql += " AND (s.cod_cbo = ? OR s.cod_cbo LIKE ?)"
+            params.extend([cbo_alvo, f"%{cbo_alvo}%"])
+        sql += """ GROUP BY s.cod_procedimento, s.procedimento
+                   ORDER BY apurado DESC"""
+        rows = db.execute(sql, params).fetchall()
         return [{**dict(r), "considerado": True} for r in rows]
 
     # 4. PICS (P09, P10, P19, P20)
@@ -725,7 +852,126 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
         rows = db.execute(sql, params).fetchall()
         return [{**dict(r), "considerado": True} for r in rows]
 
-    # 6. Outros SSRS (P25, P29, P36, P38, P41, P27)
+    # 6. SISAD (P31 [EMAD Ativos], P32 [Deshospitalizacao], P34 [EMAP Ativos])
+    if ind_cod in ("P31", "P32", "P34"):
+        import calendar
+        from collections import defaultdict
+        from datetime import datetime
+
+        p = str(periodo or "")
+        ano = int(p[:4]) if len(p) >= 4 and p[:4].isdigit() else 2026
+        mes = int(p[4:6]) if len(p) >= 6 and p[4:6].isdigit() else 1
+        ultimo_dia = calendar.monthrange(ano, mes)[1]
+        dt_limite = datetime(ano, mes, ultimo_dia, 23, 59, 59)
+
+        mapa_estab_para_sisad = {
+            21: ["EMAD UBS CANGAÍBA", "EMAD UBS CANGAIBA"],
+            52: ["EMAD UBS INTEGRAL TALARICO/MARINGA"],
+            59: ["EMAD UBS SÃO NICOLAU", "EMAD UBS SAO NICOLAU"],
+            65: ["EMAD GRANADA"],
+        }
+
+        def parse_dt(d):
+            if not d:
+                return None
+            if isinstance(d, datetime):
+                return d
+            d_str = str(d).strip()
+            for fmt in ("%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(d_str[:10], fmt)
+                except Exception:
+                    pass
+            return None
+
+        itens = []
+        if ind_cod == "P31":
+            unidades_alvo = []
+            for eid in (estabelecimento_ids or []):
+                unidades_alvo.extend(mapa_estab_para_sisad.get(eid, []))
+
+            marc_u = ",".join("?" * len(unidades_alvo)) if unidades_alvo else "''"
+            sql_sisad = f"""SELECT tipo_acompanhamento, situacao, data_admissao, data_obito
+                            FROM staging_sisad
+                            WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)
+                              AND UPPER(unidade) IN ({marc_u})"""
+            rows = db.execute(sql_sisad, [p, f"%{p}%", *unidades_alvo]).fetchall()
+            qtd_ativos = 0
+            qtd_obitos = 0
+            for r in rows:
+                tipo = (r["tipo_acompanhamento"] or r["situacao"] or "").strip().upper()
+                dt_adm = parse_dt(r["data_admissao"])
+                dt_ob = parse_dt(r["data_obito"])
+                if tipo == "ATIVO" and dt_adm and dt_adm <= dt_limite:
+                    qtd_ativos += 1
+                if tipo == "INATIVO" and dt_ob and dt_ob.year == ano and dt_ob.month == mes:
+                    qtd_obitos += 1
+            itens.append({"codigo": "ATIVOS", "nome": "Pacientes Ativos (Admissão até o fim do mês)", "apurado": qtd_ativos, "considerado": True})
+            itens.append({"codigo": "ÓBITOS", "nome": "Pacientes em Óbito no Mês (Inativos)", "apurado": qtd_obitos, "considerado": True})
+            itens.append({"codigo": "TOTAL", "nome": "Total Pacientes Ativos da EMAD (Soma)", "apurado": qtd_ativos + qtd_obitos, "considerado": True})
+            return itens
+
+        elif ind_cod == "P32":
+            unidades_alvo = []
+            for eid in (estabelecimento_ids or []):
+                unidades_alvo.extend(mapa_estab_para_sisad.get(eid, []))
+
+            marc_u = ",".join("?" * len(unidades_alvo)) if unidades_alvo else "''"
+            sql_sisad = f"""SELECT tipo_acompanhamento, situacao, data_admissao, procedencia
+                            FROM staging_sisad
+                            WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)
+                              AND UPPER(unidade) IN ({marc_u})"""
+            rows = db.execute(sql_sisad, [p, f"%{p}%", *unidades_alvo]).fetchall()
+            qtd_desosp = 0
+            for r in rows:
+                tipo = (r["tipo_acompanhamento"] or r["situacao"] or "").strip().upper()
+                proc = (r["procedencia"] or "").strip().upper()
+                dt_adm = parse_dt(r["data_admissao"])
+                if tipo == "ATIVO" and proc == "HOSPITAL" and dt_adm and dt_adm.year == ano and dt_adm.month == mes:
+                    qtd_desosp += 1
+            itens.append({"codigo": "HOSPITAL", "nome": "Desospitalização - Procedência Hospitalar (Admissão no Mês)", "apurado": qtd_desosp, "considerado": True})
+            return itens
+
+        elif ind_cod == "P34":
+            sql_sisad = """SELECT unidade, tipo_acompanhamento, situacao, data_admissao, data_obito
+                           FROM staging_sisad
+                           WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)"""
+            rows = db.execute(sql_sisad, [p, f"%{p}%"]).fetchall()
+            emad_totais = defaultdict(int)
+            for r in rows:
+                u = (r["unidade"] or "").strip().upper()
+                tipo = (r["tipo_acompanhamento"] or r["situacao"] or "").strip().upper()
+                dt_adm = parse_dt(r["data_admissao"])
+                dt_ob = parse_dt(r["data_obito"])
+                if tipo == "ATIVO" and dt_adm and dt_adm <= dt_limite:
+                    emad_totais[u] += 1
+                if tipo == "INATIVO" and dt_ob and dt_ob.year == ano and dt_ob.month == mes:
+                    emad_totais[u] += 1
+            for u in sorted(emad_totais.keys()):
+                itens.append({"codigo": "EMAD", "nome": f"{u} (Ativos + Óbitos)", "apurado": emad_totais[u], "considerado": True})
+            itens.append({"codigo": "TOTAL", "nome": "Total Pacientes Ativos da EMAP (Região)", "apurado": sum(emad_totais.values()), "considerado": True})
+            return itens
+
+    # 7. Hospital Dia (P45, P46, P47 - Cirurgias)
+    if ind_cod in ("P45", "P46", "P47"):
+        marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
+        rows = db.execute(
+            f"""SELECT f.procedimento_codigo AS codigo,
+                       COALESCE(pp.nome, p.nome, 'Procedimento ' || f.procedimento_codigo) AS nome,
+                       SUM(f.quantidade) AS apurado,
+                       1 AS considerado
+                FROM fato_apuracao f
+                LEFT JOIN procedimento_portes pp ON pp.codigo = f.procedimento_codigo
+                LEFT JOIN procedimentos p ON p.codigo = f.procedimento_codigo
+                WHERE f.indicador_id = ? AND f.estabelecimento_id IN ({marc_estabs})
+                  AND f.periodo = ? AND f.tipo_registro = 'apurado' AND f.procedimento_codigo IS NOT NULL
+                GROUP BY f.procedimento_codigo
+                ORDER BY apurado DESC""",
+            [indicador_id, *estabelecimento_ids, str(periodo or "")],
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # 8. Outros consolidados (P25, P29, P36, P38, P41, P27)
     if ind_cod in ("P25", "P29", "P36", "P38", "P41", "P27"):
         marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
         row = db.execute(
@@ -895,6 +1141,8 @@ def _procedimentos_at02_do_cbo(db, indicador_id, estabelecimento_ids, cbo_codigo
     fonte_nome = (ind_info["fonte_nome"] or "").upper() if ind_info else ""
     fonte_dados = (ind_info["fonte_dados"] or "").upper() if ind_info else ""
     eh_fonte_at02 = ("AT02" in fonte_nome) or ("AT-02" in fonte_dados) or ("AT02" in fonte_dados)
+    if not eh_fonte_at02:
+        return [], [], False, "", "", 0
 
     codigos_considerados = []
     if eh_fonte_at02:
@@ -1003,16 +1251,48 @@ def linha_detalhe():
 
 @bp.route("/profissional_detalhe")
 def profissional_detalhe():
-    """Nível 2 do drill-down inline: procedimentos de um profissional
+    """Nível 2 do drill-down inline: procedimentos ou atividades de um profissional
     específico dentro de uma linha do painel."""
     db = get_db()
+    indicador_id = request.args.get("indicador_id")
+    est_ids = _ids_da_linha(request.args)
+    cbo_codigo = request.args.get("cbo_codigo") or None
+    periodo = request.args.get("periodo")
+    profissional = request.args.get("profissional")
+    subgrupo_id = _subgrupo_da_linha(request.args.get("subgrupo_id"))
+    cbo_profissional = request.args.get("cbo_profissional") or None
+
     procedimentos = _procedimentos_do_profissional(
-        db, request.args.get("indicador_id"), _ids_da_linha(request.args),
-        request.args.get("cbo_codigo") or None, request.args.get("periodo"),
-        request.args.get("profissional"),
-        _subgrupo_da_linha(request.args.get("subgrupo_id")),
-        request.args.get("cbo_profissional") or None,
+        db, indicador_id, est_ids,
+        cbo_codigo, periodo,
+        profissional,
+        subgrupo_id,
+        cbo_profissional,
     )
+
+    ind_cod, _, _, _ = _obter_info_linha(db, indicador_id, est_ids)
+    if ind_cod in ("P12", "P22"):
+        return jsonify({
+            "is_atividade_rel134": True,
+            "tipo_detalhe": "atividades",
+            "atividades": [dict(p) for p in procedimentos],
+            "procedimentos": [dict(p) for p in procedimentos],
+        })
+
+    if ind_cod in ("P30", "P33"):
+        return jsonify({
+            "is_ad_rel130": True,
+            "tipo_detalhe": "atend_domiciliar",
+            "procedimentos": [dict(p) for p in procedimentos],
+        })
+
+    if ind_cod in ("P31", "P32", "P34"):
+        return jsonify({
+            "is_sisad": True,
+            "tipo_detalhe": "sisad",
+            "procedimentos": [dict(p) for p in procedimentos],
+        })
+
     itens = []
     for p in procedimentos:
         d = dict(p)
