@@ -58,7 +58,7 @@ def _view_existe(conn, nome):
 #     de metas casa. O CBO individual de cada profissional continua
 #     disponível no drill-down do painel (que lê fato_apuracao/staging).
 VIEW_RESULTADOS_INDICADOR = """
-CREATE VIEW resultados_indicador AS /* v16 */
+CREATE VIEW resultados_indicador AS /* v17 */
 WITH base AS (
     SELECT
         f.*,
@@ -95,21 +95,54 @@ agr AS (
         b.cbo_agrupado,
         SUM(CASE WHEN b.tipo_registro = 'apurado'   THEN b.quantidade ELSE 0 END) AS valor_apurado,
         SUM(CASE WHEN b.tipo_registro = 'declarado' THEN b.quantidade ELSE 0 END) AS valor_declarado,
-        -- Meta GERAL (sem segmento) do TA mais recente que COBRE a competência. "Cobre" = o intervalo
-        -- do TA se sobrepõe ao mês da competência (um TA que começa no dia 15 já vale para aquele mês).
-        (SELECT mm.valor_meta
-           FROM metas mm
-           JOIN termos_aditivos ta ON ta.id = mm.ta_id
-          WHERE mm.indicador_id = b.indicador_id
-            AND mm.estabelecimento_id = b.estabelecimento_id
-            AND mm.subgrupo_id IS b.subgrupo_id
-            AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
-            AND mm.rt IS NULL AND mm.tipo_equipe IS NULL AND mm.pmmb IS NULL
-            AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
-            AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
-          ORDER BY ta.periodo_inicio DESC, ta.id DESC
-          LIMIT 1) AS meta_geral,
-        -- Só quando NÃO há meta geral: metas segmentadas por RT/equipe/PMMB (a produção não sabe a que
+        -- Meta GERAL / PMMB do TA mais recente que COBRE a competência.
+        CASE
+            WHEN b.cbo_agrupado LIKE '%_PMMB' THEN
+                (SELECT mm.valor_meta
+                   FROM metas mm
+                   JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                  WHERE mm.indicador_id = b.indicador_id
+                    AND mm.estabelecimento_id = b.estabelecimento_id
+                    AND mm.subgrupo_id IS b.subgrupo_id
+                    AND (
+                        mm.cbo_codigo = b.cbo_agrupado
+                        OR (mm.cbo_codigo = replace(b.cbo_agrupado, '_PMMB', '') AND mm.pmmb = 'SIM')
+                        OR (mm.cbo_codigo IS NULL AND mm.pmmb = 'SIM')
+                    )
+                    AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                    AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                  ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                  LIMIT 1)
+            ELSE
+                COALESCE(
+                    (SELECT mm.valor_meta
+                       FROM metas mm
+                       JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                      WHERE mm.indicador_id = b.indicador_id
+                        AND mm.estabelecimento_id = b.estabelecimento_id
+                        AND mm.subgrupo_id IS b.subgrupo_id
+                        AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
+                        AND mm.pmmb = 'NAO'
+                        AND mm.rt IS NULL AND mm.tipo_equipe IS NULL
+                        AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                        AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                      ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                      LIMIT 1),
+                    (SELECT mm.valor_meta
+                       FROM metas mm
+                       JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                      WHERE mm.indicador_id = b.indicador_id
+                        AND mm.estabelecimento_id = b.estabelecimento_id
+                        AND mm.subgrupo_id IS b.subgrupo_id
+                        AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
+                        AND mm.rt IS NULL AND mm.tipo_equipe IS NULL AND mm.pmmb IS NULL
+                        AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                        AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                      ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                      LIMIT 1)
+                )
+        END AS meta_geral,
+        -- Só quando NÃO há meta geral: metas segmentadas por RT/equipe (a produção não sabe a que
         -- segmento pertence) entram SOMADAS, no TA mais recente que cobre a competência.
         (SELECT SUM(mm.valor_meta)
            FROM metas mm
@@ -121,7 +154,7 @@ agr AS (
                    AND mm2.estabelecimento_id = b.estabelecimento_id
                    AND mm2.subgrupo_id IS b.subgrupo_id
                    AND ((mm2.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm2.cbo_codigo = b.cbo_agrupado)
-                   AND (mm2.rt IS NOT NULL OR mm2.tipo_equipe IS NOT NULL OR mm2.pmmb IS NOT NULL)
+                   AND (mm2.rt IS NOT NULL OR mm2.tipo_equipe IS NOT NULL)
                    AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
                    AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
                  ORDER BY ta.periodo_inicio DESC, ta.id DESC
@@ -130,7 +163,8 @@ agr AS (
             AND mm.estabelecimento_id = b.estabelecimento_id
             AND mm.subgrupo_id IS b.subgrupo_id
             AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
-            AND (mm.rt IS NOT NULL OR mm.tipo_equipe IS NOT NULL OR mm.pmmb IS NOT NULL)
+            AND (mm.rt IS NOT NULL OR mm.tipo_equipe IS NOT NULL)
+            AND (mm.pmmb IS NULL OR mm.pmmb = 'NAO')
         ) AS meta_segmentada
     FROM base b
     GROUP BY b.indicador_id, b.subgrupo_id, b.estabelecimento_id, b.periodo, b.cbo_agrupado
@@ -149,7 +183,7 @@ SELECT
     e.nome                AS estabelecimento_nome,
     a.periodo,
     a.cbo_agrupado        AS cbo_codigo,
-    c.nome_categoria      AS cbo_nome,
+    COALESCE(c.nome_categoria, c_base.nome_categoria || ' PMMB', 'Médico Generalista PMMB') AS cbo_nome,
     a.valor_apurado,
     a.valor_declarado,
     COALESCE(a.meta_geral, a.meta_segmentada) AS valor_meta,
@@ -164,6 +198,7 @@ JOIN indicadores i       ON i.id = a.indicador_id
 JOIN estabelecimentos e  ON e.id = a.estabelecimento_id
 LEFT JOIN indicador_subgrupo sg ON sg.id = a.subgrupo_id
 LEFT JOIN cbo c          ON c.codigo = a.cbo_agrupado
+LEFT JOIN cbo c_base     ON c_base.codigo = replace(a.cbo_agrupado, '_PMMB', '')
 """
 
 
@@ -732,6 +767,14 @@ def aplicar_migracoes_pendentes(conn):
         aplicou_algo = True
     if _migrar_v18(conn):
         aplicou_algo = True
+    if _migrar_v19(conn):
+        aplicou_algo = True
+    if _migrar_v20(conn):
+        aplicou_algo = True
+    if _migrar_v21(conn):
+        aplicou_algo = True
+    if _migrar_v22(conn):
+        aplicou_algo = True
 
     conn.commit()
     return aplicou_algo
@@ -1070,6 +1113,162 @@ def _migrar_v18(conn):
             WHERE codigo IN ('P45', 'P46', 'P47') AND (fonte_id IS NULL OR fonte_id != ?)
         """, (f_id, f_id))
 
+    # Linha própria CBO PMMB (Programa Mais Médicos)
+    if _migrar_v19(conn):
+        aplicou = True
+
     return aplicou
+
+
+def _migrar_v19(conn):
+    """v19: Suporte a linha própria de CBO para médicos do Programa Mais Médicos (PMMB).
+    - Cadastra os CBOs específicos (225170_PMMB e 225142_PMMB) com descrição 'Médico Generalista PMMB'.
+    - Vincula esses CBOs aos indicadores P01, P02 e P13 na tabela indicador_cbo.
+    - Mapeia as produções do WebSaass de PMM/PMMB para os respectivos CBOs com sufixo _PMMB.
+    - Recria a view resultados_indicador (v17) para separar as linhas e casar metas segmentadas de PMMB.
+    Idempotente."""
+    aplicou = False
+
+    # 1. CBOs no catálogo
+    for cod_cbo in ("225170_PMMB", "225142_PMMB"):
+        conn.execute(
+            """INSERT INTO cbo (codigo, nome_categoria) VALUES (?, 'Médico Generalista PMMB')
+               ON CONFLICT(codigo) DO UPDATE SET nome_categoria = 'Médico Generalista PMMB'""",
+            (cod_cbo,),
+        )
+    aplicou = True
+
+    # 2. Vínculos em indicador_cbo (P01, P02, P13)
+    p01 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P01' LIMIT 1").fetchone()
+    p02 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P02' LIMIT 1").fetchone()
+    p13 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P13' LIMIT 1").fetchone()
+
+    for ind_row, cbos in [
+        (p01, ("225142_PMMB", "225170_PMMB")),
+        (p02, ("225142_PMMB", "225170_PMMB")),
+        (p13, ("225170_PMMB", "225142_PMMB")),
+    ]:
+        if ind_row:
+            iid = ind_row[0] if isinstance(ind_row, (tuple, list)) else ind_row["id"]
+            for c in cbos:
+                conn.execute(
+                    """INSERT OR IGNORE INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                       VALUES (?, ?, 0)""",
+                    (iid, c),
+                )
+
+    # 3. Mapeamento no de_para_websaass_indicador
+    if _tabela_existe(conn, "de_para_websaass_indicador"):
+        if p01:
+            iid = p01[0] if isinstance(p01, (tuple, list)) else p01["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '225142_PMMB'
+                   WHERE indicador_id = ? AND (producao LIKE '%PMM%' OR cod_producao IN ('1.01.09', '30.01.03'))""",
+                (iid,),
+            )
+        if p02:
+            iid = p02[0] if isinstance(p02, (tuple, list)) else p02["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '225142_PMMB'
+                   WHERE indicador_id = ? AND (producao LIKE '%PMM%' OR cod_producao IN ('1.01.10', '30.01.81'))""",
+                (iid,),
+            )
+        if p13:
+            iid = p13[0] if isinstance(p13, (tuple, list)) else p13["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '225170_PMMB'
+                   WHERE indicador_id = ? AND (producao LIKE '%PMM%' OR cod_producao = '7.60.38')""",
+                (iid,),
+            )
+
+    # 4. Recriação da view resultados_indicador (v17)
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='view' AND name='resultados_indicador'"
+    ).fetchone()
+    if row is None or "/* v17 */" not in (row[0] or ""):
+        conn.execute("DROP VIEW IF EXISTS resultados_indicador")
+        conn.execute(VIEW_RESULTADOS_INDICADOR)
+        aplicou = True
+
+    return aplicou
+
+
+def _migrar_v20(conn):
+    """v20: Remove restrição de categoria 'INTEGRADA' dos procedimentos de urgência do indicador P01 (UBS ESF),
+    garantindo que os atendimentos de urgência realizados por médicos da ESF em unidades integradas
+    sejam devidamente contabilizados no P01. Idempotente."""
+    aplicou = False
+    p01 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P01' LIMIT 1").fetchone()
+    if p01:
+        iid = p01[0] if isinstance(p01, (tuple, list)) else p01["id"]
+        cur = conn.execute("""
+            UPDATE indicador_procedimento
+            SET categoria_estabelecimento_neg = NULL
+            WHERE indicador_id = ? AND UPPER(TRIM(COALESCE(categoria_estabelecimento_neg, ''))) = 'INTEGRADA'
+        """, (iid,))
+        if cur.rowcount > 0:
+            aplicou = True
+    return aplicou
+
+
+def _migrar_v21(conn):
+    """v21: Vincula o procedimento 0301010048 ao indicador P03 especificamente para a UBS Vila Esperança - Cássio Bittencourt Filho,
+    sem afetar as demais unidades. Idempotente."""
+    aplicou = False
+    p03 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P03' LIMIT 1").fetchone()
+    estab_cassio = conn.execute("""
+        SELECT e.id FROM estabelecimentos e
+        JOIN estabelecimento_tipo_servico ets ON ets.estabelecimento_id = e.id
+        WHERE ets.tipo_servico = 'UBS_ESF' AND e.cod_cnes = '2788861' AND lower(e.nome) LIKE '%esperanca%'
+        LIMIT 1
+    """).fetchone()
+    if p03 and estab_cassio:
+        p03_id = p03[0] if isinstance(p03, (tuple, list)) else p03["id"]
+        cassio_id = estab_cassio[0] if isinstance(estab_cassio, (tuple, list)) else estab_cassio["id"]
+
+        conn.execute("""
+            INSERT OR IGNORE INTO procedimentos (codigo, nome)
+            VALUES ('0301010048', 'CONSULTA DE PROFISSIONAIS DE NÍVEL SUPERIOR NA ATENÇÃO ESPECIALIZADA (EXCETO MÉDICO)')
+        """)
+
+        cur = conn.execute("""
+            INSERT INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo, estabelecimento_id)
+            SELECT ?, '0301010048', 'inclusao', ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM indicador_procedimento
+                WHERE indicador_id = ? AND procedimento_codigo = '0301010048'
+                  AND estabelecimento_id = ?
+            )
+        """, (p03_id, cassio_id, p03_id, cassio_id))
+        if cur.rowcount > 0:
+            aplicou = True
+    return aplicou
+
+
+def _migrar_v22(conn):
+    """v22: Cadastra exclusão da AMA/UBS Integrada Cangaíba no indicador P06 (Visitas do ACS - REL_142),
+    conforme regra de negócio de que Cangaíba não deve pontuar ou aparecer nesse indicador. Idempotente."""
+    aplicou = False
+    p06 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P06' LIMIT 1").fetchone()
+    estab_cangaiba = conn.execute(
+        "SELECT id FROM estabelecimentos WHERE cod_cnes = '2752204' AND lower(nome) LIKE '%cangaiba%' LIMIT 1"
+    ).fetchone()
+    if p06 and estab_cangaiba:
+        p06_id = p06[0] if isinstance(p06, (tuple, list)) else p06["id"]
+        cangaiba_id = estab_cangaiba[0] if isinstance(estab_cangaiba, (tuple, list)) else estab_cangaiba["id"]
+
+        cur = conn.execute("""
+            INSERT OR IGNORE INTO indicador_estabelecimento_excecao (indicador_id, estabelecimento_id)
+            VALUES (?, ?)
+        """, (p06_id, cangaiba_id))
+        if cur.rowcount > 0:
+            aplicou = True
+    return aplicou
+
+
+
 
 

@@ -187,20 +187,23 @@
     display: none !important;
   }
 
-  /* Barra de progresso visual da meta */
+  /* Barra de progresso visual da meta compacta */
   .barra-meta-container {
-    min-width: 90px;
+    width: 100%;
+    min-width: 50px;
+    max-width: 76px;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
   }
   .barra-meta-valor {
     font-weight: 600;
-    font-size: 12.5px;
+    font-size: 11px;
+    line-height: 1.1;
   }
   .barra-meta-bg {
     width: 100%;
-    height: 6px;
+    height: 5px;
     background: #e2e8f0;
     border-radius: 3px;
     overflow: hidden;
@@ -288,91 +291,83 @@ async function abrirDetalheAlerta(tipo, titulo) {
 <table id="tabela-painel" class="table-hover dataTable">
   <thead>
     <tr>
-      <th style="width: 32px;" class="sorting_disabled"></th>
-      <th class="sorting_asc" data-col-index="1">
+      <th class="sorting_disabled col-acoes"></th>
+      <th class="sorting_asc col-indicador" data-col-index="1">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Indicador</span>
+          <span class="header-text">Indicador</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="1">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="2">
+      <th class="sorting col-estabelecimento" data-col-index="2">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Estabelecimento</span>
+          <span class="header-text">Estabelecimento</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="2">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="3">
+      <th class="sorting col-cbo" data-col-index="3">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">CBO</span>
+          <span class="header-text">CBO</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="3">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="4">
+      <th class="sorting col-periodo" data-col-index="4">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Período</span>
+          <span class="header-text">Período</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="4">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="5">
+      <th class="sorting col-apurado" data-col-index="5">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Apurado</span>
+          <span class="header-text">Apurado</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="5">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="col-auditoria sorting" data-col-index="6">
+      <th class="col-auditoria sorting col-websaass" data-col-index="6">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Websaass</span>
+          <span class="header-text">Websaass</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="6">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="col-auditoria sorting" data-col-index="7">
+      <th class="col-auditoria sorting col-divergencia" data-col-index="7">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Divergência</span>
+          <span class="header-text">Divergência</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="7">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="8">
+      <th class="sorting col-meta" data-col-index="8">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Meta</span>
+          <span class="header-text">Meta</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="8">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="9">
+      <th class="sorting col-atingimento" data-col-index="9">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">% Atingido</span>
+          <span class="header-text">% Atingido</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="9">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
       </th>
-      <th class="sorting" data-col-index="10">
+      <th class="col-auditoria sorting col-auditoria-badge" data-col-index="10">
         <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Status Meta</span>
+          <span class="header-text">Auditoria Websaass</span>
           <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="10">
-            <i class="bi bi-funnel filter-icon"></i>
-          </button>
-        </div>
-      </th>
-      <th class="col-auditoria sorting" data-col-index="11">
-        <div class="header-excel-container d-flex align-items-center justify-content-between gap-1 w-100">
-          <span class="header-text text-nowrap">Auditoria Websaass</span>
-          <button type="button" class="btn btn-sm p-0 btn-excel-filter" title="Filtrar por esta coluna" data-col-index="11">
             <i class="bi bi-funnel filter-icon"></i>
           </button>
         </div>
@@ -383,8 +378,13 @@ async function abrirDetalheAlerta(tipo, titulo) {
     {% for r in resultados %}
     <tr class="linha-resumo" data-indicador-id="{{ r.indicador_id }}" data-estabelecimento-id="{{ r.estabelecimento_id }}"
         data-estabelecimento-ids="{{ r.estabelecimento_ids | join(',') }}" data-subgrupo-id="{{ r.subgrupo_id or '' }}"
-        data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}">
-      <td><button type="button" class="btn-expandir" onclick="alternarLinha(this)" title="Ver procedimentos e profissionais">+</button></td>
+        data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}" data-status-meta="{{ r.status_rotulo }}">
+      <td style="text-align: center; white-space: nowrap;">
+        <div style="display: inline-flex; align-items: center; gap: 4px;">
+          <button type="button" class="btn-expandir" onclick="alternarLinha(this)" title="Ver procedimentos e profissionais">+</button>
+          <button type="button" class="btn-obs" onclick="alternarObservacao(this)" title="Adicionar / ver observação desta linha"><i class="fa-regular fa-comment-dots"></i></button>
+        </div>
+      </td>
       <td>
         <div class="celula-indicador-principal">
           {% if r.indicador_id %}
@@ -423,17 +423,32 @@ async function abrirDetalheAlerta(tipo, titulo) {
           <span style="color:var(--cor-texto-muted)">-</span>
         {% endif %}
       </td>
-      <td><span class="badge {{ r.status_classe }}">{{ r.status_rotulo }}</span></td>
       <td class="col-auditoria"><span class="badge {{ r.auditoria_classe }}">{{ r.auditoria_rotulo }}</span></td>
     </tr>
     <tr class="linha-detalhe" style="display:none">
       <td></td>
-      <td colspan="11" class="conteudo-detalhe">
+      <td colspan="10" class="conteudo-detalhe">
         <em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em>
       </td>
     </tr>
+    <tr class="linha-observacao" style="display:none">
+      <td></td>
+      <td colspan="10">
+        <div class="painel-obs-box">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span style="font-size:12px; font-weight:700; color:var(--stspe-primary);"><i class="fa-regular fa-comment-dots me-1"></i> Anotações / Observações desta linha:</span>
+            <div class="d-flex gap-2 align-items-center">
+              <small class="obs-salvo-status text-muted" style="font-size:11px;"></small>
+              <button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="limparObservacaoLinha(this)" title="Limpar observação" style="font-size:11px; text-decoration:none;"><i class="fa-regular fa-trash-can me-1"></i>Limpar</button>
+              <button type="button" class="btn btn-sm btn-link text-secondary p-0" onclick="fecharObservacaoLinha(this)" title="Recolher caixa" style="font-size:11px; text-decoration:none;"><i class="fa-solid fa-xmark me-1"></i>Recolher</button>
+            </div>
+          </div>
+          <textarea class="campo-observacao" placeholder="Digite suas anotações ou justificativas para esta linha..." oninput="salvarObservacaoLinha(this)"></textarea>
+        </div>
+      </td>
+    </tr>
     {% else %}
-    <tr><td colspan="12">Nenhum resultado ainda. Importe dados e cadastre indicadores/metas.</td></tr>
+    <tr><td colspan="11">Nenhum resultado ainda. Importe dados e cadastre indicadores/metas.</td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -503,22 +518,22 @@ async function abrirDetalheAlerta(tipo, titulo) {
     color: var(--stspe-hover, #3f51b5);
     text-decoration: underline;
   }
-  .celula-indicador-secundaria { font-size: 11.5px; color: var(--cor-texto-sutil); margin-top: 1px; }
+  .celula-indicador-principal { font-weight: 500; font-size: 12px; line-height: 1.25; word-break: break-word; }
+  .celula-indicador-secundaria { font-size: 10.5px; color: var(--cor-texto-sutil); margin-top: 1px; line-height: 1.2; word-break: break-word; }
 
-  /* Autofiltro estilo Excel moderno idêntico ao da produção */
-  #tabela-painel thead th { white-space: nowrap; }
+  /* Autofiltro estilo Excel moderno */
   .header-excel-container {
-    display: inline-flex !important;
+    display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
-    gap: 6px !important;
+    gap: 3px !important;
     width: 100% !important;
     box-sizing: border-box !important;
-    white-space: nowrap !important;
   }
   .header-excel-container .header-text {
-    white-space: nowrap !important;
     font-weight: 700;
+    line-height: 1.15;
+    white-space: normal !important;
   }
   .btn-excel-filter {
     background: transparent !important;
@@ -553,12 +568,21 @@ async function abrirDetalheAlerta(tipo, titulo) {
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* A tabela não fica presa em contêiner de rolagem interna: expande livremente
-     e rola junto com toda a página, permitindo visualizar muito mais registros. */
+  /* Tabela fluida 100% da viewport útil (sem rolagem horizontal necessária) */
   #tabela-painel-wrap {
     max-height: none !important;
     overflow-y: visible !important;
     overflow-x: auto;
+    width: 100%;
+    max-width: 100%;
+    background: #ffffff;
+    border-radius: var(--raio);
+  }
+  #tabela-painel {
+    width: 100% !important;
+    max-width: 100%;
+    table-layout: auto;
+    border-collapse: collapse;
   }
   #tabela-painel thead th {
     position: sticky;
@@ -566,7 +590,193 @@ async function abrirDetalheAlerta(tipo, titulo) {
     z-index: 10;
     background: var(--cor-fundo, #f4f5f7);
     box-shadow: 0 1px 0 var(--cor-borda);
+    padding: 6px 4px;
+    font-size: 0.69rem;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    vertical-align: middle;
   }
+  #tabela-painel thead th .header-excel-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    width: 100%;
+  }
+  #tabela-painel thead th .header-text {
+    line-height: 1.15;
+    white-space: normal;
+    word-break: normal;
+    display: inline-block;
+  }
+  #tabela-painel thead th .btn-excel-filter {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  #tabela-painel tbody td {
+    padding: 6px 4px;
+    vertical-align: middle;
+    font-size: 0.81rem;
+  }
+
+  /* Larguras proporcionais para garantir encaixe perfeito em 100% da viewport */
+  #tabela-painel thead th.col-acoes,
+  #tabela-painel tbody td:first-child {
+    width: 54px;
+    min-width: 52px;
+    max-width: 56px;
+    padding: 4px 2px;
+    text-align: center;
+  }
+  #tabela-painel thead th.col-indicador { min-width: 140px; }
+  #tabela-painel thead th.col-estabelecimento { min-width: 130px; }
+  #tabela-painel thead th.col-cbo { min-width: 110px; }
+  #tabela-painel thead th.col-periodo,
+  #tabela-painel tbody td:nth-child(5) {
+    width: 58px;
+    min-width: 54px;
+    max-width: 64px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  #tabela-painel thead th.col-apurado,
+  #tabela-painel tbody td:nth-child(6) {
+    width: 62px;
+    min-width: 56px;
+    max-width: 70px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #tabela-painel thead th.col-websaass,
+  #tabela-painel tbody td:nth-child(7) {
+    width: 64px;
+    min-width: 56px;
+    max-width: 72px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #tabela-painel thead th.col-divergencia,
+  #tabela-painel tbody td:nth-child(8) {
+    width: 64px;
+    min-width: 56px;
+    max-width: 72px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #tabela-painel thead th.col-meta,
+  #tabela-painel tbody td:nth-child(9) {
+    width: 62px;
+    min-width: 56px;
+    max-width: 70px;
+    text-align: right;
+    white-space: nowrap;
+  }
+  #tabela-painel thead th.col-atingimento,
+  #tabela-painel tbody td:nth-child(10) {
+    width: 76px;
+    min-width: 68px;
+    max-width: 84px;
+  }
+  #tabela-painel thead th.col-auditoria-badge,
+  #tabela-painel tbody td:nth-child(11) {
+    width: 86px;
+    min-width: 78px;
+    max-width: 95px;
+    text-align: center;
+  }
+
+  /* Estilos do botão de observação com indicador visual */
+  .btn-obs {
+    position: relative;
+    width: 25px;
+    height: 25px;
+    padding: 0;
+    border-radius: 4px;
+    border: 1px solid var(--cor-borda);
+    background: #ffffff;
+    color: #64748b;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    transition: all .15s ease;
+  }
+  .btn-obs:hover {
+    background: #eff6ff;
+    color: var(--stspe-primary);
+    border-color: #93c5fd;
+  }
+  /* Quando contém anotações preenchidas: fundo âmbar, ícone em destaque e badge dot vermelho */
+  .btn-obs.tem-obs {
+    background: #fffbeb;
+    color: #b45309;
+    border-color: #fcd34d;
+    box-shadow: 0 1px 2px rgba(180, 83, 9, 0.12);
+  }
+  .btn-obs.tem-obs:hover {
+    background: #fef3c7;
+    border-color: #f59e0b;
+    color: #92400e;
+  }
+  .btn-obs.tem-obs::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 7px;
+    height: 7px;
+    background-color: #ef4444;
+    border-radius: 50%;
+    border: 1.5px solid #ffffff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  }
+  .btn-obs.aberto {
+    background: var(--stspe-primary) !important;
+    color: #ffffff !important;
+    border-color: var(--stspe-primary) !important;
+  }
+  .btn-obs.aberto::after {
+    display: none;
+  }
+
+  /* Linha e Campo de Observação Expansível */
+  .linha-observacao {
+    background: #fbfcfe !important;
+  }
+  .painel-obs-box {
+    padding: 10px 14px 12px;
+    background: #ffffff;
+    border: 1px solid #dbeafe;
+    border-left: 4px solid var(--stspe-primary, #30407B);
+    border-radius: 6px;
+    margin: 4px 6px 8px 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+  }
+  .painel-obs-box .campo-observacao {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 13px;
+    color: #1e293b;
+    outline: none;
+    font-family: inherit;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .painel-obs-box .campo-observacao:focus {
+    border-color: var(--stspe-primary, #30407B);
+    box-shadow: 0 0 0 3px rgba(48,64,123,0.12);
+  }
+
   /* Badges de Status e Auditoria (garante fundo visível e texto contrastante) */
   .badge-vermelho, .badge-perigo {
     background: #fbe3e1 !important;
@@ -937,7 +1147,7 @@ function mostrarToast(mensagem, tipo = 'sucesso') {
 function atualizarLinhaResumoNoDom(trResumo, linha) {
   if (!trResumo || !linha) return;
   const tds = trResumo.querySelectorAll('td');
-  if (tds.length < 12) return;
+  if (tds.length < 11) return;
 
   // 1. Apurado STS
   tds[5].innerHTML = `<strong>${formatarNumeroPtBr(linha.valor_apurado || 0)}</strong>`;
@@ -979,11 +1189,11 @@ function atualizarLinhaResumoNoDom(trResumo, linha) {
     tds[9].innerHTML = '<span style="color:var(--cor-texto-muted)">-</span>';
   }
 
-  // 6. Badge Status Meta
-  tds[10].innerHTML = `<span class="badge ${linha.status_classe || ''}">${linha.status_rotulo || '-'}</span>`;
+  // 6. Atualiza o status da meta no atributo data da linha
+  trResumo.dataset.statusMeta = linha.status_rotulo || '';
 
   // 7. Badge Auditoria WebSaass
-  tds[11].innerHTML = `<span class="badge ${linha.auditoria_classe || ''}">${linha.auditoria_rotulo || '-'}</span>`;
+  tds[10].innerHTML = `<span class="badge ${linha.auditoria_classe || ''}">${linha.auditoria_rotulo || '-'}</span>`;
 
   // Efeito suave de destaque na linha pai recalculada
   trResumo.style.transition = 'background-color 0.4s ease';
@@ -1299,9 +1509,157 @@ async function carregarDetalhe(trResumo) {
   return dados;
 }
 
+function getTrDetalhe(trResumo) {
+  if (!trResumo) return null;
+  let el = trResumo.nextElementSibling;
+  while (el && !el.classList.contains('linha-resumo')) {
+    if (el.classList.contains('linha-detalhe')) return el;
+    el = el.nextElementSibling;
+  }
+  return null;
+}
+
+function getTrObservacao(trResumo) {
+  if (!trResumo) return null;
+  let el = trResumo.nextElementSibling;
+  while (el && !el.classList.contains('linha-resumo')) {
+    if (el.classList.contains('linha-observacao')) return el;
+    el = el.nextElementSibling;
+  }
+  return null;
+}
+
+function getTrResumoPaiDeFilho(elFilho) {
+  if (!elFilho) return null;
+  let el = elFilho.closest('tr');
+  while (el && !el.classList.contains('linha-resumo')) {
+    el = el.previousElementSibling;
+  }
+  return el;
+}
+
+function gerarChaveObservacao(trResumo) {
+  const indId = trResumo.dataset.indicadorId || '';
+  const estabId = trResumo.dataset.estabelecimentoId || trResumo.dataset.estabelecimentoIds || '';
+  const subId = trResumo.dataset.subgrupoId || '';
+  const cbo = trResumo.dataset.cboCodigo || '';
+  const periodo = trResumo.dataset.periodo || '';
+  return `obs_painel_${indId}_${estabId}_${subId}_${cbo}_${periodo}`;
+}
+
+function alternarObservacao(botao) {
+  const trResumo = botao.closest('tr.linha-resumo');
+  if (!trResumo) return;
+  const trObs = getTrObservacao(trResumo);
+  if (!trObs) return;
+
+  const visivel = trObs.style.display !== 'none';
+  if (visivel) {
+    trObs.style.display = 'none';
+    botao.classList.remove('aberto');
+  } else {
+    trObs.style.display = '';
+    botao.classList.add('aberto');
+    const textarea = trObs.querySelector('.campo-observacao');
+    if (textarea) {
+      textarea.focus();
+    }
+  }
+}
+
+function fecharObservacaoLinha(el) {
+  const trObs = el.closest('tr.linha-observacao');
+  if (!trObs) return;
+  trObs.style.display = 'none';
+  const trResumo = getTrResumoPaiDeFilho(trObs);
+  if (trResumo) {
+    const btnObs = trResumo.querySelector('.btn-obs');
+    if (btnObs) btnObs.classList.remove('aberto');
+  }
+}
+
+function limparObservacaoLinha(el) {
+  const trObs = el.closest('tr.linha-observacao');
+  if (!trObs) return;
+  const textarea = trObs.querySelector('.campo-observacao');
+  if (!textarea) return;
+  if (!confirm('Deseja realmente apagar a observação desta linha?')) return;
+  textarea.value = '';
+  salvarObservacaoLinha(textarea);
+}
+
+function atualizarEstadoVisualBotaoObs(btnObs, temObs) {
+  if (!btnObs) return;
+  const icone = btnObs.querySelector('i');
+  if (temObs) {
+    btnObs.classList.add('tem-obs');
+    btnObs.title = 'Esta linha possui observação preenchida (clique para ver/editar)';
+    if (icone) {
+      icone.className = 'fa-solid fa-comment-dots';
+    }
+  } else {
+    btnObs.classList.remove('tem-obs');
+    btnObs.title = 'Adicionar / ver observação desta linha';
+    if (icone) {
+      icone.className = 'fa-regular fa-comment-dots';
+    }
+  }
+}
+
+let timeoutSalvarObs = null;
+function salvarObservacaoLinha(textarea) {
+  const trObs = textarea.closest('tr.linha-observacao');
+  if (!trObs) return;
+  const trResumo = getTrResumoPaiDeFilho(trObs);
+  if (!trResumo) return;
+
+  const chave = gerarChaveObservacao(trResumo);
+  const texto = textarea.value.trim();
+  const btnObs = trResumo.querySelector('.btn-obs');
+  const statusEl = trObs.querySelector('.obs-salvo-status');
+
+  if (texto) {
+    localStorage.setItem(chave, texto);
+    atualizarEstadoVisualBotaoObs(btnObs, true);
+  } else {
+    localStorage.removeItem(chave);
+    atualizarEstadoVisualBotaoObs(btnObs, false);
+  }
+
+  if (statusEl) {
+    statusEl.textContent = 'Salvando...';
+    clearTimeout(timeoutSalvarObs);
+    timeoutSalvarObs = setTimeout(() => {
+      statusEl.textContent = 'Salvo automaticamente';
+      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+    }, 400);
+  }
+}
+
+function inicializarObservacoes() {
+  document.querySelectorAll('#tabela-painel tbody tr.linha-resumo').forEach(trResumo => {
+    const chave = gerarChaveObservacao(trResumo);
+    const textoSalvo = localStorage.getItem(chave);
+    const btnObs = trResumo.querySelector('.btn-obs');
+    const trObs = getTrObservacao(trResumo);
+
+    if (textoSalvo && textoSalvo.trim()) {
+      atualizarEstadoVisualBotaoObs(btnObs, true);
+      if (trObs) {
+        const textarea = trObs.querySelector('.campo-observacao');
+        if (textarea) textarea.value = textoSalvo;
+      }
+    } else {
+      atualizarEstadoVisualBotaoObs(btnObs, false);
+    }
+  });
+}
+
 async function alternarLinha(botao) {
-  const trResumo = botao.closest('tr');
-  const trDetalhe = trResumo.nextElementSibling;
+  const trResumo = botao.closest('tr.linha-resumo');
+  if (!trResumo) return;
+  const trDetalhe = getTrDetalhe(trResumo);
+  if (!trDetalhe) return;
   const aberto = trDetalhe.style.display !== 'none';
 
   if (aberto) {
@@ -1388,8 +1746,9 @@ async function expandirTudo() {
       // se "Recolher tudo" (ou um novo "Expandir tudo") começou depois de mim,
       // essa chamada antiga para aqui em vez de continuar reabrindo linhas
       if (operacaoExpansaoAtual !== minhaOperacao) return;
-      const trDetalhe = botao.closest('tr').nextElementSibling;
-      if (trDetalhe.style.display === 'none') {
+      const trResumo = botao.closest('tr.linha-resumo');
+      const trDetalhe = getTrDetalhe(trResumo);
+      if (trDetalhe && trDetalhe.style.display === 'none') {
         await alternarLinha(botao);
       }
     }
@@ -1402,8 +1761,9 @@ function recolherTudo() {
   operacaoExpansaoAtual++; // cancela qualquer "Expandir tudo" que ainda esteja em andamento
   const botaoExpandir = document.getElementById('btn-expandir-tudo');
   if (botaoExpandir) botaoExpandir.disabled = false;
-  document.querySelectorAll('.linha-detalhe, .linha-detalhe-profissional').forEach(tr => tr.style.display = 'none');
+  document.querySelectorAll('.linha-detalhe, .linha-detalhe-profissional, .linha-observacao').forEach(tr => tr.style.display = 'none');
   document.querySelectorAll('.btn-expandir').forEach(b => b.textContent = '+');
+  document.querySelectorAll('.btn-obs.aberto').forEach(b => b.classList.remove('aberto'));
 }
 
 // ---------------------------------------------------------------------
@@ -1456,15 +1816,14 @@ function ordenarTabelaPainel(colIdx, asc = true) {
 
   ordenacaoAtualPainel = { colIdx, asc };
 
-  // Agrupa os pares [linha-resumo, linha-detalhe] para manter a hierarquia intacta
+  // Agrupa os elementos [linha-resumo, linha-detalhe, linha-observacao] para manter a hierarquia intacta
   const linhasResumo = Array.from(tbody.querySelectorAll('tr.linha-resumo'));
   const pares = linhasResumo.map(trResumo => {
-    const trDetalhe = trResumo.nextElementSibling && trResumo.nextElementSibling.classList.contains('linha-detalhe')
-      ? trResumo.nextElementSibling
-      : null;
+    const trDetalhe = getTrDetalhe(trResumo);
+    const trObservacao = getTrObservacao(trResumo);
     const celula = trResumo.children[colIdx];
     const val = celula ? celula.textContent.trim().replace(/\s+/g, ' ') : '';
-    return { trResumo, trDetalhe, val };
+    return { trResumo, trDetalhe, trObservacao, val };
   });
 
   pares.sort((a, b) => {
@@ -1483,6 +1842,9 @@ function ordenarTabelaPainel(colIdx, asc = true) {
     tbody.appendChild(par.trResumo);
     if (par.trDetalhe) {
       tbody.appendChild(par.trDetalhe);
+    }
+    if (par.trObservacao) {
+      tbody.appendChild(par.trObservacao);
     }
   });
 
@@ -1727,36 +2089,58 @@ function atualizarIconesFunil() {
   });
 }
 
+let filtroStatusMetaAtivo = null;
+
 function aplicarFiltrosColuna() {
   const colunas = Object.keys(filtrosAtivos).map(Number);
 
   document.querySelectorAll('#tabela-painel > tbody > tr.linha-resumo').forEach(tr => {
     const celulas = tr.children;
-    const visivel = colunas.every(idx => {
+    let visivel = colunas.every(idx => {
       let texto = (celulas[idx] ? celulas[idx].textContent : '').trim();
       texto = texto.replace(/\s+/g, ' ');
       return filtrosAtivos[idx].has(texto);
     });
+
+    if (visivel && filtroStatusMetaAtivo) {
+      const statusTr = (tr.dataset.statusMeta || '').trim();
+      if (statusTr !== filtroStatusMetaAtivo) {
+        visivel = false;
+      }
+    }
+
     tr.style.display = visivel ? '' : 'none';
 
-    const trDetalhe = tr.nextElementSibling;
-    if (!visivel && trDetalhe && trDetalhe.classList.contains('linha-detalhe')) {
-      trDetalhe.style.display = 'none';
-      const botao = tr.querySelector('.btn-expandir');
-      if (botao) botao.textContent = '+';
+    if (!visivel) {
+      const trDetalhe = getTrDetalhe(tr);
+      if (trDetalhe) {
+        trDetalhe.style.display = 'none';
+        const botao = tr.querySelector('.btn-expandir');
+        if (botao) botao.textContent = '+';
+      }
+      const trObs = getTrObservacao(tr);
+      if (trObs) {
+        trObs.style.display = 'none';
+        const btnObs = tr.querySelector('.btn-obs');
+        if (btnObs) btnObs.classList.remove('aberto');
+      }
     }
   });
 }
 
 function limparFiltrosColuna() {
+  filtroStatusMetaAtivo = null;
   Object.keys(filtrosAtivos).forEach(k => delete filtrosAtivos[k]);
   atualizarIconesFunil();
   aplicarFiltrosColuna();
 }
 
 function filtrarPorStatusMeta(statusTexto) {
-  filtrosAtivos[10] = new Set([statusTexto]);
-  atualizarIconesFunil();
+  if (filtroStatusMetaAtivo === statusTexto) {
+    filtroStatusMetaAtivo = null;
+  } else {
+    filtroStatusMetaAtivo = statusTexto;
+  }
   aplicarFiltrosColuna();
 }
 
@@ -1789,6 +2173,9 @@ function alternarModoPainel(modo) {
 document.addEventListener('DOMContentLoaded', function () {
   const modoSalvo = localStorage.getItem('contratos_modo_painel') || 'producao';
   alternarModoPainel(modoSalvo);
+
+  // Inicializa caixas de observações salvas
+  inicializarObservacoes();
 
   // Ordena por padrão pela coluna Indicador em ordem alfanumérica crescente
   ordenarTabelaPainel(1, true);

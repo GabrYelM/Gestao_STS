@@ -256,7 +256,7 @@ def alerta_detalhe():
                         r["periodo"],
                         str(r.get("valor_apurado") or 0),
                         str(r.get("valor_declarado") or 0),
-                        f"{r.get('divergencia', 0):+d}",
+                        f"{int(round(r.get('divergencia') or 0)):+d}",
                         r.get("auditoria_rotulo") or "",
                     ],
                 }
@@ -441,6 +441,30 @@ def _cmes_e_cbos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, per
         if valores and None not in valores:
             cbos = valores
     return cmes, cbos
+
+
+def _obter_matcher_pmmb(db):
+    pmmb_profs = db.execute("SELECT id, nome, estabelecimento_id FROM profissionais WHERE pmmb = 1 AND ativo = 1").fetchall()
+    from ..funcoes import _normalizar_nome_prof
+    pmmb_profs_norm = []
+    for p in pmmb_profs:
+        n = _normalizar_nome_prof(p["nome"])
+        pmmb_profs_norm.append({"id": p["id"], "nome": p["nome"], "norm": n, "words": set(n.split()), "est_id": p["estabelecimento_id"]})
+
+    def _eh_prof_pmmb(nome):
+        if not nome:
+            return False
+        stg_n = _normalizar_nome_prof(nome)
+        stg_w = set(stg_n.split())
+        for p in pmmb_profs_norm:
+            if p["norm"] == stg_n:
+                return True
+            inter = p["words"].intersection(stg_w)
+            if (p["words"].issubset(stg_w) or stg_w.issubset(p["words"])) and len(inter) >= 3:
+                return True
+        return False
+
+    return _eh_prof_pmmb, bool(pmmb_profs_norm)
 
 
 def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id=None):
@@ -648,6 +672,10 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
     if not procedimentos:
         return []
 
+    eh_linha_pmmb = bool(cbo_codigo and str(cbo_codigo).endswith("_PMMB"))
+    base_cbo = str(cbo_codigo).replace("_PMMB", "") if cbo_codigo else None
+    _eh_prof_pmmb, tem_pmmb_cadastrado = _obter_matcher_pmmb(db)
+
     cmes, cbos = _cmes_e_cbos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id)
     if not cmes or cbos == []:
         return []
@@ -660,7 +688,10 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
                 AND s.cod_procedimento IN ({",".join("?" * len(proc_lista))})
                 AND s.nome_profissional IS NOT NULL"""
     params = [periodo, *cmes, *proc_lista]
-    if cbo_codigo:
+    if eh_linha_pmmb:
+        sql += " AND s.cod_cbo_sus IN (?, '225142', '225170')"
+        params.append(base_cbo)
+    elif cbo_codigo:
         sql += " AND s.cod_cbo_sus = ?"
         params.append(cbo_codigo)
     elif cbos:
@@ -684,7 +715,23 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
             elif "visual" in sg_n:
                 sql += " AND lower(s.nome_especialidade2) LIKE '%visual%'"
     sql += " GROUP BY s.nome_profissional, s.cod_cbo_sus ORDER BY apurado DESC"
-    return db.execute(sql, params).fetchall()
+    rows = db.execute(sql, params).fetchall()
+
+    resultado = []
+    for r in rows:
+        d = dict(r)
+        is_pmmb = _eh_prof_pmmb(d["nome_profissional"])
+        if eh_linha_pmmb:
+            if not is_pmmb:
+                continue
+            d["cbo_codigo"] = cbo_codigo
+            d["cbo_nome"] = "Médico Generalista PMMB"
+            resultado.append(d)
+        else:
+            if tem_pmmb_cadastrado and is_pmmb and (str(indicador_id) in ("1", "2", "13") or base_cbo in ("225142", "225170")):
+                continue
+            resultado.append(d)
+    return resultado
 
 
 def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, profissional,
@@ -1001,8 +1048,13 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
     params = [periodo, *cmes, profissional, *proc_lista]
     cbo_alvo = cbo_codigo or cbo_profissional
     if cbo_alvo:
-        sql += " AND s.cod_cbo_sus = ?"
-        params.append(cbo_alvo)
+        if str(cbo_alvo).endswith("_PMMB"):
+            base_cbo = str(cbo_alvo).replace("_PMMB", "")
+            sql += " AND s.cod_cbo_sus IN (?, '225142', '225170')"
+            params.append(base_cbo)
+        else:
+            sql += " AND s.cod_cbo_sus = ?"
+            params.append(cbo_alvo)
     elif cbos:
         sql += f" AND s.cod_cbo_sus IN ({','.join('?' * len(cbos))})"
         params.extend(cbos)
@@ -1044,8 +1096,13 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
     """
     params_todos = [periodo, *cmes, profissional]
     if cbo_alvo:
-        sql_todos += " AND s.cod_cbo_sus = ?"
-        params_todos.append(cbo_alvo)
+        if str(cbo_alvo).endswith("_PMMB"):
+            base_cbo = str(cbo_alvo).replace("_PMMB", "")
+            sql_todos += " AND s.cod_cbo_sus IN (?, '225142', '225170')"
+            params_todos.append(base_cbo)
+        else:
+            sql_todos += " AND s.cod_cbo_sus = ?"
+            params_todos.append(cbo_alvo)
     sql_todos += " GROUP BY s.cod_procedimento, p.nome, s.nome_especialidade2 ORDER BY total_qtd DESC"
     todos_rows = db.execute(sql_todos, params_todos).fetchall()
 
@@ -1109,14 +1166,20 @@ def _procedimentos_at02_do_cbo(db, indicador_id, estabelecimento_ids, cbo_codigo
         return [], [], False, "", "", 0
 
     cbo_codigo = (cbo_codigo or "").strip()
+    eh_linha_pmmb = bool(cbo_codigo and cbo_codigo.endswith("_PMMB"))
+    base_cbo = cbo_codigo.replace("_PMMB", "") if eh_linha_pmmb else cbo_codigo
     cbos_alvo = []
     cbo_nome = ""
 
     if cbo_codigo:
-        cbos_alvo = [cbo_codigo]
-        c_row = db.execute("SELECT nome_categoria FROM cbo WHERE codigo = ?", (cbo_codigo,)).fetchone()
-        if c_row and c_row["nome_categoria"]:
-            cbo_nome = c_row["nome_categoria"]
+        if eh_linha_pmmb:
+            cbos_alvo = [base_cbo, "225142", "225170"]
+            cbo_nome = "Médico Generalista PMMB"
+        else:
+            cbos_alvo = [cbo_codigo]
+            c_row = db.execute("SELECT nome_categoria FROM cbo WHERE codigo = ?", (cbo_codigo,)).fetchone()
+            if c_row and c_row["nome_categoria"]:
+                cbo_nome = c_row["nome_categoria"]
     else:
         # Se não há CBO explícito na linha, verificar se o indicador tem CBOs específicos cadastrados
         ind_cbos = db.execute(
@@ -1184,7 +1247,15 @@ def _procedimentos_at02_do_cbo(db, indicador_id, estabelecimento_ids, cbo_codigo
     # Agrupa por procedimento para exibição hierárquica (Procedimento -> Profissionais)
     from collections import OrderedDict
     grupos = OrderedDict()
+    _eh_prof_pmmb, tem_pmmb_cadastrado = _obter_matcher_pmmb(db)
     for r in rows:
+        prof = r["profissional"]
+        is_pmmb = _eh_prof_pmmb(prof)
+        if eh_linha_pmmb:
+            if not is_pmmb:
+                continue
+        elif tem_pmmb_cadastrado and is_pmmb and (ind_cod in ("P01", "P02", "P13") or base_cbo in ("225142", "225170")):
+            continue
         cod = str(r["codigo"] or "").strip()
         nome = str(r["nome"] or "").strip()
         nome_upper = nome.upper()

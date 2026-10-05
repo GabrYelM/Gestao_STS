@@ -667,7 +667,7 @@ CREATE INDEX idx_fato_subgrupo ON fato_apuracao(subgrupo_id);
 -- que é onde a meta GERAL casa; com CBO específico, cada CBO é uma meta independente.
 -- v16: a meta vale quando o intervalo do TA SE SOBREPÕE ao mês da competência; metas segmentadas entram
 -- somadas se não há meta geral. (mantida em sincronia com VIEW_RESULTADOS_INDICADOR em app/migrations_auto.py)
-CREATE VIEW resultados_indicador AS /* v16 */
+CREATE VIEW resultados_indicador AS /* v17 */
 WITH base AS (
     SELECT
         f.*,
@@ -704,21 +704,54 @@ agr AS (
         b.cbo_agrupado,
         SUM(CASE WHEN b.tipo_registro = 'apurado'   THEN b.quantidade ELSE 0 END) AS valor_apurado,
         SUM(CASE WHEN b.tipo_registro = 'declarado' THEN b.quantidade ELSE 0 END) AS valor_declarado,
-        -- Meta GERAL (sem segmento) do TA mais recente que COBRE a competência. "Cobre" = o intervalo
-        -- do TA se sobrepõe ao mês da competência (um TA que começa no dia 15 já vale para aquele mês).
-        (SELECT mm.valor_meta
-           FROM metas mm
-           JOIN termos_aditivos ta ON ta.id = mm.ta_id
-          WHERE mm.indicador_id = b.indicador_id
-            AND mm.estabelecimento_id = b.estabelecimento_id
-            AND mm.subgrupo_id IS b.subgrupo_id
-            AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
-            AND mm.rt IS NULL AND mm.tipo_equipe IS NULL AND mm.pmmb IS NULL
-            AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
-            AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
-          ORDER BY ta.periodo_inicio DESC, ta.id DESC
-          LIMIT 1) AS meta_geral,
-        -- Só quando NÃO há meta geral: metas segmentadas por RT/equipe/PMMB (a produção não sabe a que
+        -- Meta GERAL / PMMB do TA mais recente que COBRE a competência.
+        CASE
+            WHEN b.cbo_agrupado LIKE '%_PMMB' THEN
+                (SELECT mm.valor_meta
+                   FROM metas mm
+                   JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                  WHERE mm.indicador_id = b.indicador_id
+                    AND mm.estabelecimento_id = b.estabelecimento_id
+                    AND mm.subgrupo_id IS b.subgrupo_id
+                    AND (
+                        mm.cbo_codigo = b.cbo_agrupado
+                        OR (mm.cbo_codigo = replace(b.cbo_agrupado, '_PMMB', '') AND mm.pmmb = 'SIM')
+                        OR (mm.cbo_codigo IS NULL AND mm.pmmb = 'SIM')
+                    )
+                    AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                    AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                  ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                  LIMIT 1)
+            ELSE
+                COALESCE(
+                    (SELECT mm.valor_meta
+                       FROM metas mm
+                       JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                      WHERE mm.indicador_id = b.indicador_id
+                        AND mm.estabelecimento_id = b.estabelecimento_id
+                        AND mm.subgrupo_id IS b.subgrupo_id
+                        AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
+                        AND mm.pmmb = 'NAO'
+                        AND mm.rt IS NULL AND mm.tipo_equipe IS NULL
+                        AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                        AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                      ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                      LIMIT 1),
+                    (SELECT mm.valor_meta
+                       FROM metas mm
+                       JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                      WHERE mm.indicador_id = b.indicador_id
+                        AND mm.estabelecimento_id = b.estabelecimento_id
+                        AND mm.subgrupo_id IS b.subgrupo_id
+                        AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
+                        AND mm.rt IS NULL AND mm.tipo_equipe IS NULL AND mm.pmmb IS NULL
+                        AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                        AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                      ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                      LIMIT 1)
+                )
+        END AS meta_geral,
+        -- Só quando NÃO há meta geral: metas segmentadas por RT/equipe (a produção não sabe a que
         -- segmento pertence) entram SOMADAS, no TA mais recente que cobre a competência.
         (SELECT SUM(mm.valor_meta)
            FROM metas mm
@@ -730,7 +763,7 @@ agr AS (
                    AND mm2.estabelecimento_id = b.estabelecimento_id
                    AND mm2.subgrupo_id IS b.subgrupo_id
                    AND ((mm2.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm2.cbo_codigo = b.cbo_agrupado)
-                   AND (mm2.rt IS NOT NULL OR mm2.tipo_equipe IS NOT NULL OR mm2.pmmb IS NOT NULL)
+                   AND (mm2.rt IS NOT NULL OR mm2.tipo_equipe IS NOT NULL)
                    AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
                    AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
                  ORDER BY ta.periodo_inicio DESC, ta.id DESC
@@ -739,7 +772,8 @@ agr AS (
             AND mm.estabelecimento_id = b.estabelecimento_id
             AND mm.subgrupo_id IS b.subgrupo_id
             AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
-            AND (mm.rt IS NOT NULL OR mm.tipo_equipe IS NOT NULL OR mm.pmmb IS NOT NULL)
+            AND (mm.rt IS NOT NULL OR mm.tipo_equipe IS NOT NULL)
+            AND (mm.pmmb IS NULL OR mm.pmmb = 'NAO')
         ) AS meta_segmentada
     FROM base b
     GROUP BY b.indicador_id, b.subgrupo_id, b.estabelecimento_id, b.periodo, b.cbo_agrupado
@@ -758,7 +792,7 @@ SELECT
     e.nome                AS estabelecimento_nome,
     a.periodo,
     a.cbo_agrupado        AS cbo_codigo,
-    c.nome_categoria      AS cbo_nome,
+    COALESCE(c.nome_categoria, c_base.nome_categoria || ' PMMB', 'Médico Generalista PMMB') AS cbo_nome,
     a.valor_apurado,
     a.valor_declarado,
     COALESCE(a.meta_geral, a.meta_segmentada) AS valor_meta,
@@ -772,7 +806,8 @@ FROM agr a
 JOIN indicadores i       ON i.id = a.indicador_id
 JOIN estabelecimentos e  ON e.id = a.estabelecimento_id
 LEFT JOIN indicador_subgrupo sg ON sg.id = a.subgrupo_id
-LEFT JOIN cbo c          ON c.codigo = a.cbo_agrupado;
+LEFT JOIN cbo c          ON c.codigo = a.cbo_agrupado
+LEFT JOIN cbo c_base     ON c_base.codigo = replace(a.cbo_agrupado, '_PMMB', '');
 
 -- ----------------------------------------------------------------------------
 -- 7. TABELAS DE DE-PARA WEBSAASS (v18)

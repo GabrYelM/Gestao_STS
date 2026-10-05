@@ -405,11 +405,24 @@ def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None,
     )
     importacao_id = cursor.lastrowid
 
+    # Filtro de período: filtra estritamente o mês correspondente à competência informada
+    # (ex: '202601' aceita '202601' e 'JAN 2026')
+    filtro_esperado = {p_norm.upper(), p_web.upper()}
+    if mes_filtro:
+        filtro_esperado.add(str(mes_filtro).strip().upper())
+
+    insert_sql = """INSERT INTO staging_webssas (
+                       importacao_id, cod_contrato, contrato, contratada, unidade,
+                       periodo, servico, cod_producao, producao, qtde_realizada, qtde_prevista
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
     linhas_importadas = 0
+    batch = []
     for linha in dados:
         valores = dict(zip(COLUNAS_WEBSSAS, linha + [None] * (len(COLUNAS_WEBSSAS) - len(linha))))
 
-        if mes_filtro and (valores.get("periodo") or "").strip() != mes_filtro:
+        p_linha = (valores.get("periodo") or "").strip().upper()
+        if p_linha not in filtro_esperado and _normalizar_periodo(p_linha) != p_norm:
             continue
 
         def num(campo):
@@ -419,31 +432,33 @@ def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None,
             except (TypeError, ValueError):
                 return None
 
-        db.execute(
-            """INSERT INTO staging_webssas (
-                   importacao_id, cod_contrato, contrato, contratada, unidade,
-                   periodo, servico, cod_producao, producao, qtde_realizada, qtde_prevista
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                importacao_id,
-                valores.get("cod_contrato"),
-                valores.get("contrato"),
-                valores.get("contratada"),
-                valores.get("unidade"),
-                valores.get("periodo"),
-                valores.get("servico"),
-                valores.get("cod_producao"),
-                valores.get("producao"),
-                num("qtde_realizada"),
-                num("qtde_prevista"),
-            ),
-        )
+        batch.append((
+            importacao_id,
+            valores.get("cod_contrato"),
+            valores.get("contrato"),
+            valores.get("contratada"),
+            valores.get("unidade"),
+            valores.get("periodo"),
+            valores.get("servico"),
+            valores.get("cod_producao"),
+            valores.get("producao"),
+            num("qtde_realizada"),
+            num("qtde_prevista"),
+        ))
         linhas_importadas += 1
+
+        if len(batch) >= 5000:
+            db.executemany(insert_sql, batch)
+            batch = []
+
+    if batch:
+        db.executemany(insert_sql, batch)
 
     db.execute(
         "UPDATE importacoes SET status='concluido', linhas_importadas=? WHERE id=?",
         (linhas_importadas, importacao_id),
     )
+    _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_webssas")
     db.commit()
 
     return importacao_id, linhas_importadas

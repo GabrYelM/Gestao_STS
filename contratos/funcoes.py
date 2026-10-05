@@ -423,13 +423,17 @@ def _cbo_permitido(db, indicador_id, cbo_codigo):
     if not vinculos:
         permitido = True
     else:
-        permitido = any(v["curinga"] or v["cbo_codigo"] == cbo_codigo for v in vinculos)
+        cbos_teste = {cbo_codigo}
+        if cbo_codigo and str(cbo_codigo).endswith("_PMMB"):
+            cbos_teste.add(str(cbo_codigo).replace("_PMMB", ""))
+        permitido = any(v["curinga"] or v["cbo_codigo"] in cbos_teste for v in vinculos)
     if not permitido:
         return False
 
+    base_cbo = str(cbo_codigo).replace("_PMMB", "") if cbo_codigo else cbo_codigo
     excluido = db.execute(
-        "SELECT 1 FROM indicador_cbo_excecao WHERE indicador_id = ? AND cbo_codigo = ?",
-        (indicador_id, cbo_codigo),
+        "SELECT 1 FROM indicador_cbo_excecao WHERE indicador_id = ? AND cbo_codigo IN (?, ?)",
+        (indicador_id, cbo_codigo, base_cbo),
     ).fetchone()
     return excluido is None
 
@@ -441,7 +445,10 @@ def _cbo_permitido_subgrupo(db, indicador_id, subgrupo_id, cbo_codigo):
             (subgrupo_id,),
         ).fetchall()
         if vinculos_subgrupo:
-            return any(v["curinga"] or v["cbo_codigo"] == cbo_codigo for v in vinculos_subgrupo)
+            cbos_teste = {cbo_codigo}
+            if cbo_codigo and str(cbo_codigo).endswith("_PMMB"):
+                cbos_teste.add(str(cbo_codigo).replace("_PMMB", ""))
+            return any(v["curinga"] or v["cbo_codigo"] in cbos_teste for v in vinculos_subgrupo)
         # Se outros subgrupos deste indicador possuem CBOs específicos (como no P42 onde cada subgrupo representa uma especialidade),
         # um subgrupo sem vínculo próprio NÃO deve aceitar CBOs de outras especialidades ou regra geral indistintamente
         tem_outros_cbos = db.execute(
@@ -492,6 +499,16 @@ def _servico_compativel(db, indicador_id, estabelecimento_id):
 # 2. MOTOR DE CÁLCULO E APURAÇÃO (fato_apuracao)
 # ==============================================================================
 
+def _normalizar_nome_prof(txt):
+    if not txt:
+        return ""
+    import unicodedata
+    import re
+    txt = unicodedata.normalize("NFKD", txt).encode("ascii", "ignore").decode("utf-8")
+    txt = re.sub(r"[^a-zA-Z0-9\s]", " ", txt)
+    return " ".join(txt.upper().split())
+
+
 def _garantir_linhas_subgrupos(db, periodo_norm):
     """
     Garante que especialidades vinculadas a subgrupos (ex: P43 Infantil: Neuro e Pneumo)
@@ -539,6 +556,43 @@ def _garantir_linhas_subgrupos(db, periodo_norm):
                 )
 
 
+def _garantir_linhas_pmmb(db, periodo_norm):
+    """
+    Garante que estabelecimentos com metas segmentadas de PMMB (metas.pmmb = 'SIM')
+    ou profissionais cadastrados com PMMB tenham linha no painel (fato_apuracao com apurado=0)
+    caso não haja produção registrada no mês.
+    """
+    metas_pmmb = db.execute(
+        """SELECT DISTINCT m.estabelecimento_id, m.indicador_id, m.subgrupo_id, m.cbo_codigo
+           FROM metas m
+           WHERE m.pmmb = 'SIM' AND m.valor_meta IS NOT NULL"""
+    ).fetchall()
+    for row in metas_pmmb:
+        eid = row["estabelecimento_id"]
+        iid = row["indicador_id"]
+        sgid = row["subgrupo_id"]
+        cbo_base = row["cbo_codigo"] or ("225170" if iid == 13 else "225142")
+        cbo_pmmb = f"{cbo_base}_PMMB" if not cbo_base.endswith("_PMMB") else cbo_base
+        existe = db.execute(
+            """SELECT 1 FROM fato_apuracao
+               WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ?
+                 AND subgrupo_id IS ? AND cbo_codigo = ?
+               LIMIT 1""",
+            (periodo_norm, eid, iid, sgid, cbo_pmmb),
+        ).fetchone()
+        if not existe:
+            ind_row = db.execute("SELECT fonte_id FROM indicadores WHERE id = ?", (iid,)).fetchone()
+            fid = ind_row["fonte_id"] if ind_row and ind_row["fonte_id"] else 1
+            db.execute(
+                """INSERT INTO fato_apuracao (
+                       fonte_id, importacao_id, estabelecimento_id, profissional_id,
+                       cbo_codigo, procedimento_codigo, indicador_id, periodo,
+                       quantidade, tipo_registro, subgrupo_id
+                   ) VALUES (?, 1, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                (fid, eid, cbo_pmmb, iid, periodo_norm, sgid),
+            )
+
+
 def calcular_at02(db, periodo, importacao_id=None):
     """Gera fato_apuracao (tipo_registro='apurado') a partir de staging_at02."""
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='AT02'").fetchone()["id"]
@@ -576,6 +630,55 @@ def calcular_at02(db, periodo, importacao_id=None):
     linhas_casadas_por_cnes = 0
     mapa_depara = _carregar_mapa_depara_procedimentos(db)
 
+    profs_db = db.execute(
+        """SELECT id, nome, cns, cbo_codigo, estabelecimento_id, pmmb
+           FROM profissionais WHERE ativo = 1"""
+    ).fetchall()
+    profs_preparados = []
+    for p in profs_db:
+        n_p = _normalizar_nome_prof(p["nome"])
+        words_p = set(n_p.split())
+        profs_preparados.append({
+            "id": p["id"],
+            "nome": p["nome"],
+            "nome_norm": n_p,
+            "words": words_p,
+            "cns": (p["cns"] or "").strip(),
+            "cbo_codigo": (p["cbo_codigo"] or "").strip(),
+            "estabelecimento_id": p["estabelecimento_id"],
+            "pmmb": bool(p["pmmb"]),
+        })
+
+    def _encontrar_prof(nome_stg, est_id):
+        if not nome_stg:
+            return None
+        stg_norm = _normalizar_nome_prof(nome_stg)
+        if not stg_norm:
+            return None
+        stg_words = set(stg_norm.split())
+
+        # 1. Match exato
+        exatos = [p for p in profs_preparados if p["nome_norm"] == stg_norm]
+        if exatos:
+            for p in exatos:
+                if p["estabelecimento_id"] == est_id:
+                    return p
+            return exatos[0]
+
+        # 2. Match por inclusão / subconjunto de palavras (mínimo 3 palavras)
+        candidatos_prof = []
+        for p in profs_preparados:
+            inter = p["words"].intersection(stg_words)
+            if (p["words"].issubset(stg_words) or stg_words.issubset(p["words"])) and len(inter) >= 3:
+                candidatos_prof.append(p)
+
+        if candidatos_prof:
+            for p in candidatos_prof:
+                if p["estabelecimento_id"] == est_id:
+                    return p
+            return candidatos_prof[0]
+        return None
+
     for linha in linhas:
         total += 1
         estabelecimento_id, origem_estab = _resolver_estabelecimento(
@@ -603,6 +706,10 @@ def calcular_at02(db, periodo, importacao_id=None):
         if procedimento_codigo is None:
             continue
 
+        prof_encontrado = _encontrar_prof(linha["nome_profissional"], estabelecimento_id)
+        prof_id = prof_encontrado["id"] if prof_encontrado else None
+        eh_pmmb = bool(prof_encontrado and prof_encontrado["pmmb"])
+
         candidatos = _candidatos_indicador_subgrupo(
             db, procedimento_codigo, estabelecimento_id,
             categoria_estabelecimento=_categoria_contrato(db, estabelecimento_id),
@@ -613,7 +720,16 @@ def calcular_at02(db, periodo, importacao_id=None):
         aprovados = []
         razoes_bloqueio = set()
         for indicador_id, subgrupo_id in candidatos:
-            if not _cbo_permitido_subgrupo(db, indicador_id, subgrupo_id, cbo_codigo):
+            cbo_para_teste = cbo_codigo
+            if eh_pmmb:
+                if indicador_id in (1, 2):
+                    cbo_para_teste = "225142_PMMB"
+                elif indicador_id == 13:
+                    cbo_para_teste = "225170_PMMB"
+                else:
+                    cbo_para_teste = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+
+            if not _cbo_permitido_subgrupo(db, indicador_id, subgrupo_id, cbo_para_teste):
                 razoes_bloqueio.add("cbo")
                 continue
             if not _estabelecimento_permitido(db, indicador_id, estabelecimento_id):
@@ -668,6 +784,15 @@ def calcular_at02(db, periodo, importacao_id=None):
 
         for indicador_id, subgrupo_id in indicadores:
             sg_id_registro = subgrupo_id
+            cbo_registro = cbo_codigo
+            if eh_pmmb:
+                if indicador_id in (1, 2):
+                    cbo_registro = "225142_PMMB"
+                elif indicador_id == 13:
+                    cbo_registro = "225170_PMMB"
+                else:
+                    cbo_registro = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+
             # Regra P43: Neuro (225112) e Pneumo (225127) quando CMES != CNES é lançado como Infantil
             if indicador_id == 43 and cbo_codigo in ("225112", "225127"):
                 cod_cmes_reg = str(linha["cod_cmes"] or "").strip()
@@ -686,12 +811,13 @@ def calcular_at02(db, periodo, importacao_id=None):
                        fonte_id, importacao_id, estabelecimento_id, profissional_id,
                        cbo_codigo, procedimento_codigo, indicador_id, periodo,
                        quantidade, tipo_registro, subgrupo_id
-                   ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 'apurado', ?)""",
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'apurado', ?)""",
                 (
                     fonte_id,
                     linha["importacao_id"],
                     estabelecimento_id,
-                    cbo_codigo,
+                    prof_id,
+                    cbo_registro,
                     procedimento_codigo,
                     indicador_id,
                     periodo_norm,
@@ -702,6 +828,7 @@ def calcular_at02(db, periodo, importacao_id=None):
             vinculadas += 1
 
     _garantir_linhas_subgrupos(db, periodo_norm)
+    _garantir_linhas_pmmb(db, periodo_norm)
     db.commit()
     return {
         "total_linhas": total,
@@ -853,20 +980,24 @@ def calcular_webssas(db, periodo, importacao_id=None):
             meta_existente = db.execute(
                 """SELECT id, valor_meta FROM metas
                    WHERE ta_id = ? AND estabelecimento_id = ? AND indicador_id = ?
-                     AND ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?)
+                     AND (
+                         ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?)
+                         OR (? LIKE '%_PMMB' AND (cbo_codigo = replace(?, '_PMMB', '') AND pmmb = 'SIM'))
+                     )
                      AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
-                     AND rt IS NULL AND tipo_equipe IS NULL AND pmmb IS NULL""",
-                (ta_id, estab_id, indicador_id, cbo_codigo, cbo_codigo, subgrupo_id, subgrupo_id),
+                     AND rt IS NULL AND tipo_equipe IS NULL""",
+                (ta_id, estab_id, indicador_id, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, subgrupo_id, subgrupo_id),
             ).fetchone()
             if meta_existente:
                 if meta_existente["valor_meta"] != float(qtde_prevista):
                     db.execute("UPDATE metas SET valor_meta = ? WHERE id = ?", (float(qtde_prevista), meta_existente["id"]))
                     metas_sincronizadas += 1
             else:
+                pmmb_val = "SIM" if (cbo_codigo and str(cbo_codigo).endswith("_PMMB")) else None
                 db.execute(
-                    """INSERT INTO metas (ta_id, estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, valor_meta)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (ta_id, estab_id, indicador_id, subgrupo_id, cbo_codigo, float(qtde_prevista)),
+                    """INSERT INTO metas (ta_id, estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, pmmb, valor_meta)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (ta_id, estab_id, indicador_id, subgrupo_id, cbo_codigo, pmmb_val, float(qtde_prevista)),
                 )
                 metas_sincronizadas += 1
 
@@ -922,6 +1053,12 @@ def calcular_visita_domiciliar(db, periodo, importacao_id=None):
         if not estabelecimento_id:
             sem_estabelecimento += 1
             cnes_nao_encontrados[f"{linha['cod_cnes']} ({linha['nome_estabelecimento'] or ''})"] += 1
+            continue
+
+        if not _estabelecimento_permitido(db, indicador["id"], estabelecimento_id):
+            continue
+
+        if not _servico_compativel(db, indicador["id"], estabelecimento_id):
             continue
 
         cbo = str(linha["cod_cbo"]).split(".")[0].strip() if linha["cod_cbo"] else cbo_acs
@@ -2459,11 +2596,20 @@ _SQL_META_MEMBRO = """
     SELECT mm.valor_meta
     FROM metas mm
     JOIN termos_aditivos ta ON ta.id = mm.ta_id
-    WHERE mm.indicador_id = ? AND mm.estabelecimento_id = ? AND mm.subgrupo_id IS ?
-      AND ((mm.cbo_codigo IS NULL AND ? IS NULL) OR mm.cbo_codigo = ?)
-      AND mm.rt IS NULL AND mm.tipo_equipe IS NULL AND mm.pmmb IS NULL
-      AND ta.periodo_inicio <= date(substr(?,1,4) || '-' || substr(?,5,2) || '-01')
-      AND ta.periodo_fim   >= date(substr(?,1,4) || '-' || substr(?,5,2) || '-01')
+    WHERE mm.indicador_id = :indicador_id
+      AND mm.estabelecimento_id = :estabelecimento_id
+      AND mm.subgrupo_id IS :subgrupo_id
+      AND (
+          ((mm.cbo_codigo IS NULL AND :cbo_codigo IS NULL) OR mm.cbo_codigo = :cbo_codigo)
+          OR (COALESCE(:cbo_codigo, '') LIKE '%_PMMB' AND (mm.cbo_codigo = replace(:cbo_codigo, '_PMMB', '') AND mm.pmmb = 'SIM'))
+      )
+      AND mm.rt IS NULL AND mm.tipo_equipe IS NULL
+      AND (
+          (COALESCE(:cbo_codigo, '') LIKE '%_PMMB' AND mm.pmmb = 'SIM')
+          OR (COALESCE(:cbo_codigo, '') NOT LIKE '%_PMMB' AND (mm.pmmb IS NULL OR mm.pmmb = 'NAO'))
+      )
+      AND ta.periodo_inicio <= date(substr(:periodo,1,4) || '-' || substr(:periodo,5,2) || '-01', '+1 month', '-1 day')
+      AND ta.periodo_fim   >= date(substr(:periodo,1,4) || '-' || substr(:periodo,5,2) || '-01')
     ORDER BY ta.periodo_inicio DESC, ta.id DESC
     LIMIT 1
 """
@@ -2479,11 +2625,17 @@ def completar_metas_do_grupo(db, linhas):
             continue
         adicional = 0.0
         achou = False
+        cbo_alvo = r.get("cbo_codigo")
         for est_id in ausentes:
             linha = db.execute(
                 _SQL_META_MEMBRO,
-                (r["indicador_id"], est_id, r.get("subgrupo_id"), r["cbo_codigo"], r["cbo_codigo"],
-                 r["periodo"], r["periodo"], r["periodo"], r["periodo"]),
+                {
+                    "indicador_id": r["indicador_id"],
+                    "estabelecimento_id": est_id,
+                    "subgrupo_id": r.get("subgrupo_id"),
+                    "cbo_codigo": cbo_alvo,
+                    "periodo": str(r.get("periodo") or ""),
+                },
             ).fetchone()
             if linha and linha["valor_meta"] is not None:
                 adicional += linha["valor_meta"]

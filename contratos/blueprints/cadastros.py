@@ -18,8 +18,8 @@ import sqlite3
 from flask import Blueprint, Response, flash, jsonify, redirect, render_template, request, url_for
 
 from .. import config as config_module
-from ..db import get_db
-from ..funcoes import consolidacao, recalcular_periodo, registrar_log, sincronizar_apuracao_dinamica
+from ..db import get_db, _remover_acentos
+from ..funcoes import consolidacao, recalcular_periodo, registrar_log, sincronizar_apuracao_dinamica, SERVICOS_COMPATIVEIS
 from ..etl import normalizar_cod_procedimento
 
 bp = Blueprint("cadastros", __name__, url_prefix="/contratos/cadastros")
@@ -983,11 +983,16 @@ def buscar_cbo_json():
             "SELECT codigo, nome_categoria FROM cbo ORDER BY nome_categoria LIMIT 20"
         ).fetchall()
     else:
+        termo_limpo = _remover_acentos(termo)
         itens = db.execute(
             """SELECT codigo, nome_categoria FROM cbo
-               WHERE codigo LIKE ? OR nome_categoria LIKE ?
-               ORDER BY nome_categoria LIMIT 20""",
-            (f"%{termo}%", f"%{termo}%"),
+               WHERE codigo LIKE ? OR sem_acento(nome_categoria) LIKE ?
+               ORDER BY
+                 CASE WHEN codigo = ? THEN 1
+                      WHEN sem_acento(nome_categoria) LIKE ? THEN 2
+                      ELSE 3 END,
+                 nome_categoria LIMIT 20""",
+            (f"%{termo}%", f"%{termo_limpo}%", termo, f"{termo_limpo}%"),
         ).fetchall()
     return jsonify([dict(i) for i in itens])
 
@@ -1001,11 +1006,16 @@ def buscar_estabelecimentos_json():
             "SELECT id AS codigo, nome FROM estabelecimentos ORDER BY nome LIMIT 20"
         ).fetchall()
     else:
+        termo_limpo = _remover_acentos(termo)
         itens = db.execute(
             """SELECT id AS codigo, nome FROM estabelecimentos
-               WHERE nome LIKE ? OR cod_cmes LIKE ? OR cod_cnes LIKE ?
-               ORDER BY nome LIMIT 20""",
-            (f"%{termo}%", f"%{termo}%", f"%{termo}%"),
+               WHERE sem_acento(nome) LIKE ? OR cod_cmes LIKE ? OR cod_cnes LIKE ?
+               ORDER BY
+                 CASE WHEN cod_cmes = ? OR cod_cnes = ? THEN 1
+                      WHEN sem_acento(nome) LIKE ? THEN 2
+                      ELSE 3 END,
+                 nome LIMIT 20""",
+            (f"%{termo_limpo}%", f"%{termo}%", f"%{termo}%", termo, termo, f"{termo_limpo}%"),
         ).fetchall()
     return jsonify([dict(i) for i in itens])
 
@@ -1392,11 +1402,18 @@ def buscar_procedimentos_json():
     if not termo:
         itens = db.execute("SELECT codigo, nome FROM procedimentos ORDER BY nome LIMIT 20").fetchall()
     else:
+        termo_limpo = _remover_acentos(termo)
         itens = db.execute(
             """SELECT codigo, nome FROM procedimentos
-               WHERE codigo LIKE ? OR nome LIKE ?
-               ORDER BY nome LIMIT 20""",
-            (f"%{termo}%", f"%{termo}%"),
+               WHERE codigo LIKE ? OR sem_acento(nome) LIKE ?
+               ORDER BY
+                 CASE WHEN codigo = ? THEN 1
+                      WHEN codigo NOT LIKE '00%' AND sem_acento(nome) = ? THEN 2
+                      WHEN codigo NOT LIKE '00%' AND sem_acento(nome) LIKE ? THEN 3
+                      WHEN sem_acento(nome) LIKE ? THEN 4
+                      ELSE 5 END,
+                 nome LIMIT 30""",
+            (f"%{termo}%", f"%{termo_limpo}%", termo, termo_limpo, f"{termo_limpo}%", f"{termo_limpo}%"),
         ).fetchall()
     return jsonify([dict(i) for i in itens])
 
@@ -1938,7 +1955,16 @@ def detalhe_indicador(indicador_id):
     ).fetchall()
 
     vinculos_unidade = db.execute(
-        """SELECT uo.id, uo.nome_origem, uo.estabelecimento_id, es.nome AS estabelecimento_nome, es.cod_cnes
+        """SELECT uo.id, uo.nome_origem, uo.estabelecimento_id, es.nome AS estabelecimento_nome, es.cod_cnes AS cod_cnes_destino,
+                  COALESCE(
+                      (SELECT s.cod_cnes FROM staging_bi_siga s 
+                       WHERE lower(trim(s.nome_estabelecimento)) = lower(trim(uo.nome_origem)) 
+                         AND s.cod_cnes IS NOT NULL AND s.cod_cnes != '' LIMIT 1),
+                      (SELECT eo.cod_cnes FROM estabelecimentos eo 
+                       WHERE lower(trim(eo.nome)) = lower(trim(uo.nome_origem)) LIMIT 1),
+                      (SELECT eo.cod_cnes FROM estabelecimentos eo 
+                       WHERE lower(trim(eo.nome)) = lower(trim(replace(uo.nome_origem, 'Emulti', 'Emab'))) LIMIT 1)
+                  ) AS cod_cnes_origem
            FROM indicador_unidade_origem uo
            LEFT JOIN estabelecimentos es ON es.id = uo.estabelecimento_id
            WHERE uo.indicador_id=?
@@ -1955,9 +1981,34 @@ def detalhe_indicador(indicador_id):
     ]
 
     categorias_lista = db.execute("SELECT nome FROM categorias_estabelecimento ORDER BY nome").fetchall()
+    estabelecimentos_lista = db.execute(
+        "SELECT id, nome, cod_cnes FROM estabelecimentos WHERE ativo = 1 ORDER BY nome"
+    ).fetchall()
+
+    servico = (indicador["servico"] or "").strip().upper()
+    compativeis = list(SERVICOS_COMPATIVEIS.get(servico, {servico})) if servico else []
+    if compativeis:
+        placeholders = ",".join("?" * len(compativeis))
+        unidades_servico = db.execute(
+            f"""SELECT DISTINCT e.id, e.nome, e.cod_cnes, e.categoria_contrato
+                FROM estabelecimentos e
+                JOIN estabelecimento_tipo_servico ets ON ets.estabelecimento_id = e.id
+                WHERE ets.tipo_servico IN ({placeholders}) AND e.ativo = 1
+                ORDER BY e.nome""",
+            compativeis,
+        ).fetchall()
+    else:
+        unidades_servico = []
+
+    excecoes_estab_ids = {e["estabelecimento_id"] for e in excecoes_estabelecimento}
+    excecoes_estab_map = {e["estabelecimento_id"]: e["id"] for e in excecoes_estabelecimento}
 
     return render_template("contratos/cadastros/indicador_detalhe.html",
         categorias_lista=categorias_lista,
+        estabelecimentos_lista=estabelecimentos_lista,
+        unidades_servico=unidades_servico,
+        excecoes_estab_ids=excecoes_estab_ids,
+        excecoes_estab_map=excecoes_estab_map,
         indicador=indicador,
         vinculos_cbo=vinculos_cbo,
         vinculos_proc=vinculos_proc,
@@ -2082,25 +2133,51 @@ def add_vinculo_procedimento(indicador_id):
             "INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)",
             (procedimento_codigo, procedimento_codigo),
         )
-        db.execute(
-            """INSERT OR IGNORE INTO indicador_procedimento
-                   (indicador_id, procedimento_codigo, tipo_vinculo,
-                    categoria_estabelecimento, categoria_estabelecimento_neg, estabelecimento_id,
-                    subgrupo_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                indicador_id,
-                procedimento_codigo,
-                request.form.get("tipo_vinculo", "inclusao"),
-                request.form.get("categoria_estabelecimento") or None,
-                request.form.get("categoria_estabelecimento_neg") or None,
-                estabelecimento_id,
-                subgrupo_id,
-            ),
-        )
+        # Verifica se já existe vínculo para este indicador/código/estabelecimento/subgrupo
+        existente = db.execute(
+            """SELECT id FROM indicador_procedimento
+               WHERE indicador_id = ? AND procedimento_codigo = ?
+                 AND ((estabelecimento_id IS NULL AND ? IS NULL) OR estabelecimento_id = ?)
+                 AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)""",
+            (indicador_id, procedimento_codigo, estabelecimento_id, estabelecimento_id, subgrupo_id, subgrupo_id),
+        ).fetchone()
+
+        if existente:
+            db.execute(
+                """UPDATE indicador_procedimento
+                   SET tipo_vinculo = ?,
+                       categoria_estabelecimento = ?,
+                       categoria_estabelecimento_neg = ?
+                   WHERE id = ?""",
+                (
+                    request.form.get("tipo_vinculo", "inclusao"),
+                    request.form.get("categoria_estabelecimento") or None,
+                    request.form.get("categoria_estabelecimento_neg") or None,
+                    existente["id"],
+                ),
+            )
+            flash("Vínculo de procedimento atualizado.", "sucesso")
+        else:
+            db.execute(
+                """INSERT INTO indicador_procedimento
+                       (indicador_id, procedimento_codigo, tipo_vinculo,
+                        categoria_estabelecimento, categoria_estabelecimento_neg, estabelecimento_id,
+                        subgrupo_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    indicador_id,
+                    procedimento_codigo,
+                    request.form.get("tipo_vinculo", "inclusao"),
+                    request.form.get("categoria_estabelecimento") or None,
+                    request.form.get("categoria_estabelecimento_neg") or None,
+                    estabelecimento_id,
+                    subgrupo_id,
+                ),
+            )
+            flash("Vínculo de procedimento adicionado.", "sucesso")
+
         db.commit()
         sincronizar_apuracao_dinamica(db)
-        flash("Vínculo de procedimento adicionado.", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(f"Não foi possível adicionar o vínculo: {exc}", "erro")
 
@@ -2131,6 +2208,7 @@ def add_vinculo_procedimento_lote(indicador_id):
             return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
     adicionados = 0
+    atualizados = 0
     for codigo_bruto in codigos:
         codigo = normalizar_cod_procedimento((codigo_bruto or "").strip())
         if not codigo:
@@ -2139,29 +2217,47 @@ def add_vinculo_procedimento_lote(indicador_id):
             "INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)",
             (codigo, codigo),
         )
-        antes = db.total_changes
-        db.execute(
-            """INSERT OR IGNORE INTO indicador_procedimento
-                   (indicador_id, procedimento_codigo, tipo_vinculo,
+        existente = db.execute(
+            """SELECT id FROM indicador_procedimento
+               WHERE indicador_id = ? AND procedimento_codigo = ?
+                 AND ((estabelecimento_id IS NULL AND ? IS NULL) OR estabelecimento_id = ?)
+                 AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)""",
+            (indicador_id, codigo, estabelecimento_id, estabelecimento_id, subgrupo_id, subgrupo_id),
+        ).fetchone()
+
+        if existente:
+            db.execute(
+                """UPDATE indicador_procedimento
+                   SET tipo_vinculo = ?,
+                       categoria_estabelecimento = ?,
+                       categoria_estabelecimento_neg = ?
+                   WHERE id = ?""",
+                (tipo_vinculo, categoria_estabelecimento, categoria_estabelecimento_neg, existente["id"]),
+            )
+            atualizados += 1
+        else:
+            db.execute(
+                """INSERT INTO indicador_procedimento
+                       (indicador_id, procedimento_codigo, tipo_vinculo,
+                        categoria_estabelecimento, categoria_estabelecimento_neg, estabelecimento_id,
+                        subgrupo_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    indicador_id, codigo, tipo_vinculo,
                     categoria_estabelecimento, categoria_estabelecimento_neg, estabelecimento_id,
-                    subgrupo_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                indicador_id, codigo, tipo_vinculo,
-                categoria_estabelecimento, categoria_estabelecimento_neg, estabelecimento_id,
-                subgrupo_id,
-            ),
-        )
-        if db.total_changes > antes:
+                    subgrupo_id,
+                ),
+            )
             adicionados += 1
 
     db.commit()
     sincronizar_apuracao_dinamica(db)
-    ja_existiam = len(codigos) - adicionados
-    msg = f"{adicionados} procedimento(s) vinculado(s) ao indicador."
-    if ja_existiam:
-        msg += f" {ja_existiam} já estavam vinculados e foram ignorados."
-    flash(msg, "sucesso")
+    msg_partes = []
+    if adicionados:
+        msg_partes.append(f"{adicionados} procedimento(s) vinculado(s)")
+    if atualizados:
+        msg_partes.append(f"{atualizados} vínculo(s) já existente(s) atualizado(s)")
+    flash(", ".join(msg_partes) + ".", "sucesso")
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor=anchor))
 
 
@@ -2376,11 +2472,11 @@ def add_excecao_estabelecimento(indicador_id):
     estabelecimento_id = request.form.get("estabelecimento_id") or None
     if not estabelecimento_id:
         flash("Selecione um estabelecimento para excluir.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-unidades"))
     existe = db.execute("SELECT 1 FROM estabelecimentos WHERE id=?", (estabelecimento_id,)).fetchone()
     if not existe:
         flash(f"Estabelecimento id '{estabelecimento_id}' não encontrado.", "erro")
-        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-unidades"))
     db.execute(
         "INSERT OR IGNORE INTO indicador_estabelecimento_excecao (indicador_id, estabelecimento_id) VALUES (?, ?)",
         (indicador_id, estabelecimento_id),
@@ -2388,7 +2484,7 @@ def add_excecao_estabelecimento(indicador_id):
     db.commit()
     sincronizar_apuracao_dinamica(db)
     flash("Estabelecimento passa a ser desconsiderado para este indicador.", "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-unidades"))
 
 
 @bp.route(
@@ -2400,7 +2496,8 @@ def remover_excecao_estabelecimento(indicador_id, excecao_id):
     db.execute("DELETE FROM indicador_estabelecimento_excecao WHERE id=?", (excecao_id,))
     db.commit()
     sincronizar_apuracao_dinamica(db)
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    flash("Exceção removida. Estabelecimento volta a ser considerado.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-unidades"))
 
 
 # ---------------------------------------------------------------------------

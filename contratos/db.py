@@ -2,6 +2,16 @@ import os
 import sqlite3
 from flask import current_app, g
 
+import unicodedata
+
+def _remover_acentos(texto):
+    if not texto:
+        return ""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", str(texto))
+        if unicodedata.category(c) != "Mn"
+    ).lower()
+
 def get_db():
     """Retorna a conexão SQLite do módulo de contratos da requisição atual."""
     if "contratos_db" not in g:
@@ -11,6 +21,7 @@ def get_db():
         g.contratos_db = sqlite3.connect(db_path)
         g.contratos_db.row_factory = sqlite3.Row
         g.contratos_db.execute("PRAGMA foreign_keys = ON")
+        g.contratos_db.create_function("sem_acento", 1, _remover_acentos)
     return g.contratos_db
 
 def close_db(e=None):

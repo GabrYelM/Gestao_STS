@@ -411,6 +411,7 @@ def excluir_importacao(id):
             "staging_dtic_rel134",
             "staging_dtic_rel130",
             "staging_sisad",
+            "staging_dtic_rel164",
         ]
         for tab in tabelas_staging:
             db.execute(f"DELETE FROM {tab} WHERE importacao_id = ?", (id,))
@@ -453,6 +454,7 @@ def excluir_todas_importacoes():
             "staging_dtic_rel134",
             "staging_dtic_rel130",
             "staging_sisad",
+            "staging_dtic_rel164",
             "fato_apuracao",
             "logs_calculo",
             "importacoes",
