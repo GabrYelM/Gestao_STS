@@ -216,12 +216,177 @@ def rel134_partial():
            JOIN estabelecimentos ed ON ed.id = r.unidade_destino_id
            ORDER BY eo.nome ASC"""
     ).fetchall()
+    cbos_rel134 = db.execute(
+        """SELECT r.id, r.cbo_codigo, r.transfere, r.buscar_at02, r.observacao,
+                  COALESCE(c.nome_categoria, r.observacao, r.cbo_codigo) AS cbo_nome
+           FROM regras_rel134_cbos r
+           LEFT JOIN cbo c ON c.codigo = r.cbo_codigo
+           ORDER BY r.cbo_codigo ASC"""
+    ).fetchall()
+    unidades_mistas = db.execute(
+        """SELECT e.id, e.nome, e.cod_cnes, e.destinacao_mista, GROUP_CONCAT(ets.tipo_servico, ', ') AS tipos_servico
+           FROM estabelecimentos e
+           JOIN estabelecimento_tipo_servico ets ON ets.estabelecimento_id = e.id
+           WHERE UPPER(ets.tipo_servico) LIKE '%MISTA%'
+           GROUP BY e.id
+           ORDER BY e.nome ASC"""
+    ).fetchall()
     return render_template(
         "contratos/cadastros/rel134.html",
         estabelecimentos=estabelecimentos,
         redirecionamentos=redirecionamentos,
+        cbos_rel134=cbos_rel134,
+        unidades_mistas=unidades_mistas,
         partial=True,
     )
+
+
+@bp.route("/rel134/unidades_mistas/salvar", methods=["POST"])
+def rel134_unidades_mistas_salvar():
+    db = get_db()
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+    est_id = request.form.get("estabelecimento_id", type=int)
+    dest_m = (request.form.get("destinacao_mista") or "TRAD").strip().upper()
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-unidades-mistas"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+    if not est_id:
+        flash("Estabelecimento não informado.", "erro")
+        return _redirecionar()
+
+    try:
+        db.execute("UPDATE estabelecimentos SET destinacao_mista = ? WHERE id = ?", (dest_m, est_id))
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash(f"Destinação mista atualizada para '{dest_m}' com sucesso!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao salvar destinação mista: {exc}", "erro")
+
+    return _redirecionar()
+
+
+@bp.route("/rel134/cbos/salvar", methods=["POST"])
+def rel134_cbos_salvar():
+    db = get_db()
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+    cbos_transferem = request.form.getlist("cbos_transferem")
+    cbos_buscar_at02 = request.form.getlist("cbos_buscar_at02")
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-rel134-cbos"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+    try:
+        db.execute("UPDATE regras_rel134_cbos SET transfere = 0, buscar_at02 = 0, atualizado_em = CURRENT_TIMESTAMP")
+        if cbos_transferem:
+            placeholders = ",".join("?" * len(cbos_transferem))
+            db.execute(
+                f"UPDATE regras_rel134_cbos SET transfere = 1, atualizado_em = CURRENT_TIMESTAMP WHERE cbo_codigo IN ({placeholders})",
+                cbos_transferem,
+            )
+        if cbos_buscar_at02:
+            placeholders_at02 = ",".join("?" * len(cbos_buscar_at02))
+            db.execute(
+                f"UPDATE regras_rel134_cbos SET buscar_at02 = 1, atualizado_em = CURRENT_TIMESTAMP WHERE cbo_codigo IN ({placeholders_at02})",
+                cbos_buscar_at02,
+            )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash(f"Regras de CBOs da eMulti salvas com sucesso! ({len(cbos_transferem)} transferem p/ base, {len(cbos_buscar_at02)} buscam no AT-02)", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao salvar regras de CBOs: {exc}", "erro")
+
+    return _redirecionar()
+
+
+@bp.route("/rel134/cbos/padrao", methods=["POST"])
+def rel134_cbos_padrao():
+    db = get_db()
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-rel134-cbos"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+    try:
+        cbos_padrao = [
+            ("223605", 1, 0, "Fisioterapeuta Geral"),
+            ("223710", 1, 0, "Nutricionista - Nutricionista (Saúde Pública)"),
+            ("223810", 1, 0, "Fonoaudiólogo"),
+            ("223905", 1, 0, "Terapeuta Ocupacional"),
+            ("224140", 1, 0, "Profissional de Educação Física na Saúde"),
+            ("225133", 1, 0, "Médico Psiquiatra"),
+            ("225250", 1, 0, "Médico Ginecologista"),
+            ("251510", 1, 0, "Psicólogo Clínico"),
+            ("223405", 0, 1, "Farmacêutico (Permanece na Unidade de Realização / Busca AT-02)"),
+            ("223445", 0, 1, "Farmacêutico Hospitalar e Clínico (Permanece na Unidade de Realização / Busca AT-02)"),
+            ("251605", 0, 1, "Assistente Social (Permanece na Unidade de Realização / Busca AT-02)"),
+        ]
+        for cbo_cod, transfere, b_at02, obs in cbos_padrao:
+            db.execute(
+                """INSERT INTO regras_rel134_cbos (cbo_codigo, transfere, buscar_at02, observacao)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(cbo_codigo) DO UPDATE SET
+                       transfere = excluded.transfere,
+                       buscar_at02 = excluded.buscar_at02,
+                       observacao = excluded.observacao,
+                       atualizado_em = CURRENT_TIMESTAMP""",
+                (cbo_cod, transfere, b_at02, obs),
+            )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Configuração padrão de CBOs da eMulti restaurada com sucesso! Farmacêutico e Assistente Social ficam na unidade de realização e buscam no AT-02.", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao restaurar CBOs padrão: {exc}", "erro")
+
+    return _redirecionar()
+
+
+@bp.route("/rel134/cbos/adicionar", methods=["POST"])
+def rel134_cbos_adicionar():
+    db = get_db()
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+    cbo_codigo = (request.form.get("cbo_codigo") or "").strip()
+    transfere = 1 if request.form.get("transfere") in ("1", "on", "true") else 0
+    buscar_at02 = 1 if request.form.get("buscar_at02") in ("1", "on", "true") else 0
+    observacao = (request.form.get("observacao") or "").strip() or None
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-rel134-cbos"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
+    if not cbo_codigo:
+        flash("Informe o código CBO a adicionar.", "erro")
+        return _redirecionar()
+
+    try:
+        db.execute(
+            """INSERT INTO regras_rel134_cbos (cbo_codigo, transfere, buscar_at02, observacao)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(cbo_codigo) DO UPDATE SET
+                   transfere = excluded.transfere,
+                   buscar_at02 = excluded.buscar_at02,
+                   observacao = excluded.observacao,
+                   atualizado_em = CURRENT_TIMESTAMP""",
+            (cbo_codigo, transfere, buscar_at02, observacao),
+        )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash(f"CBO {cbo_codigo} adicionado/atualizado na regra de transferência eMulti!", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Erro ao adicionar CBO: {exc}", "erro")
+
+    return _redirecionar()
 
 
 @bp.route("/rel134/salvar", methods=["POST"])
@@ -230,14 +395,20 @@ def rel134_salvar():
     unidade_origem_id = request.form.get("unidade_origem_id", type=int)
     unidade_destino_id = request.form.get("unidade_destino_id", type=int)
     observacao = (request.form.get("observacao") or "").strip() or None
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-rel134"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
 
     if not unidade_origem_id or not unidade_destino_id:
         flash("Selecione a unidade de origem e a unidade de destino.", "erro")
-        return redirect(url_for("cadastros.administracao", aba="rel134"))
+        return _redirecionar()
 
     if unidade_origem_id == unidade_destino_id:
         flash("A unidade de origem não pode ser a mesma unidade de destino.", "erro")
-        return redirect(url_for("cadastros.administracao", aba="rel134"))
+        return _redirecionar()
 
     try:
         db.execute(
@@ -255,12 +426,19 @@ def rel134_salvar():
         db.rollback()
         flash(f"Erro ao salvar vínculo: {exc}", "erro")
 
-    return redirect(url_for("cadastros.administracao", aba="rel134"))
+    return _redirecionar()
 
 
 @bp.route("/rel134/<int:id>/excluir", methods=["POST"])
 def rel134_excluir(id):
     db = get_db()
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-rel134"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
     try:
         db.execute("DELETE FROM de_para_unidades_rel134 WHERE id = ?", (id,))
         db.commit()
@@ -270,12 +448,19 @@ def rel134_excluir(id):
         db.rollback()
         flash(f"Erro ao excluir vínculo: {exc}", "erro")
 
-    return redirect(url_for("cadastros.administracao", aba="rel134"))
+    return _redirecionar()
 
 
 @bp.route("/rel134/padrao_penha", methods=["POST"])
 def rel134_padrao_penha():
     db = get_db()
+    retorno_ind = request.form.get("retorno_indicador_id", type=int)
+
+    def _redirecionar():
+        if retorno_ind:
+            return redirect(url_for("cadastros.detalhe_indicador", indicador_id=retorno_ind, _anchor="regras-rel134"))
+        return redirect(url_for("cadastros.administracao", aba="rel134"))
+
     padrao = [
         (5, 53, "AMA/UBS Nóbrega -> Base UBS AE Carvalho"),
         (55, 61, "UBS Villalobo -> Base UBS Pe Anchieta"),
@@ -305,7 +490,7 @@ def rel134_padrao_penha():
         db.rollback()
         flash(f"Erro ao carregar mapeamento padrão: {exc}", "erro")
 
-    return redirect(url_for("cadastros.administracao", aba="rel134"))
+    return _redirecionar()
 
 
 # ---------------------------------------------------------------------------
@@ -639,9 +824,10 @@ def nova_categoria_estabelecimento():
 @bp.route("/estabelecimentos/novo", methods=["POST"])
 def novo_estabelecimento():
     db = get_db()
+    destinacao_mista = (request.form.get("destinacao_mista") or "TRAD").strip().upper()
     cursor = db.execute(
-        """INSERT INTO estabelecimentos (cod_cnes, cod_cmes, nome, complexidade, categoria_contrato, exige_cmes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO estabelecimentos (cod_cnes, cod_cmes, nome, complexidade, categoria_contrato, exige_cmes, destinacao_mista)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (
             request.form.get("cod_cnes"),
             request.form.get("cod_cmes"),
@@ -649,6 +835,7 @@ def novo_estabelecimento():
             request.form.get("complexidade"),
             request.form.get("categoria_contrato"),
             1 if request.form.get("exige_cmes") else 0,
+            destinacao_mista,
         ),
     )
     _salvar_tipos_servico(db, cursor.lastrowid, request.form.get("tipo_servico"))
@@ -661,9 +848,10 @@ def novo_estabelecimento():
 def editar_estabelecimento(id):
     """Edição inline: cada linha da tabela de Estabelecimentos envia direto para cá."""
     db = get_db()
+    destinacao_mista = (request.form.get("destinacao_mista") or "TRAD").strip().upper()
     db.execute(
         """UPDATE estabelecimentos SET cod_cnes=?, cod_cmes=?, nome=?,
-               complexidade=?, categoria_contrato=?, exige_cmes=? WHERE id=?""",
+               complexidade=?, categoria_contrato=?, exige_cmes=?, destinacao_mista=? WHERE id=?""",
         (
             request.form.get("cod_cnes"),
             request.form.get("cod_cmes"),
@@ -671,6 +859,7 @@ def editar_estabelecimento(id):
             request.form.get("complexidade"),
             request.form.get("categoria_contrato"),
             1 if request.form.get("exige_cmes") else 0,
+            destinacao_mista,
             id,
         ),
     )
@@ -693,8 +882,9 @@ def bulk_editar_estabelecimentos():
     tipo_servico = request.form.get("bulk_tipo_servico") or None
     complexidade = request.form.get("bulk_complexidade") or None
     categoria_contrato = request.form.get("bulk_categoria_contrato") or None
+    destinacao_mista = request.form.get("bulk_destinacao_mista") or None
 
-    if not any([tipo_servico, complexidade, categoria_contrato]):
+    if not any([tipo_servico, complexidade, categoria_contrato, destinacao_mista]):
         flash("Preencha pelo menos um campo para aplicar em massa.", "erro")
         return redirect(url_for("cadastros.administracao", aba="estabelecimentos"))
 
@@ -703,6 +893,8 @@ def bulk_editar_estabelecimentos():
             db.execute("UPDATE estabelecimentos SET complexidade=? WHERE id=?", (complexidade, est_id))
         if categoria_contrato:
             db.execute("UPDATE estabelecimentos SET categoria_contrato=? WHERE id=?", (categoria_contrato, est_id))
+        if destinacao_mista:
+            db.execute("UPDATE estabelecimentos SET destinacao_mista=? WHERE id=?", (destinacao_mista.strip().upper(), est_id))
         if tipo_servico:
             _salvar_tipos_servico(db, est_id, tipo_servico)
 
@@ -1092,6 +1284,7 @@ def novo_profissional():
             ),
         )
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Profissional cadastrado.", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(f"Erro ao cadastrar profissional: {exc}", "erro")
@@ -1117,6 +1310,7 @@ def editar_profissional(id):
         ),
     )
     db.commit()
+    sincronizar_apuracao_dinamica(db)
     flash("Profissional atualizado.", "sucesso")
     return redirect(url_for("cadastros.administracao", aba="profissionais"))
 
@@ -1127,6 +1321,7 @@ def excluir_profissional(id):
     try:
         db.execute("DELETE FROM profissionais WHERE id=?", (id,))
         db.commit()
+        sincronizar_apuracao_dinamica(db)
         flash("Profissional excluído.", "sucesso")
     except Exception as exc:  # noqa: BLE001
         flash(f"Não foi possível excluir: {exc}.", "erro")
@@ -1151,6 +1346,9 @@ def bulk_excluir_profissionais():
         except Exception:  # noqa: BLE001
             db.rollback()
             bloqueados += 1
+
+    if excluidos:
+        sincronizar_apuracao_dinamica(db)
 
     msg = f"{excluidos} profissional(is) excluído(s)."
     if bloqueados:
@@ -1219,6 +1417,9 @@ def importar_profissionais_csv():
         )
         total += 1
     db.commit()
+
+    if total:
+        sincronizar_apuracao_dinamica(db)
 
     msg = f"Importação concluída: {total} profissionais cadastrados."
     if sem_estabelecimento:
@@ -1980,6 +2181,39 @@ def detalhe_indicador(indicador_id):
         ).fetchall()
     ]
 
+    # Para indicadores eMulti (P11, P21, P12, P22) e indicadores com ferramenta de conversão territorial de unidades,
+    # carregar os redirecionamentos de/para e a seleção de CBOs que transferem para a Unidade Base
+    redirecionamentos_rel134 = []
+    cbos_rel134 = []
+
+    # Redirecionamentos REL 134
+    if indicador["codigo"] in ("P12", "P22") or (indicador["fonte_dados"] and "134" in indicador["fonte_dados"]):
+        redirecionamentos_rel134 = db.execute(
+            """SELECT r.id, r.unidade_origem_id, r.unidade_destino_id, r.observacao, r.criado_em,
+                      eo.nome AS origem_nome, eo.cod_cnes AS origem_cnes,
+                      ed.nome AS destino_nome, ed.cod_cnes AS destino_cnes
+               FROM de_para_unidades_rel134 r
+               JOIN estabelecimentos eo ON eo.id = r.unidade_origem_id
+               JOIN estabelecimentos ed ON ed.id = r.unidade_destino_id
+               ORDER BY eo.nome ASC"""
+        ).fetchall()
+
+    # Seleção de CBOs com transferência territorial (regras_rel134_cbos)
+    # Disponível para todos os indicadores eMulti (P11, P21, P12, P22), fontes de eMulti (AT-61, REL_134) ou com conversões
+    if (
+        indicador["codigo"] in ("P09", "P10", "P11", "P12", "P19", "P20", "P21", "P22")
+        or (indicador["fonte_dados"] and any(k in indicador["fonte_dados"] for k in ("134", "61", "57")))
+        or vinculos_unidade
+        or redirecionamentos_rel134
+    ):
+        cbos_rel134 = db.execute(
+            """SELECT r.id, r.cbo_codigo, r.transfere, r.buscar_at02, r.observacao,
+                      COALESCE(c.nome_categoria, r.observacao, r.cbo_codigo) AS cbo_nome
+               FROM regras_rel134_cbos r
+               LEFT JOIN cbo c ON c.codigo = r.cbo_codigo
+               ORDER BY r.cbo_codigo ASC"""
+        ).fetchall()
+
     categorias_lista = db.execute("SELECT nome FROM categorias_estabelecimento ORDER BY nome").fetchall()
     estabelecimentos_lista = db.execute(
         "SELECT id, nome, cod_cnes FROM estabelecimentos WHERE ativo = 1 ORDER BY nome"
@@ -2019,6 +2253,8 @@ def detalhe_indicador(indicador_id):
         cnes_alternativos=cnes_alternativos,
         vinculos_unidade=vinculos_unidade,
         nomes_origem_disponiveis=nomes_origem_disponiveis,
+        redirecionamentos_rel134=redirecionamentos_rel134,
+        cbos_rel134=cbos_rel134,
     )
 
 

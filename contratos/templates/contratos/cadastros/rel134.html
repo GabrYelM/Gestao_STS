@@ -39,6 +39,130 @@
   </div>
 </div>
 
+<!-- Seleção de CBOs com Transferência Territorial -->
+<div class="card border-0 shadow-sm rounded-3 mb-4 p-3" style="background:#ffffff; border:1px solid #e2e8f0;">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:#0284c7; color:#fff; font-size:11px;"><i class="fa-solid fa-user-doctor me-1"></i> eMulti CBOs</span>
+        <h3 class="h6 mb-0 fw-bold text-dark">CBOs com Transferência Territorial para a Base (P12 / P22)</h3>
+      </div>
+      <p class="text-muted small mb-0 mt-1">
+        Selecione quais especialidades da equipe eMulti transferem a produção de unidades participantes para a Unidade Base.
+        CBOs desmarcados (como <strong>Farmacêutico</strong> e <strong>Assistente Social</strong>) permanecem na unidade onde o atendimento foi realizado.
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <form method="post" action="{{ url_for('cadastros.rel134_cbos_padrao') }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Restaurar padrão da STS Penha (transferir todas as especialidades eMulti, exceto Farmacêutico e Assistente Social)?')">
+          <i class="fa-solid fa-rotate-left me-1"></i> Restaurar Padrão
+        </button>
+      </form>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="alternarTodosCbosRel134(true)">Marcar Todos</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="alternarTodosCbosRel134(false)">Desmarcar Todos</button>
+    </div>
+  </div>
+
+  <form method="post" action="{{ url_for('cadastros.rel134_cbos_salvar') }}">
+    <div class="row g-2 mb-3">
+      {% for c in cbos_rel134 %}
+      <div class="col-md-6 col-lg-4">
+        <div class="card-cbo-item p-2 border rounded {% if c.transfere %}border-primary bg-primary-subtle bg-opacity-10{% elif c.buscar_at02 %}border-warning-subtle bg-warning-subtle bg-opacity-15{% else %}border-light-subtle bg-light{% endif %}" style="transition: all 0.2s;">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <code class="fw-bold text-dark" style="font-size:12px;">{{ c.cbo_codigo }}</code>
+            <div class="d-flex gap-1 align-items-center">
+              {% if c.buscar_at02 %}
+                <span class="badge bg-warning text-dark border border-warning badge-status-at02" style="font-size:9.5px;" title="Produção ambulatorial buscada no AT-02"><i class="fa-solid fa-file-invoice me-1"></i>Busca AT-02</span>
+              {% endif %}
+              {% if c.transfere %}
+                <span class="badge bg-primary text-white badge-status-cbo" style="font-size:9.5px;">Transfere p/ Base</span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary-emphasis badge-status-cbo" style="font-size:9.5px;">Fica na Origem</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="fw-semibold text-secondary mb-2" style="font-size:12px; line-height:1.2;">{{ c.cbo_nome }}</div>
+          
+          <div class="pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2" style="font-size:11px;">
+            <div class="form-check form-switch m-0" title="Quando ativado, transfere a produção da unidade participante para a Unidade Base">
+              <input class="form-check-input chk-cbo-rel134" type="checkbox" name="cbos_transferem" value="{{ c.cbo_codigo }}" id="chk-cbo-rel-{{ c.cbo_codigo }}" {% if c.transfere %}checked{% endif %} onchange="atualizarEstiloCardCbo(this)">
+              <label class="form-check-label text-muted" for="chk-cbo-rel-{{ c.cbo_codigo }}" style="cursor:pointer;">Transferir p/ Base</label>
+            </div>
+            <div class="form-check form-switch m-0" title="Quando ativado, busca consultas ambulatoriais do profissional direto no AT-02 (ex: Farmacêutico e Assistente Social)">
+              <input class="form-check-input chk-cbo-at02" type="checkbox" name="cbos_buscar_at02" value="{{ c.cbo_codigo }}" id="chk-at02-rel-{{ c.cbo_codigo }}" {% if c.buscar_at02 %}checked{% endif %} onchange="atualizarEstiloCardCbo(this)">
+              <label class="form-check-label text-muted" for="chk-at02-rel-{{ c.cbo_codigo }}" style="cursor:pointer;"><i class="fa-solid fa-database text-primary me-1"></i>Buscar AT-02</label>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+      <small class="text-muted"><i class="fa-solid fa-circle-info me-1"></i> Ao salvar, a apuração do painel é sincronizada e recalculada dinamicamente.</small>
+      <button type="submit" class="btn btn-sm btn-primary px-3">
+        <i class="fa-solid fa-floppy-disk me-1"></i> Salvar Regras de CBOs
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Card de Configuração de Unidades Mistas (UBS Mista -> TRAD ou ESF) -->
+<div class="card border-0 shadow-sm rounded-3 mb-4 p-3" style="background:#ffffff; border:1px solid #e2e8f0;">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge" style="background:#059669; color:#fff; font-size:11px;"><i class="fa-solid fa-hospital-user me-1"></i> Unidades Mistas</span>
+        <h3 class="h6 mb-0 fw-bold text-dark">Destinação de Produção em Unidades Mistas (TRAD vs ESF)</h3>
+      </div>
+      <p class="text-muted small mb-0 mt-1">
+        Para unidades configuradas com serviços mistos (ex: <strong>UBS Eng Trindade</strong> e <strong>UBS Cássio Bittencourt</strong>), defina se as especialidades eMulti concorrentes (como <strong>Farmacêutico</strong> e <strong>Assistente Social</strong>) devem ser contabilizadas no indicador <strong>Tradicional (P21 / P22)</strong> ou no <strong>ESF (P11 / P12)</strong>, evitando duplicação indevida de produção.
+      </p>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle mb-0" style="font-size:13px;">
+      <thead class="table-light">
+        <tr>
+          <th>Unidade Mista</th>
+          <th style="width:130px;">CNES</th>
+          <th>Serviços Cadastrados</th>
+          <th style="width:230px;">Destinação da Produção</th>
+          <th style="width:100px;" class="text-center">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in unidades_mistas %}
+        <tr>
+          <td>
+            <strong>{{ u.nome }}</strong>
+          </td>
+          <td><code>{{ u.cod_cnes or '-' }}</code></td>
+          <td><span class="badge bg-light text-dark border">{{ u.tipos_servico or 'UBS_MISTA' }}</span></td>
+          <td>
+            <form id="form-mista-{{ u.id }}" method="post" action="{{ url_for('cadastros.rel134_unidades_mistas_salvar') }}">
+              <input type="hidden" name="estabelecimento_id" value="{{ u.id }}">
+              <select name="destinacao_mista" class="form-select form-select-sm fw-bold" style="color:{% if (u.destinacao_mista or 'TRAD') == 'ESF' %}#0d6efd{% else %}#16a34a{% endif %};">
+                <option value="TRAD" {% if (u.destinacao_mista or 'TRAD') == 'TRAD' %}selected{% endif %}>TRAD (Tradicional - P21 / P22)</option>
+                <option value="ESF" {% if (u.destinacao_mista or 'TRAD') == 'ESF' %}selected{% endif %}>ESF (Saúde Família - P11 / P12)</option>
+              </select>
+            </form>
+          </td>
+          <td class="text-center">
+            <button type="submit" form="form-mista-{{ u.id }}" class="btn btn-sm btn-outline-primary py-0 px-2">Salvar</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center py-2 text-muted">Nenhuma unidade com serviço MISTA encontrada.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- Barra de Ferramentas -->
 <div class="toolbar mb-3">
   <button type="button" class="btn btn-secondary btn-sm" onclick="alternarPainelRel134('painel-novo-vinculo')">
@@ -160,6 +284,61 @@ function alternarPainelRel134(id) {
   const el = document.getElementById(id);
   if (!el) return;
   el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+}
+
+function alternarTodosCbosRel134(marcar) {
+  document.querySelectorAll('.chk-cbo-rel134').forEach(chk => {
+    chk.checked = marcar;
+    atualizarEstiloCardCbo(chk);
+  });
+}
+
+function atualizarEstiloCardCbo(elemento) {
+  const card = elemento.closest('.card-cbo-item');
+  if (!card) return;
+  const chkTransf = card.querySelector('.chk-cbo-rel134');
+  const chkAt02 = card.querySelector('.chk-cbo-at02');
+  const badgeTransf = card.querySelector('.badge-status-cbo');
+  let badgeAt02 = card.querySelector('.badge-status-at02');
+
+  const transf = chkTransf ? chkTransf.checked : false;
+  const buscaAt02 = chkAt02 ? chkAt02.checked : false;
+
+  // Atualizar badge AT-02
+  const badgeContainer = card.querySelector('.d-flex.gap-1.align-items-center');
+  if (buscaAt02) {
+    if (!badgeAt02 && badgeContainer) {
+      badgeAt02 = document.createElement('span');
+      badgeAt02.className = 'badge bg-warning text-dark border border-warning badge-status-at02';
+      badgeAt02.style.fontSize = '9.5px';
+      badgeAt02.title = 'Produção ambulatorial buscada no AT-02';
+      badgeAt02.innerHTML = '<i class="fa-solid fa-file-invoice me-1"></i>Busca AT-02';
+      badgeContainer.insertBefore(badgeAt02, badgeTransf);
+    }
+  } else if (badgeAt02) {
+    badgeAt02.remove();
+  }
+
+  // Atualizar badge Transferência
+  if (badgeTransf) {
+    if (transf) {
+      badgeTransf.className = 'badge bg-primary text-white badge-status-cbo';
+      badgeTransf.textContent = 'Transfere p/ Base';
+    } else {
+      badgeTransf.className = 'badge bg-secondary-subtle text-secondary-emphasis badge-status-cbo';
+      badgeTransf.textContent = 'Fica na Origem';
+    }
+  }
+
+  // Estilo do card
+  card.classList.remove('border-primary', 'bg-primary-subtle', 'bg-opacity-10', 'border-warning-subtle', 'bg-warning-subtle', 'bg-opacity-15', 'border-light-subtle', 'bg-light');
+  if (transf) {
+    card.classList.add('border-primary', 'bg-primary-subtle', 'bg-opacity-10');
+  } else if (buscaAt02) {
+    card.classList.add('border-warning-subtle', 'bg-warning-subtle', 'bg-opacity-15');
+  } else {
+    card.classList.add('border-light-subtle', 'bg-light');
+  }
 }
 </script>
 

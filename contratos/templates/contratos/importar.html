@@ -247,6 +247,324 @@
         <div class="fs-4 fw-bold text-dark">{{ periodos_apurados|length }}</div>
       </div>
     </div>
+</div>
+
+<!-- Guia de Correspondência: Nome Simplificado vs Nome Real dos Arquivos -->
+<div class="card border-0 shadow-sm rounded-3 mb-4 overflow-hidden">
+  <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center">
+      <div class="bg-primary-subtle text-primary rounded-circle p-2 me-2 d-flex align-items-center justify-content-center" style="width: 34px; height: 34px;">
+        <i class="fa-solid fa-file-lines fs-6"></i>
+      </div>
+      <div>
+        <h2 class="h6 fw-bold mb-0 text-dark">Guia de Correspondência: Nome Simplificado vs Nome Real do Arquivo</h2>
+        <span class="text-muted" style="font-size: 0.78rem;">Consulte o padrão oficial de nomenclatura de arquivos aceito pelo sistema e os indicadores atendidos por cada relatório.</span>
+      </div>
+    </div>
+    <button class="btn btn-sm btn-outline-secondary rounded-pill px-3" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGuiaArquivos" aria-expanded="false" aria-controls="collapseGuiaArquivos">
+      <i class="fa-solid fa-chevron-down me-1"></i> Expandir / Recolher
+    </button>
+  </div>
+  <div class="collapse" id="collapseGuiaArquivos">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3" style="width: 170px;">Relatório Simplificado</th>
+              <th style="min-width: 270px;">Padrão do Nome Real do Arquivo</th>
+              <th style="width: 85px;" class="text-center">Extensão</th>
+              <th style="min-width: 250px;">Indicadores Vinculados (Lista)</th>
+              <th class="pe-3">Descrição / Finalidade Contratual</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-at02 px-2 py-1"><i class="fa-solid fa-file-waveform me-1"></i> AT-02</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-02 Quantidade de Pacientes... .csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-02</code> ou <code>at02</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-light text-primary border">P01</span>
+                  <span class="badge bg-light text-primary border">P02</span>
+                  <span class="badge bg-light text-primary border">P03</span>
+                  <span class="badge bg-light text-primary border">P04</span>
+                  <span class="badge bg-light text-primary border">P05</span>
+                  <span class="badge bg-light text-primary border">P07</span>
+                  <span class="badge bg-light text-primary border">P08</span>
+                  <span class="badge bg-light text-primary border">P13</span>
+                  <span class="badge bg-light text-primary border">P14</span>
+                  <span class="badge bg-light text-primary border">P15</span>
+                  <span class="badge bg-light text-primary border">P16</span>
+                  <span class="badge bg-light text-primary border">P17</span>
+                  <span class="badge bg-light text-primary border">P18</span>
+                  <span class="badge bg-light text-primary border">P26</span>
+                  <span class="badge bg-light text-primary border">P28</span>
+                  <span class="badge bg-light text-primary border">P35</span>
+                  <span class="badge bg-light text-primary border">P39</span>
+                  <span class="badge bg-light text-primary border">P40</span>
+                  <span class="badge bg-light text-primary border">P42</span>
+                  <span class="badge bg-light text-primary border">P43</span>
+                  <span class="badge bg-light text-primary border">P44</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Consultas médicas, de enfermagem, odontologia e procedimentos ambulatoriais gerais por CBO e SIGTAP.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-websass px-2 py-1"><i class="fa-solid fa-clipboard-check me-1"></i> WebSaass</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">Demonstrativo de Apontamentos Técnicos (7.02)... .zip</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>demonstrativo de apontamentos</code> ou <code>webssas</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.XML / .ZIP</span></td>
+              <td>
+                <span class="badge bg-purple-subtle text-purple border" style="background:#f3e8ff; color:#7e22ce;">Todos os indicadores com metas no TA</span>
+              </td>
+              <td class="pe-3 text-muted">Produção declarada pela OSS na Prefeitura (XML) para auditoria e confronto de metas.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-visita px-2 py-1"><i class="fa-solid fa-house-chimney-medical me-1"></i> REL 142</span>
+                <span class="d-block small text-muted font-monospace">Visitas Dom.</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">visita_domiciliar_periodica_AAAAMMDD_0100.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>visita_domiciliar</code> ou <code>rel_142</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-success-subtle text-success border">P06</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Contagem de Visitas Domiciliares realizadas por Agentes Comunitários de Saúde (ACS) no eSUS.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-dtic px-2 py-1"><i class="fa-solid fa-people-group me-1"></i> REL 134</span>
+                <span class="d-block small text-muted font-monospace">eMulti Coletiva</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">ATIVIDADE_COLETIVA_POR_PROFISSIONAL_AAAAMMDD_0100.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>atividade_coletiva</code> ou <code>rel_134</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-warning-subtle text-dark border">P12 (eMulti ESF)</span>
+                  <span class="badge bg-warning-subtle text-dark border">P22 (eMulti Trad.)</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Atividades Coletivas da equipe multiprofissional (eMulti) com de-para territorial entre unidades.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-dtic px-2 py-1"><i class="fa-solid fa-user-doctor me-1"></i> REL 130</span>
+                <span class="d-block small text-muted font-monospace">AD eSUS</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">esus_atend_domiciliar_AAAAMMDD_0100.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>esus_atend_domiciliar</code> ou <code>rel_130</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-warning-subtle text-dark border">P30 (EMAD)</span>
+                  <span class="badge bg-warning-subtle text-dark border">P33 (EMAP)</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Atendimentos domiciliares realizados pelas equipes multiprofissionais de Atenção Domiciliar.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-sisad px-2 py-1"><i class="fa-solid fa-clipboard-question me-1"></i> SISAD</span>
+                <span class="d-block small text-muted font-monospace">Questionário AD</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">Relatorio Questionario AD - DD_MM_AAAA.xlsx</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>questionario ad</code> ou <code>sisad</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.XLSX / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-teal-subtle text-dark border" style="background:#ccfbf1; color:#115e59;">P31</span>
+                  <span class="badge bg-teal-subtle text-dark border" style="background:#ccfbf1; color:#115e59;">P32</span>
+                  <span class="badge bg-teal-subtle text-dark border" style="background:#ccfbf1; color:#115e59;">P34</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Contagem de pacientes ativos e desospitalização na Atenção Domiciliar (EMAD e EMAP).</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-dtic px-2 py-1"><i class="fa-solid fa-hospital me-1"></i> REL 164 / 136</span>
+                <span class="d-block small text-muted font-monospace">Hospital Dia</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">rel_SIGA_producao_hospital_dia_DD-MM-AAAA.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>rel_164</code>, <code>rel_136</code> ou <code>producao_hospital_dia</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-warning-subtle text-dark border">P45</span>
+                  <span class="badge bg-warning-subtle text-dark border">P46</span>
+                  <span class="badge bg-warning-subtle text-dark border">P47</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Cirurgias de pequeno porte, médio porte e pequenas cirurgias (Hospital Dia Rede Hora Certa).</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-57</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-57 Atendimento PICs.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-57</code> ou <code>at57</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P09</span>
+                  <span class="badge bg-info-subtle text-info-emphasis border">P10</span>
+                  <span class="badge bg-info-subtle text-info-emphasis border">P19</span>
+                  <span class="badge bg-info-subtle text-info-emphasis border">P20</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Práticas Integrativas e Complementares (individuais e coletivas) na Atenção Básica ESF e Tradicional.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-61</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-61ATIVIDADES INDIVIDUAIS DA EQUIPE MULTIPROFISSIONAL... .csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-61</code> ou <code>at61</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P11 (ESF)</span>
+                  <span class="badge bg-info-subtle text-info-emphasis border">P21 (Trad.)</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Atividades individuais ambulatoriais da eMulti com cruzamento de CBOs por unidade.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-08</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-08 Proporção de Atendimento em Relação as Vagas Ofertadas.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-08</code> ou <code>at08</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P27</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Vagas de acolhimento noturno ofertadas e taxa de ocupação em CAPS.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-48</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-48 Pacientes Atendidos PAI.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-48</code> ou <code>at48</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P25</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Contagem de idosos fragilizados atendidos pelo Programa Acompanhante de Idosos (PAI).</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-49</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-49 Contagem de Pacientes Atendidos em CAPS.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-49</code> ou <code>at49</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P29</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Pacientes acompanhados em Centros de Atenção Psicossocial (CAPS).</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-11</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-11 Contagem de Pacientes CER-NIR-NISA.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-11</code> ou <code>at11</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P36</span>
+                  <span class="badge bg-info-subtle text-info-emphasis border">P37</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Contagem de pacientes acompanhados e procedimentos por usuário em CER.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-40</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-40 Contagem de Pacientes CER-NIR-NISA por CBO.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-40</code> ou <code>at40</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P38</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Contagem de pacientes e procedimentos de reabilitação por CBO em CER.</td>
+            </tr>
+            <tr>
+              <td class="ps-3 fw-bold">
+                <span class="badge badge-fonte-bi px-2 py-1"><i class="fa-solid fa-chart-pie me-1"></i> AT-39</span>
+                <span class="d-block small text-muted font-monospace">BI SIGA</span>
+              </td>
+              <td>
+                <code class="text-dark bg-light px-2 py-1 rounded border">AT-39 Contagem de Pacientes Atendidos APD em CER-NIR-NISA.csv</code>
+                <div class="text-muted" style="font-size: 0.75rem;">Detecta <code>at-39</code> ou <code>at39</code></div>
+              </td>
+              <td class="text-center"><span class="badge bg-secondary-subtle text-secondary font-monospace">.CSV / .ZIP</span></td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge bg-info-subtle text-info-emphasis border">P41</span>
+                </div>
+              </td>
+              <td class="pe-3 text-muted">Pacientes acompanhados no programa Acompanhante da Pessoa com Deficiência (APD).</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -809,9 +1127,32 @@
               {% endif %}
             </td>
             <td>
-              <div class="d-flex align-items-center text-truncate" style="max-width: 320px;" title="{{ i.nome_arquivo }}">
+              <div class="d-flex align-items-center text-truncate" style="max-width: 360px;" title="{{ i.nome_arquivo }}">
                 <i class="fa-regular fa-file me-2 text-secondary"></i>
-                <span class="fw-semibold text-dark text-truncate">{{ i.nome_arquivo }}</span>
+                <div class="text-truncate">
+                  <span class="fw-semibold text-dark text-truncate d-block">{{ i.nome_arquivo }}</span>
+                  <small class="text-muted" style="font-size: 0.74rem;">
+                    {% if i.fonte_nome == 'AT02' %}
+                      Relatório: <strong>SIGA AT-02</strong>
+                    {% elif i.fonte_nome == 'WEBSSAS' %}
+                      Relatório: <strong>WebSaass XML</strong>
+                    {% elif i.fonte_nome == 'VISITA_DOMICILIAR' %}
+                      Relatório: <strong>DTIC REL 142 (Visita Dom.)</strong>
+                    {% elif i.fonte_nome == 'DTIC_REL134' %}
+                      Relatório: <strong>DTIC REL 134 (eMulti)</strong>
+                    {% elif i.fonte_nome == 'DTIC_REL130' %}
+                      Relatório: <strong>DTIC REL 130 (AD eSUS)</strong>
+                    {% elif i.fonte_nome == 'SISAD' %}
+                      Relatório: <strong>SISAD (Questionário AD)</strong>
+                    {% elif i.fonte_nome == 'DTIC_REL164' %}
+                      Relatório: <strong>DTIC REL 164 / 136 (Hospital Dia)</strong>
+                    {% elif i.fonte_nome.startswith('AT') %}
+                      Relatório: <strong>SIGA {{ i.fonte_nome[:2] }}-{{ i.fonte_nome[2:] }}</strong>
+                    {% else %}
+                      Relatório: <strong>{{ i.fonte_nome }}</strong>
+                    {% endif %}
+                  </small>
+                </div>
               </div>
             </td>
             <td class="text-center">

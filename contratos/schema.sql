@@ -63,9 +63,10 @@ CREATE TABLE estabelecimentos (
         -- indicador_procedimento, abaixo, e _candidatos_indicador_subgrupo
         -- em app/etl/calculo.py)
     ativo               INTEGER NOT NULL DEFAULT 1,
-    exige_cmes          INTEGER NOT NULL DEFAULT 0     -- v15: 1 = exceção manual da consolidação por
+    exige_cmes          INTEGER NOT NULL DEFAULT 0,    -- v15: 1 = exceção manual da consolidação por
         -- CNES: este estabelecimento é sempre tratado individualmente (por CMES), mesmo
         -- com a consolidação primária em 'CNES' (ver app/etl/consolidacao.py)
+    destinacao_mista    TEXT DEFAULT 'TRAD'            -- 'TRAD' ou 'ESF': para unidades mistas (UBS_MISTA)
 );
 
 CREATE INDEX idx_estabelecimentos_cmes ON estabelecimentos(cod_cmes);
@@ -840,12 +841,22 @@ CREATE TABLE IF NOT EXISTS de_para_unidades_rel134 (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     unidade_origem_id   INTEGER NOT NULL REFERENCES estabelecimentos(id),
     unidade_destino_id  INTEGER NOT NULL REFERENCES estabelecimentos(id),
+    cbos_transferidos   TEXT,
     observacao          TEXT,
     criado_em           TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(unidade_origem_id)
 );
 CREATE INDEX IF NOT EXISTS idx_depara_rel134_orig ON de_para_unidades_rel134(unidade_origem_id);
 CREATE INDEX IF NOT EXISTS idx_depara_rel134_dest ON de_para_unidades_rel134(unidade_destino_id);
+
+CREATE TABLE IF NOT EXISTS regras_rel134_cbos (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    cbo_codigo          TEXT NOT NULL UNIQUE,
+    transfere           INTEGER NOT NULL DEFAULT 1,
+    observacao          TEXT,
+    atualizado_em       TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_regras_rel134_cbos_cod ON regras_rel134_cbos(cbo_codigo);
 
 -- ----------------------------------------------------------------------------
 -- 9. TABELA DE PORTES DE PROCEDIMENTOS (Hospitais Dia AIH e AEA BPA)

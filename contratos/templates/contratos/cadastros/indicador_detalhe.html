@@ -117,8 +117,9 @@
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="tab-referencias-btn" data-bs-toggle="tab" data-bs-target="#pane-referencias" type="button" role="tab" aria-controls="pane-referencias" aria-selected="false">
       <i class="fa-solid fa-arrows-split-up-and-left me-1"></i> De/Para & Regras
-      {% if vinculos_unidade %}
-        <span class="badge bg-secondary ms-1">{{ vinculos_unidade|length }}</span>
+      {% set total_regras = (vinculos_unidade|length if vinculos_unidade else 0) + (redirecionamentos_rel134|length if redirecionamentos_rel134 else 0) %}
+      {% if total_regras > 0 %}
+        <span class="badge bg-secondary ms-1">{{ total_regras }}</span>
       {% endif %}
     </button>
   </li>
@@ -623,11 +624,21 @@
           </form>
           <ul style="padding-left:18px;margin:0 0 6px;font-size:13px;list-style:none">
             {% for v in sg.vinculos_proc %}
-            <li style="display:flex;align-items:center;gap:6px;padding:2px 0">
+            <li style="display:flex;align-items:center;gap:6px;padding:3px 0;flex-wrap:wrap">
               <input type="checkbox" name="vinculo_ids" value="{{ v.id }}" form="form-bulk-proc-sg{{ sg.id }}">
-              <span>{{ v.procedimento_codigo }} {{ v.procedimento_nome or '' }} ({{ v.tipo_vinculo }})</span>
+              <span><strong>{{ v.procedimento_codigo }}</strong> {{ v.procedimento_nome or '' }} ({{ v.tipo_vinculo }})</span>
+              {% if v.nome_profissional %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:11px;" title="Restrito a este profissional">
+                  <i class="fa-solid fa-user-doctor me-1"></i>{{ v.nome_profissional }}
+                </span>
+              {% endif %}
+              <button type="button" class="btn-link text-primary" style="font-size:11px;padding:0 2px;"
+                      onclick="abrirModalRegraProfCadastros('{{ v.id }}', '{{ indicador.id }}', '{{ sg.id }}', '{{ v.procedimento_codigo }}', '{{ v.procedimento_nome or '' }}', '{{ v.nome_profissional or '' }}', '{{ sg.nome }}')"
+                      title="Configurar ou alterar profissional restrito para este procedimento">
+                <i class="fa-solid fa-user-pen"></i> {% if v.nome_profissional %}alterar profissional{% else %}restringir profissional{% endif %}
+              </button>
               <form method="post" action="{{ url_for('cadastros.remover_vinculo_procedimento', indicador_id=indicador.id, vinculo_id=v.id) }}" style="display:inline">
-                <button type="submit" class="btn-link" style="font-size:12px">remover</button>
+                <button type="submit" class="btn-link" style="font-size:12px;color:var(--cor-perigo)">remover</button>
               </form>
             </li>
             {% else %}
@@ -742,6 +753,194 @@
         </table>
       </div>
     </div>
+
+    {% if cbos_rel134 %}
+    <!-- ===================================================================
+         SELEÇÃO DE CBOs COM TRANSFERÊNCIA TERRITORIAL (eMulti: P11, P21, P12, P22)
+         Permite selecionar quais CBOs transferem para a base ou ficam na origem
+         =================================================================== -->
+    <div class="card mt-4" id="regras-rel134-cbos">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge" style="background:#0284c7; color:#fff; font-size:11px;"><i class="fa-solid fa-user-doctor me-1"></i> eMulti CBOs</span>
+            <h2 style="margin:0">CBOs com Transferência Territorial para a Base ({{ indicador.codigo }})</h2>
+          </div>
+          <p class="subtitulo-pagina" style="margin-top:4px;margin-bottom:0">
+            Selecione quais especialidades da equipe eMulti <strong>transferem</strong> a produção realizada em unidades participantes para a <strong>Unidade Base</strong> territorial (ex: Fisioterapia, Nutrição, Fonoaudiologia, Psiquiatria, Psicologia).
+            CBOs <strong>desmarcados</strong> (como <strong>Farmacêutico</strong> e <strong>Assistente Social</strong>) <strong>permanecem</strong> contabilizados na unidade de realização contratual.
+          </p>
+        </div>
+        <div class="d-flex gap-2">
+          <form method="post" action="{{ url_for('cadastros.rel134_cbos_padrao') }}">
+            <input type="hidden" name="retorno_indicador_id" value="{{ indicador.id }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary" onclick="return confirm('Restaurar padrão da STS Penha (transferir todas as especialidades eMulti, exceto Farmacêutico e Assistente Social)?')">
+              <i class="fa-solid fa-rotate-left me-1"></i> Restaurar Padrão
+            </button>
+          </form>
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="alternarTodosCbosRel134(true)">Marcar Todos</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="alternarTodosCbosRel134(false)">Desmarcar Todos</button>
+        </div>
+      </div>
+
+      <form method="post" action="{{ url_for('cadastros.rel134_cbos_salvar') }}">
+        <input type="hidden" name="retorno_indicador_id" value="{{ indicador.id }}">
+        
+        <div class="row g-2 mb-3">
+          {% for c in cbos_rel134 %}
+          <div class="col-md-6 col-lg-4">
+            <div class="card-cbo-item p-2 border rounded {% if c.transfere %}border-primary bg-primary-subtle bg-opacity-10{% elif c.buscar_at02 %}border-warning-subtle bg-warning-subtle bg-opacity-15{% else %}border-light-subtle bg-light{% endif %}" style="transition: all 0.2s;">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <code class="fw-bold text-dark" style="font-size:12px;">{{ c.cbo_codigo }}</code>
+                <div class="d-flex gap-1 align-items-center">
+                  {% if c.buscar_at02 %}
+                    <span class="badge bg-warning text-dark border border-warning badge-status-at02" style="font-size:9.5px;" title="Produção ambulatorial buscada no AT-02"><i class="fa-solid fa-file-invoice me-1"></i>Busca AT-02</span>
+                  {% endif %}
+                  {% if c.transfere %}
+                    <span class="badge bg-primary text-white badge-status-cbo" style="font-size:9.5px;">Transfere p/ Base</span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis badge-status-cbo" style="font-size:9.5px;">Fica na Origem</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="fw-semibold text-secondary mb-2" style="font-size:12px; line-height:1.2;">{{ c.cbo_nome }}</div>
+              
+              <div class="pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2" style="font-size:11px;">
+                <div class="form-check form-switch m-0" title="Quando ativado, transfere a produção da unidade participante para a Unidade Base">
+                  <input class="form-check-input chk-cbo-rel134" type="checkbox" name="cbos_transferem" value="{{ c.cbo_codigo }}" id="chk-cbo-ind-{{ c.cbo_codigo }}" {% if c.transfere %}checked{% endif %} onchange="atualizarEstiloCardCbo(this)">
+                  <label class="form-check-label text-muted" for="chk-cbo-ind-{{ c.cbo_codigo }}" style="cursor:pointer;">Transferir p/ Base</label>
+                </div>
+                <div class="form-check form-switch m-0" title="Quando ativado, busca consultas ambulatoriais do profissional direto no AT-02 (ex: Farmacêutico e Assistente Social)">
+                  <input class="form-check-input chk-cbo-at02" type="checkbox" name="cbos_buscar_at02" value="{{ c.cbo_codigo }}" id="chk-at02-ind-{{ c.cbo_codigo }}" {% if c.buscar_at02 %}checked{% endif %} onchange="atualizarEstiloCardCbo(this)">
+                  <label class="form-check-label text-muted" for="chk-at02-ind-{{ c.cbo_codigo }}" style="cursor:pointer;"><i class="fa-solid fa-database text-primary me-1"></i>Buscar AT-02</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+          <small class="text-muted"><i class="fa-solid fa-circle-info me-1"></i> Ao salvar, a apuração do painel é recalculada e sincronizada automaticamente.</small>
+          <button type="submit" class="btn btn-sm btn-primary px-3">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Salvar Regras de CBOs
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ===================================================================
+         MAPEAMENTO TERRITORIAL eMulti (DTIC REL_134)
+         Exibe as regras ativas de redirecionamento (ex.: Patriarca -> Chácara)
+         =================================================================== -->
+    <div class="card mt-4" id="regras-rel134">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge badge-fonte-dtic px-2 py-1"><i class="fa-solid fa-people-group me-1"></i> DTIC REL_134</span>
+            <h2 style="margin:0">Mapeamento Territorial eMulti (DTIC REL 134 ➔ {{ indicador.codigo }})</h2>
+          </div>
+          <p class="subtitulo-pagina" style="margin-top:4px;margin-bottom:0">
+            Regra territorial de produção coletiva: atividades realizadas por profissionais em <strong>unidades participantes</strong> são redirecionadas e creditadas na <strong>unidade base</strong> onde a meta eMulti está contratualizada.
+          </p>
+        </div>
+        <div class="d-flex gap-2">
+          <form method="post" action="{{ url_for('cadastros.rel134_padrao_penha') }}">
+            <input type="hidden" name="retorno_indicador_id" value="{{ indicador.id }}">
+            <button type="submit" class="btn btn-sm btn-outline-primary" onclick="return confirm('Recarregar os 10 pares territoriais oficiais da STS Penha?')">
+              <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Carregar Padrão Penha
+            </button>
+          </form>
+          <button type="button" class="btn btn-sm btn-primary" onclick="document.getElementById('painel-novo-rel134-ind').style.display = document.getElementById('painel-novo-rel134-ind').style.display === 'none' ? 'block' : 'none';">
+            <i class="fa-solid fa-plus me-1"></i> Novo Redirecionamento
+          </button>
+        </div>
+      </div>
+
+      <!-- Formulário de inclusão inline -->
+      <div id="painel-novo-rel134-ind" class="mb-3 p-3 bg-light border rounded" style="display: none;">
+        <form method="post" action="{{ url_for('cadastros.rel134_salvar') }}">
+          <input type="hidden" name="retorno_indicador_id" value="{{ indicador.id }}">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-5">
+              <label class="form-label small fw-bold mb-1">Unidade de Origem (Onde o atendimento é feito):</label>
+              <select name="unidade_origem_id" class="form-select form-select-sm" required>
+                <option value="">-- Selecione a Unidade de Origem --</option>
+                {% for e in estabelecimentos_lista %}
+                <option value="{{ e.id }}">{{ e.nome }} {% if e.cod_cnes %}(CNES: {{ e.cod_cnes }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small fw-bold mb-1">Unidade Base / Destino (Onde a meta é apurada):</label>
+              <select name="unidade_destino_id" class="form-select form-select-sm" required>
+                <option value="">-- Selecione a Unidade Base --</option>
+                {% for e in estabelecimentos_lista %}
+                <option value="{{ e.id }}">{{ e.nome }} {% if e.cod_cnes %}(CNES: {{ e.cod_cnes }}){% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-sm btn-primary w-100">Salvar Regra</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Tabela com os redirecionamentos do REL 134 -->
+      <div class="table-card" style="margin-top:10px">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40px;" class="text-center">#</th>
+              <th>Unidade de Origem (Participante)</th>
+              <th style="width: 140px;">CNES Origem</th>
+              <th style="width: 40px;" class="text-center"></th>
+              <th>Unidade Base (Destino no Contrato)</th>
+              <th style="width: 140px;">CNES Base</th>
+              <th>Observação</th>
+              <th style="width: 80px; text-align: right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in redirecionamentos_rel134 %}
+            <tr {% if 'patriarca' in r.origem_nome.lower() or 'chacara' in r.destino_nome.lower() %}style="background-color: #f0f7ff;"{% endif %}>
+              <td class="text-center text-muted small">{{ loop.index }}</td>
+              <td>
+                <strong>{{ r.origem_nome }}</strong>
+                {% if 'patriarca' in r.origem_nome.lower() %}
+                  <span class="badge bg-primary-subtle text-primary ms-1" style="font-size: 10px;">Origem</span>
+                {% endif %}
+              </td>
+              <td><code>{{ r.origem_cnes or '-' }}</code></td>
+              <td class="text-center text-primary"><i class="fa-solid fa-arrow-right"></i></td>
+              <td>
+                <strong class="text-primary">{{ r.destino_nome }}</strong>
+                {% if 'chacara' in r.destino_nome.lower() %}
+                  <span class="badge bg-success-subtle text-success ms-1" style="font-size: 10px;">Base Destino</span>
+                {% endif %}
+              </td>
+              <td><code>{{ r.destino_cnes or '-' }}</code></td>
+              <td class="text-muted small">{{ r.observacao or '-' }}</td>
+              <td style="text-align: right;">
+                <form method="post" action="{{ url_for('cadastros.rel134_excluir', id=r.id) }}" style="display:inline" onsubmit="return confirm('Excluir este redirecionamento?')">
+                  <input type="hidden" name="retorno_indicador_id" value="{{ indicador.id }}">
+                  <button type="submit" class="btn-link" style="color:var(--cor-perigo);font-size:12px">remover</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="8" style="color:var(--cor-texto-muted)">
+                Nenhum redirecionamento territorial cadastrado para o REL 134.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
 </div>
@@ -963,6 +1162,61 @@ criarBuscaEstabelecimento('vinculounidade');
 criarBuscaCbo('sg{{ sg.id }}');
 criarBuscaProcedimento('sg{{ sg.id }}');
 {% endfor %}
+// Manipulação dos cards de CBOs do REL 134
+function alternarTodosCbosRel134(marcar) {
+  document.querySelectorAll('.chk-cbo-rel134').forEach(chk => {
+    chk.checked = marcar;
+    atualizarEstiloCardCbo(chk);
+  });
+}
+
+function atualizarEstiloCardCbo(elemento) {
+  const card = elemento.closest('.card-cbo-item');
+  if (!card) return;
+  const chkTransf = card.querySelector('.chk-cbo-rel134');
+  const chkAt02 = card.querySelector('.chk-cbo-at02');
+  const badgeTransf = card.querySelector('.badge-status-cbo');
+  let badgeAt02 = card.querySelector('.badge-status-at02');
+
+  const transf = chkTransf ? chkTransf.checked : false;
+  const buscaAt02 = chkAt02 ? chkAt02.checked : false;
+
+  // Atualizar badge AT-02
+  const badgeContainer = card.querySelector('.d-flex.gap-1.align-items-center');
+  if (buscaAt02) {
+    if (!badgeAt02 && badgeContainer) {
+      badgeAt02 = document.createElement('span');
+      badgeAt02.className = 'badge bg-warning text-dark border border-warning badge-status-at02';
+      badgeAt02.style.fontSize = '9.5px';
+      badgeAt02.title = 'Produção ambulatorial buscada no AT-02';
+      badgeAt02.innerHTML = '<i class="fa-solid fa-file-invoice me-1"></i>Busca AT-02';
+      badgeContainer.insertBefore(badgeAt02, badgeTransf);
+    }
+  } else if (badgeAt02) {
+    badgeAt02.remove();
+  }
+
+  // Atualizar badge Transferência
+  if (badgeTransf) {
+    if (transf) {
+      badgeTransf.className = 'badge bg-primary text-white badge-status-cbo';
+      badgeTransf.textContent = 'Transfere p/ Base';
+    } else {
+      badgeTransf.className = 'badge bg-secondary-subtle text-secondary-emphasis badge-status-cbo';
+      badgeTransf.textContent = 'Fica na Origem';
+    }
+  }
+
+  // Estilo do card
+  card.classList.remove('border-primary', 'bg-primary-subtle', 'bg-opacity-10', 'border-warning-subtle', 'bg-warning-subtle', 'bg-opacity-15', 'border-light-subtle', 'bg-light');
+  if (transf) {
+    card.classList.add('border-primary', 'bg-primary-subtle', 'bg-opacity-10');
+  } else if (buscaAt02) {
+    card.classList.add('border-warning-subtle', 'bg-warning-subtle', 'bg-opacity-15');
+  } else {
+    card.classList.add('border-light-subtle', 'bg-light');
+  }
+}
 
 // Preservação de scroll
 (function() {
@@ -988,5 +1242,91 @@ criarBuscaProcedimento('sg{{ sg.id }}');
     }
   }
 })();
+
+function abrirModalRegraProfCadastros(vinculoId, indicadorId, subgrupoId, procCodigo, procNome, profNome, subgrupoNome) {
+  const modalEl = document.getElementById('modal-regra-prof-cadastros');
+  if (!modalEl) return;
+  document.getElementById('modal-rpc-vinculo-id').value = vinculoId;
+  document.getElementById('modal-rpc-indicador-id').value = indicadorId;
+  document.getElementById('modal-rpc-subgrupo-id').value = subgrupoId;
+  document.getElementById('modal-rpc-procedimento-codigo').value = procCodigo;
+  document.getElementById('modal-rpc-subgrupo-nome').textContent = subgrupoNome || 'Subgrupo';
+  document.getElementById('modal-rpc-proc-info').textContent = `${procCodigo} - ${procNome || 'Procedimento'}`;
+  document.getElementById('modal-rpc-nome-prof').value = profNome || '';
+
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
+async function salvarRegraProfCadastros(evt) {
+  evt.preventDefault();
+  const vinculoId = document.getElementById('modal-rpc-vinculo-id').value;
+  const indicadorId = document.getElementById('modal-rpc-indicador-id').value;
+  const subgrupoId = document.getElementById('modal-rpc-subgrupo-id').value;
+  const procCodigo = document.getElementById('modal-rpc-procedimento-codigo').value;
+  const nomeProf = (document.getElementById('modal-rpc-nome-prof').value || '').trim();
+
+  try {
+    const resp = await fetch('{{ url_for("painel.api_salvar_regra_profissional") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vinculo_id: vinculoId,
+        indicador_id: indicadorId,
+        subgrupo_id: subgrupoId,
+        procedimento_codigo: procCodigo,
+        nome_profissional: nomeProf,
+      }),
+    });
+    const res = await resp.json();
+    if (res.ok) {
+      window.location.hash = '#tab-subgrupos';
+      window.location.reload();
+    } else {
+      alert(res.erro || 'Erro ao salvar profissional.');
+    }
+  } catch (e) {
+    alert('Erro de comunicação com o servidor.');
+  }
+}
 </script>
+
+<!-- Modal de Regra de Profissional (Cadastros) -->
+<div class="modal fade" id="modal-regra-prof-cadastros" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow border-0" style="border-radius: 12px; overflow: hidden;">
+      <div class="modal-header py-2 px-3 bg-light border-bottom">
+        <h5 class="modal-title fs-6 fw-bold mb-0 text-dark">
+          <i class="fa-solid fa-user-doctor text-primary me-1"></i> Profissional Restrito do Procedimento
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <form onsubmit="salvarRegraProfCadastros(event)">
+        <div class="modal-body p-3">
+          <input type="hidden" id="modal-rpc-vinculo-id">
+          <input type="hidden" id="modal-rpc-indicador-id">
+          <input type="hidden" id="modal-rpc-subgrupo-id">
+          <input type="hidden" id="modal-rpc-procedimento-codigo">
+
+          <div class="card p-2 mb-3 bg-light border" style="font-size: 13px;">
+            <div><strong>Subgrupo:</strong> <span id="modal-rpc-subgrupo-nome">-</span></div>
+            <div><strong>Procedimento:</strong> <span id="modal-rpc-proc-info">-</span></div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-dark mb-1">Nome do Profissional Responsável:</label>
+            <input type="text" class="form-control" id="modal-rpc-nome-prof" placeholder="Ex: Ronaldo Della Monica Silva">
+            <div class="form-text small text-muted">
+              Deixe em branco para permitir a produção de qualquer profissional neste procedimento.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2 px-3 bg-light border-top">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-sm btn-primary">Salvar e Recalcular</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

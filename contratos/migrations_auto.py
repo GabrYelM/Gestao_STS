@@ -58,7 +58,7 @@ def _view_existe(conn, nome):
 #     de metas casa. O CBO individual de cada profissional continua
 #     disponível no drill-down do painel (que lê fato_apuracao/staging).
 VIEW_RESULTADOS_INDICADOR = """
-CREATE VIEW resultados_indicador AS /* v17 */
+CREATE VIEW resultados_indicador AS /* v24 */
 WITH base AS (
     SELECT
         f.*,
@@ -95,7 +95,7 @@ agr AS (
         b.cbo_agrupado,
         SUM(CASE WHEN b.tipo_registro = 'apurado'   THEN b.quantidade ELSE 0 END) AS valor_apurado,
         SUM(CASE WHEN b.tipo_registro = 'declarado' THEN b.quantidade ELSE 0 END) AS valor_declarado,
-        -- Meta GERAL / PMMB do TA mais recente que COBRE a competência.
+        -- Meta GERAL / PMMB / RT do TA mais recente que COBRE a competência.
         CASE
             WHEN b.cbo_agrupado LIKE '%_PMMB' THEN
                 (SELECT mm.valor_meta
@@ -113,6 +113,22 @@ agr AS (
                     AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
                   ORDER BY ta.periodo_inicio DESC, ta.id DESC
                   LIMIT 1)
+            WHEN b.cbo_agrupado LIKE '%_RT' THEN
+                (SELECT mm.valor_meta
+                   FROM metas mm
+                   JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                  WHERE mm.indicador_id = b.indicador_id
+                    AND mm.estabelecimento_id = b.estabelecimento_id
+                    AND mm.subgrupo_id IS b.subgrupo_id
+                    AND (
+                        mm.cbo_codigo = b.cbo_agrupado
+                        OR (mm.cbo_codigo = replace(b.cbo_agrupado, '_RT', '') AND mm.rt = 'SIM')
+                        OR (mm.cbo_codigo IS NULL AND mm.rt = 'SIM')
+                    )
+                    AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                    AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                  ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                  LIMIT 1)
             ELSE
                 COALESCE(
                     (SELECT mm.valor_meta
@@ -122,8 +138,9 @@ agr AS (
                         AND mm.estabelecimento_id = b.estabelecimento_id
                         AND mm.subgrupo_id IS b.subgrupo_id
                         AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
-                        AND mm.pmmb = 'NAO'
-                        AND mm.rt IS NULL AND mm.tipo_equipe IS NULL
+                        AND (mm.pmmb IS NULL OR mm.pmmb = 'NAO')
+                        AND (mm.rt IS NULL OR mm.rt = 'NAO')
+                        AND mm.tipo_equipe IS NULL
                         AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
                         AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
                       ORDER BY ta.periodo_inicio DESC, ta.id DESC
@@ -183,7 +200,10 @@ SELECT
     e.nome                AS estabelecimento_nome,
     a.periodo,
     a.cbo_agrupado        AS cbo_codigo,
-    COALESCE(c.nome_categoria, c_base.nome_categoria || ' PMMB', 'Médico Generalista PMMB') AS cbo_nome,
+    COALESCE(c.nome_categoria,
+             c_base_pmmb.nome_categoria || ' PMMB',
+             c_base_rt.nome_categoria || ' RT',
+             'Responsável Técnico (RT)') AS cbo_nome,
     a.valor_apurado,
     a.valor_declarado,
     COALESCE(a.meta_geral, a.meta_segmentada) AS valor_meta,
@@ -198,7 +218,8 @@ JOIN indicadores i       ON i.id = a.indicador_id
 JOIN estabelecimentos e  ON e.id = a.estabelecimento_id
 LEFT JOIN indicador_subgrupo sg ON sg.id = a.subgrupo_id
 LEFT JOIN cbo c          ON c.codigo = a.cbo_agrupado
-LEFT JOIN cbo c_base     ON c_base.codigo = replace(a.cbo_agrupado, '_PMMB', '')
+LEFT JOIN cbo c_base_pmmb ON c_base_pmmb.codigo = replace(a.cbo_agrupado, '_PMMB', '')
+LEFT JOIN cbo c_base_rt   ON c_base_rt.codigo = replace(a.cbo_agrupado, '_RT', '')
 """
 
 
@@ -775,6 +796,10 @@ def aplicar_migracoes_pendentes(conn):
         aplicou_algo = True
     if _migrar_v22(conn):
         aplicou_algo = True
+    if _migrar_v23(conn):
+        aplicou_algo = True
+    if _migrar_v24(conn):
+        aplicou_algo = True
 
     conn.commit()
     return aplicou_algo
@@ -1266,6 +1291,307 @@ def _migrar_v22(conn):
         """, (p06_id, cangaiba_id))
         if cur.rowcount > 0:
             aplicou = True
+    return aplicou
+
+
+def _migrar_v23(conn):
+    """v23: Cria a tabela regras_rel134_cbos para seleção de quais CBOs da equipe eMulti (P12 e P22)
+    são transferidos das unidades participantes para a Unidade Base territorial no DTIC REL_134.
+    Por regra de negócio, Farmacêutico (223405, 223445) e Assistente Social (251605) ficam na origem (transfere=0),
+    enquanto as demais especialidades da eMulti transferem (transfere=1). Idempotente."""
+    aplicou = False
+
+    if not _tabela_existe(conn, "regras_rel134_cbos"):
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS regras_rel134_cbos (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                cbo_codigo          TEXT NOT NULL UNIQUE,
+                transfere           INTEGER NOT NULL DEFAULT 1,
+                observacao          TEXT,
+                atualizado_em       TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_regras_rel134_cbos_cod ON regras_rel134_cbos(cbo_codigo);")
+        aplicou = True
+
+    cbos_padrao = [
+        ("223605", 1, "Fisioterapeuta Geral"),
+        ("223710", 1, "Nutricionista - Nutricionista (Saúde Pública)"),
+        ("223810", 1, "Fonoaudiólogo"),
+        ("223905", 1, "Terapeuta Ocupacional"),
+        ("224140", 1, "Profissional de Educação Física na Saúde"),
+        ("225133", 1, "Médico Psiquiatra"),
+        ("225250", 1, "Médico Ginecologista"),
+        ("251510", 1, "Psicólogo Clínico"),
+        ("223405", 0, "Farmacêutico (Permanece na Unidade de Realização)"),
+        ("223445", 0, "Farmacêutico Hospitalar e Clínico (Permanece na Unidade de Realização)"),
+        ("251605", 0, "Assistente Social (Permanece na Unidade de Realização)"),
+    ]
+
+    for cbo_cod, transfere, obs in cbos_padrao:
+        cur = conn.execute("""
+            INSERT OR IGNORE INTO regras_rel134_cbos (cbo_codigo, transfere, observacao)
+            VALUES (?, ?, ?)
+        """, (cbo_cod, transfere, obs))
+        if cur.rowcount > 0:
+            aplicou = True
+
+    if not _coluna_existe(conn, "de_para_unidades_rel134", "cbos_transferidos"):
+        conn.execute("ALTER TABLE de_para_unidades_rel134 ADD COLUMN cbos_transferidos TEXT")
+        aplicou = True
+
+    return aplicou
+
+
+def _migrar_v24(conn):
+    """v24: Suporte a linha própria de CBO para profissionais Responsáveis Técnicos (RT).
+    - Cadastra os CBOs específicos (223293_RT, 223208_RT, 223240_RT) no catálogo de CBOs.
+    - Vincula esses CBOs aos indicadores de Saúde Bucal / Odontologia (P07, P08, P17, P18, P42).
+    - Mapeia as produções do WebSaass de RT para os respectivos CBOs com sufixo _RT.
+    - Ativa segmenta_metas_rt nos indicadores P07, P08, P17, P18 e P42.
+    - Recria a view resultados_indicador (v24) para separar as linhas e casar metas segmentadas de RT.
+    Idempotente."""
+    aplicou = False
+
+    # 1. CBOs no catálogo
+    cbos_rt = [
+        ("223293_RT", "Cirurgião-Dentista da ESF RT"),
+        ("223208_RT", "Cirurgião Dentista - Clínico Geral RT"),
+        ("223240_RT", "Cirurgião Dentista - Odontopediatra RT"),
+    ]
+    for cod_cbo, nome_cbo in cbos_rt:
+        conn.execute(
+            """INSERT INTO cbo (codigo, nome_categoria) VALUES (?, ?)
+               ON CONFLICT(codigo) DO UPDATE SET nome_categoria = ?""",
+            (cod_cbo, nome_cbo, nome_cbo),
+        )
+    aplicou = True
+
+    # 2. Vínculos em indicador_cbo (P07, P08, P17, P18, P42)
+    p07 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P07' LIMIT 1").fetchone()
+    p08 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P08' LIMIT 1").fetchone()
+    p17 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P17' LIMIT 1").fetchone()
+    p18 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P18' LIMIT 1").fetchone()
+    p42 = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P42' LIMIT 1").fetchone()
+
+    for ind_row, cbos in [
+        (p07, ("223293_RT",)),
+        (p08, ("223293_RT",)),
+        (p17, ("223208_RT",)),
+        (p18, ("223208_RT",)),
+    ]:
+        if ind_row:
+            iid = ind_row[0] if isinstance(ind_row, (tuple, list)) else ind_row["id"]
+            for c in cbos:
+                conn.execute(
+                    """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                       SELECT ?, ?, 0
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                       )""",
+                    (iid, c, iid, c),
+                )
+
+    if p42:
+        iid = p42[0] if isinstance(p42, (tuple, list)) else p42["id"]
+        conn.execute(
+            """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga, subgrupo_id)
+               SELECT ?, '223240_RT', 0, 4
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = '223240_RT' AND subgrupo_id = 4
+               )""",
+            (iid, iid),
+        )
+
+    # 3. De-para do WebSaass
+    if _tabela_existe(conn, "de_para_websaass_indicador"):
+        # P07
+        if p07:
+            iid = p07[0] if isinstance(p07, (tuple, list)) else p07["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '223293_RT'
+                   WHERE indicador_id = ? AND (
+                       cod_producao IN ('1.05.19', '1.05.24', '30.01.89', '30.01.90')
+                       OR producao LIKE '%- RT%' OR producao LIKE '%(RT)%' OR producao LIKE '% RT'
+                   )""",
+                (iid,),
+            )
+        # P08
+        if p08:
+            iid = p08[0] if isinstance(p08, (tuple, list)) else p08["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '223293_RT'
+                   WHERE indicador_id = ? AND (
+                       cod_producao IN ('1.05.23', '1.05.25', '30.01.87', '30.01.88')
+                       OR producao LIKE '%- RT%' OR producao LIKE '%(RT)%' OR producao LIKE '% RT'
+                   )""",
+                (iid,),
+            )
+        # P17
+        if p17:
+            iid = p17[0] if isinstance(p17, (tuple, list)) else p17["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '223208_RT'
+                   WHERE indicador_id = ? AND (
+                       cod_producao IN ('7.60.111', '7.60.113')
+                       OR (producao LIKE '%- RT%' AND producao LIKE '%ODONTO%')
+                       OR (producao LIKE '%(RT)%' AND producao LIKE '%ODONTO%')
+                   )""",
+                (iid,),
+            )
+        # P18
+        if p18:
+            iid = p18[0] if isinstance(p18, (tuple, list)) else p18["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '223208_RT'
+                   WHERE indicador_id = ? AND (
+                       cod_producao IN ('7.60.108', '7.60.112')
+                       OR (producao LIKE '%- RT%' AND producao LIKE '%ODONTO%')
+                       OR (producao LIKE '%(RT)%' AND producao LIKE '%ODONTO%')
+                   )""",
+                (iid,),
+            )
+        # P42
+        if p42:
+            iid = p42[0] if isinstance(p42, (tuple, list)) else p42["id"]
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '223240'
+                   WHERE indicador_id = ? AND cod_producao = '9.10.06'""",
+                (iid,),
+            )
+            conn.execute(
+                """UPDATE de_para_websaass_indicador
+                   SET cbo_codigo = '223240_RT'
+                   WHERE indicador_id = ? AND (
+                       cod_producao = '9.10.23'
+                       OR producao LIKE '%- RT%' OR producao LIKE '%(RT)%' OR producao LIKE '% RT'
+                   )""",
+                (iid,),
+            )
+
+        # Garantir inserção de novas linhas de RT caso não existam no de-para
+        novas_linhas_ws = [
+            ('7.60.112', 'Nº CONSULTAS/ATENDIMENTOS ODONTO CD SEM AUXILIAR DE SAÚDE BUCAL - RT', 'UBS - UNIDADE BÁSICA DE SAÚDE', 'P18', '223208_RT', p18),
+            ('7.60.113', 'Nº TRATAMENTO INICIAL TI CLINICO/RESTAURADOR CD SEM AUXILIAR DE SAÚDE BUCAL - RT', 'UBS - UNIDADE BÁSICA DE SAÚDE', 'P17', '223208_RT', p17),
+            ('30.01.96', 'Nº CONSULTAS/ATENDIMENTOS ODONTO CD SEM AUXILIAR DE SAÚDE BUCAL', 'UBS MISTA', 'P18', '223208', p18),
+        ]
+        for cod_prod, prod_desc, serv, cod_ind, cbo_cod, ind_row in novas_linhas_ws:
+            if ind_row:
+                iid = ind_row[0] if isinstance(ind_row, (tuple, list)) else ind_row["id"]
+                conn.execute(
+                    """INSERT INTO de_para_websaass_indicador (cod_producao, producao, servico, codigo_indicador, cbo_codigo, indicador_id)
+                       SELECT ?, ?, ?, ?, ?, ?
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM de_para_websaass_indicador WHERE cod_producao = ? AND indicador_id = ?
+                       )""",
+                    (cod_prod, prod_desc, serv, cod_ind, cbo_cod, iid, cod_prod, iid),
+                )
+
+        conn.execute(
+            """UPDATE de_para_websaass_indicador
+               SET cbo_codigo = '223293'
+               WHERE cod_producao = '30.01.100'"""
+        )
+
+    # 4. Ativar segmentação nos indicadores de saúde bucal
+    conn.execute("""
+        UPDATE indicadores
+        SET segmenta_metas_rt = 1
+        WHERE codigo IN ('P07', 'P08', 'P17', 'P18', 'P42')
+    """)
+
+    # 4.1 Garantir procedimento 0301010030 (Consulta Nível Superior) em P21 e P11
+    for cod_ind in ('P21', 'P11'):
+        ind_r = conn.execute("SELECT id FROM indicadores WHERE codigo = ? LIMIT 1", (cod_ind,)).fetchone()
+        if ind_r:
+            iid = ind_r[0] if isinstance(ind_r, (tuple, list)) else ind_r["id"]
+            conn.execute(
+                """INSERT INTO indicador_procedimento (indicador_id, procedimento_codigo, tipo_vinculo)
+                   SELECT ?, '0301010030', 'inclusao'
+                   WHERE NOT EXISTS (
+                       SELECT 1 FROM indicador_procedimento
+                       WHERE indicador_id = ? AND procedimento_codigo = '0301010030'
+                   )""",
+                (iid, iid),
+            )
+
+    # 4.2 Garantir coluna buscar_at02 em regras_rel134_cbos
+    if _tabela_existe(conn, "regras_rel134_cbos"):
+        if not _coluna_existe(conn, "regras_rel134_cbos", "buscar_at02"):
+            conn.execute("ALTER TABLE regras_rel134_cbos ADD COLUMN buscar_at02 INTEGER NOT NULL DEFAULT 0")
+            conn.execute("UPDATE regras_rel134_cbos SET buscar_at02 = 1 WHERE cbo_codigo IN ('223405', '223445', '251605')")
+            aplicou = True
+
+    # 4.3 Garantir coluna destinacao_mista em estabelecimentos
+    if not _coluna_existe(conn, "estabelecimentos", "destinacao_mista"):
+        conn.execute("ALTER TABLE estabelecimentos ADD COLUMN destinacao_mista TEXT DEFAULT 'TRAD'")
+        conn.execute("UPDATE estabelecimentos SET destinacao_mista = 'TRAD' WHERE lower(nome) LIKE '%trindade%'")
+        aplicou = True
+
+    # 4.4 Garantir vínculo de Cardiologista (35.01.02) do HD Bloco Clínico no P43
+    if _tabela_existe(conn, "de_para_websaass_indicador"):
+        p43_r = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P43' LIMIT 1").fetchone()
+        if p43_r:
+            p43_id = p43_r[0] if isinstance(p43_r, (tuple, list)) else p43_r["id"]
+            conn.execute("""
+                UPDATE de_para_websaass_indicador
+                SET indicador_id = ?, codigo_indicador = 'P43', cbo_codigo = '225120', servico = 'HD BLOCO CLÍNICO'
+                WHERE cod_producao = '35.01.02'
+            """, (p43_id,))
+            conn.execute("""
+                UPDATE de_para_websaass_indicador
+                SET servico = 'HD BLOCO CLÍNICO'
+                WHERE cod_producao LIKE '35.01%'
+            """)
+
+    # 4.5 Garantir coluna nome_profissional em indicador_procedimento e regra do P44 (0211020036 / Ronaldo Della Monica Silva)
+    if _tabela_existe(conn, "indicador_procedimento"):
+        if not _coluna_existe(conn, "indicador_procedimento", "nome_profissional"):
+            conn.execute("ALTER TABLE indicador_procedimento ADD COLUMN nome_profissional TEXT NULL")
+            aplicou = True
+
+        p44_r = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P44' LIMIT 1").fetchone()
+        if p44_r:
+            p44_id = p44_r[0] if isinstance(p44_r, (tuple, list)) else p44_r["id"]
+            sg_ecg = conn.execute(
+                "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND (id = 22 OR lower(nome) LIKE '%eletrocardiograma%laudo%') LIMIT 1",
+                (p44_id,)
+            ).fetchone()
+            sg_id = sg_ecg[0] if isinstance(sg_ecg, (tuple, list)) else (sg_ecg["id"] if sg_ecg else 22)
+
+            vinc = conn.execute(
+                "SELECT id FROM indicador_procedimento WHERE indicador_id = ? AND subgrupo_id = ? AND procedimento_codigo = '0211020036'",
+                (p44_id, sg_id)
+            ).fetchone()
+            if not vinc:
+                conn.execute(
+                    """INSERT INTO indicador_procedimento (indicador_id, subgrupo_id, procedimento_codigo, tipo_vinculo, nome_profissional)
+                       VALUES (?, ?, '0211020036', 'inclusao', 'Ronaldo Della Monica Silva')""",
+                    (p44_id, sg_id)
+                )
+                aplicou = True
+            else:
+                conn.execute(
+                    """UPDATE indicador_procedimento
+                       SET nome_profissional = 'Ronaldo Della Monica Silva'
+                       WHERE indicador_id = ? AND subgrupo_id = ? AND procedimento_codigo = '0211020036' AND (nome_profissional IS NULL OR nome_profissional = '')""",
+                    (p44_id, sg_id)
+                )
+
+    # 5. Recriação da view resultados_indicador (v24)
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='view' AND name='resultados_indicador'"
+    ).fetchone()
+    if row is None or "/* v24 */" not in (row[0] or ""):
+        conn.execute("DROP VIEW IF EXISTS resultados_indicador")
+        conn.execute(VIEW_RESULTADOS_INDICADOR)
+        aplicou = True
+
     return aplicou
 
 

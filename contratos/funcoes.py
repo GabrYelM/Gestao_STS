@@ -266,6 +266,55 @@ def resolver_unidade_at57(db, nome_estabelecimento, cod_cnes=None, indicador_id=
     return None, None
 
 
+def obter_equipes_emulti_unidade(db, estabelecimento_id, indicador_id=None):
+    """
+    Retorna a lista de nomes de equipes eMulti / eMAB (tanto do AT-02 quanto do AT-61)
+    associadas à unidade informada, considerando:
+      1. Vínculos manuais em indicador_unidade_origem
+      2. Mapeamento padrão de eMulti via resolver_unidade_at57 / MAPEAMENTO_EMULTI_PADRAO
+    """
+    equipes = set()
+    # 1. Configuração manual em indicador_unidade_origem
+    sql_manual = "SELECT nome_origem FROM indicador_unidade_origem WHERE estabelecimento_id = ?"
+    params_manual = [estabelecimento_id]
+    if indicador_id:
+        sql_manual += " AND (indicador_id = ? OR indicador_id IS NULL)"
+        params_manual.append(indicador_id)
+    try:
+        for r in db.execute(sql_manual, params_manual).fetchall():
+            if r["nome_origem"]:
+                equipes.add(r["nome_origem"].strip())
+    except Exception:
+        pass
+
+    # 2. Resolução padrão por nomes presentes em staging_at02 e staging_bi_siga (AT61)
+    nomes_candidatos = set()
+    try:
+        for row in db.execute(
+            "SELECT DISTINCT nome_estabelecimento FROM staging_at02 WHERE lower(nome_estabelecimento) LIKE '%emab%' OR lower(nome_estabelecimento) LIKE '%emulti%'"
+        ).fetchall():
+            if row["nome_estabelecimento"]:
+                nomes_candidatos.add(row["nome_estabelecimento"].strip())
+    except Exception:
+        pass
+
+    try:
+        for row in db.execute(
+            "SELECT DISTINCT nome_estabelecimento FROM staging_bi_siga WHERE fonte_at = 'AT61' AND (lower(nome_estabelecimento) LIKE '%emab%' OR lower(nome_estabelecimento) LIKE '%emulti%')"
+        ).fetchall():
+            if row["nome_estabelecimento"]:
+                nomes_candidatos.add(row["nome_estabelecimento"].strip())
+    except Exception:
+        pass
+
+    for nome in nomes_candidatos:
+        eid, _ = resolver_unidade_at57(db, nome, indicador_id=indicador_id)
+        if eid == estabelecimento_id:
+            equipes.add(nome)
+
+    return sorted(list(equipes))
+
+
 def autovincular_emulti_indicador(db, indicador_id):
     """
     Popula indicador_unidade_origem para um indicador aplicando a regra do último
@@ -282,7 +331,7 @@ def autovincular_emulti_indicador(db, indicador_id):
     linhas = db.execute(
         """SELECT DISTINCT nome_estabelecimento, cod_cnes
            FROM staging_bi_siga
-           WHERE fonte_at = 'AT57'
+           WHERE fonte_at IN ('AT57', 'AT61')
              AND (lower(nome_estabelecimento) LIKE '%emulti%' OR lower(nome_estabelecimento) LIKE '%emab%')"""
     ).fetchall()
 
@@ -369,13 +418,14 @@ def _obter_codigos_equivalentes(procedimento_codigo, mapa_depara=None):
     return [str(procedimento_codigo).strip()]
 
 
-def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, categoria_estabelecimento=None, fonte_id=None, mapa_depara=None):
+def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, categoria_estabelecimento=None, fonte_id=None, mapa_depara=None, nome_profissional=None):
     if not procedimento_codigo:
         return []
     cod = str(procedimento_codigo).strip()
 
     incluidos = db.execute(
-        """SELECT ip.indicador_id, ip.subgrupo_id, ip.categoria_estabelecimento, ip.categoria_estabelecimento_neg
+        """SELECT ip.indicador_id, ip.subgrupo_id, ip.categoria_estabelecimento, ip.categoria_estabelecimento_neg,
+                  ip.nome_profissional
            FROM indicador_procedimento ip
            JOIN indicadores i ON i.id = ip.indicador_id
            WHERE ip.procedimento_codigo = ? AND ip.tipo_vinculo = 'inclusao'
@@ -396,6 +446,13 @@ def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, 
         cat_neg = (row["categoria_estabelecimento_neg"] or "").strip().lower()
         if cat_neg and cat_neg == cat_estab:
             continue
+
+        prof_req = (row["nome_profissional"] or "").strip()
+        if prof_req:
+            if not nome_profissional:
+                continue
+            if _normalizar_nome_prof(prof_req) != _normalizar_nome_prof(nome_profissional):
+                continue
 
         chave = (indicador_id, subgrupo_id)
         if chave in vistos:
@@ -426,11 +483,13 @@ def _cbo_permitido(db, indicador_id, cbo_codigo):
         cbos_teste = {cbo_codigo}
         if cbo_codigo and str(cbo_codigo).endswith("_PMMB"):
             cbos_teste.add(str(cbo_codigo).replace("_PMMB", ""))
+        if cbo_codigo and str(cbo_codigo).endswith("_RT"):
+            cbos_teste.add(str(cbo_codigo).replace("_RT", ""))
         permitido = any(v["curinga"] or v["cbo_codigo"] in cbos_teste for v in vinculos)
     if not permitido:
         return False
 
-    base_cbo = str(cbo_codigo).replace("_PMMB", "") if cbo_codigo else cbo_codigo
+    base_cbo = str(cbo_codigo).replace("_PMMB", "").replace("_RT", "") if cbo_codigo else cbo_codigo
     excluido = db.execute(
         "SELECT 1 FROM indicador_cbo_excecao WHERE indicador_id = ? AND cbo_codigo IN (?, ?)",
         (indicador_id, cbo_codigo, base_cbo),
@@ -448,6 +507,8 @@ def _cbo_permitido_subgrupo(db, indicador_id, subgrupo_id, cbo_codigo):
             cbos_teste = {cbo_codigo}
             if cbo_codigo and str(cbo_codigo).endswith("_PMMB"):
                 cbos_teste.add(str(cbo_codigo).replace("_PMMB", ""))
+            if cbo_codigo and str(cbo_codigo).endswith("_RT"):
+                cbos_teste.add(str(cbo_codigo).replace("_RT", ""))
             return any(v["curinga"] or v["cbo_codigo"] in cbos_teste for v in vinculos_subgrupo)
         # Se outros subgrupos deste indicador possuem CBOs específicos (como no P42 onde cada subgrupo representa uma especialidade),
         # um subgrupo sem vínculo próprio NÃO deve aceitar CBOs de outras especialidades ou regra geral indistintamente
@@ -593,6 +654,43 @@ def _garantir_linhas_pmmb(db, periodo_norm):
             )
 
 
+def _garantir_linhas_rt(db, periodo_norm):
+    """
+    Garante que estabelecimentos com metas segmentadas de RT (metas.rt = 'SIM')
+    ou profissionais cadastrados com RT (profissionais.rt = 1) tenham linha no painel (fato_apuracao com apurado=0)
+    caso não haja produção registrada no mês.
+    """
+    metas_rt = db.execute(
+        """SELECT DISTINCT m.estabelecimento_id, m.indicador_id, m.subgrupo_id, m.cbo_codigo
+           FROM metas m
+           WHERE m.rt = 'SIM' AND m.valor_meta IS NOT NULL"""
+    ).fetchall()
+    for row in metas_rt:
+        eid = row["estabelecimento_id"]
+        iid = row["indicador_id"]
+        sgid = row["subgrupo_id"]
+        cbo_base = row["cbo_codigo"] or ("223293" if iid in (7, 8) else ("223208" if iid in (17, 18) else "223240"))
+        cbo_rt = f"{cbo_base}_RT" if not cbo_base.endswith("_RT") else cbo_base
+        existe = db.execute(
+            """SELECT 1 FROM fato_apuracao
+               WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ?
+                 AND subgrupo_id IS ? AND cbo_codigo = ?
+               LIMIT 1""",
+            (periodo_norm, eid, iid, sgid, cbo_rt),
+        ).fetchone()
+        if not existe:
+            ind_row = db.execute("SELECT fonte_id FROM indicadores WHERE id = ?", (iid,)).fetchone()
+            fid = ind_row["fonte_id"] if ind_row and ind_row["fonte_id"] else 1
+            db.execute(
+                """INSERT INTO fato_apuracao (
+                       fonte_id, importacao_id, estabelecimento_id, profissional_id,
+                       cbo_codigo, procedimento_codigo, indicador_id, periodo,
+                       quantidade, tipo_registro, subgrupo_id
+                   ) VALUES (?, 1, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                (fid, eid, cbo_rt, iid, periodo_norm, sgid),
+            )
+
+
 def calcular_at02(db, periodo, importacao_id=None):
     """Gera fato_apuracao (tipo_registro='apurado') a partir de staging_at02."""
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='AT02'").fetchone()["id"]
@@ -631,7 +729,7 @@ def calcular_at02(db, periodo, importacao_id=None):
     mapa_depara = _carregar_mapa_depara_procedimentos(db)
 
     profs_db = db.execute(
-        """SELECT id, nome, cns, cbo_codigo, estabelecimento_id, pmmb
+        """SELECT id, nome, cns, cbo_codigo, estabelecimento_id, pmmb, rt
            FROM profissionais WHERE ativo = 1"""
     ).fetchall()
     profs_preparados = []
@@ -647,6 +745,7 @@ def calcular_at02(db, periodo, importacao_id=None):
             "cbo_codigo": (p["cbo_codigo"] or "").strip(),
             "estabelecimento_id": p["estabelecimento_id"],
             "pmmb": bool(p["pmmb"]),
+            "rt": bool(p["rt"]),
         })
 
     def _encontrar_prof(nome_stg, est_id):
@@ -709,12 +808,14 @@ def calcular_at02(db, periodo, importacao_id=None):
         prof_encontrado = _encontrar_prof(linha["nome_profissional"], estabelecimento_id)
         prof_id = prof_encontrado["id"] if prof_encontrado else None
         eh_pmmb = bool(prof_encontrado and prof_encontrado["pmmb"])
+        eh_rt = bool(prof_encontrado and prof_encontrado["rt"])
 
         candidatos = _candidatos_indicador_subgrupo(
             db, procedimento_codigo, estabelecimento_id,
             categoria_estabelecimento=_categoria_contrato(db, estabelecimento_id),
             fonte_id=fonte_id,
             mapa_depara=mapa_depara,
+            nome_profissional=linha["nome_profissional"],
         )
 
         aprovados = []
@@ -728,6 +829,15 @@ def calcular_at02(db, periodo, importacao_id=None):
                     cbo_para_teste = "225170_PMMB"
                 else:
                     cbo_para_teste = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+            elif eh_rt:
+                if indicador_id in (7, 8):
+                    cbo_para_teste = "223293_RT" if cbo_codigo == "223293" else f"{cbo_codigo}_RT"
+                elif indicador_id in (17, 18):
+                    cbo_para_teste = "223208_RT" if cbo_codigo == "223208" else f"{cbo_codigo}_RT"
+                elif indicador_id == 42 and (cbo_codigo == "223240" or subgrupo_id == 4):
+                    cbo_para_teste = "223240_RT"
+                else:
+                    cbo_para_teste = f"{cbo_codigo}_RT" if not str(cbo_codigo).endswith("_RT") else cbo_codigo
 
             if not _cbo_permitido_subgrupo(db, indicador_id, subgrupo_id, cbo_para_teste):
                 razoes_bloqueio.add("cbo")
@@ -792,6 +902,15 @@ def calcular_at02(db, periodo, importacao_id=None):
                     cbo_registro = "225170_PMMB"
                 else:
                     cbo_registro = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+            elif eh_rt:
+                if indicador_id in (7, 8):
+                    cbo_registro = "223293_RT" if cbo_codigo == "223293" else f"{cbo_codigo}_RT"
+                elif indicador_id in (17, 18):
+                    cbo_registro = "223208_RT" if cbo_codigo == "223208" else f"{cbo_codigo}_RT"
+                elif indicador_id == 42 and (cbo_codigo == "223240" or subgrupo_id == 4):
+                    cbo_registro = "223240_RT"
+                else:
+                    cbo_registro = f"{cbo_codigo}_RT" if not str(cbo_codigo).endswith("_RT") else cbo_codigo
 
             # Regra P43: Neuro (225112) e Pneumo (225127) quando CMES != CNES é lançado como Infantil
             if indicador_id == 43 and cbo_codigo in ("225112", "225127"):
@@ -829,6 +948,7 @@ def calcular_at02(db, periodo, importacao_id=None):
 
     _garantir_linhas_subgrupos(db, periodo_norm)
     _garantir_linhas_pmmb(db, periodo_norm)
+    _garantir_linhas_rt(db, periodo_norm)
     db.commit()
     return {
         "total_linhas": total,
@@ -983,10 +1103,11 @@ def calcular_webssas(db, periodo, importacao_id=None):
                      AND (
                          ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?)
                          OR (? LIKE '%_PMMB' AND (cbo_codigo = replace(?, '_PMMB', '') AND pmmb = 'SIM'))
+                         OR (? LIKE '%_RT' AND (cbo_codigo = replace(?, '_RT', '') AND rt = 'SIM'))
                      )
                      AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
-                     AND rt IS NULL AND tipo_equipe IS NULL""",
-                (ta_id, estab_id, indicador_id, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, subgrupo_id, subgrupo_id),
+                     AND tipo_equipe IS NULL""",
+                (ta_id, estab_id, indicador_id, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, subgrupo_id, subgrupo_id),
             ).fetchone()
             if meta_existente:
                 if meta_existente["valor_meta"] != float(qtde_prevista):
@@ -994,10 +1115,11 @@ def calcular_webssas(db, periodo, importacao_id=None):
                     metas_sincronizadas += 1
             else:
                 pmmb_val = "SIM" if (cbo_codigo and str(cbo_codigo).endswith("_PMMB")) else None
+                rt_val = "SIM" if (cbo_codigo and str(cbo_codigo).endswith("_RT")) else None
                 db.execute(
-                    """INSERT INTO metas (ta_id, estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, pmmb, valor_meta)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (ta_id, estab_id, indicador_id, subgrupo_id, cbo_codigo, pmmb_val, float(qtde_prevista)),
+                    """INSERT INTO metas (ta_id, estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, pmmb, rt, valor_meta)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (ta_id, estab_id, indicador_id, subgrupo_id, cbo_codigo, pmmb_val, rt_val, float(qtde_prevista)),
                 )
                 metas_sincronizadas += 1
 
@@ -1352,8 +1474,6 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         return True, "251605"
                     if "enfermeiro" in norm:
                         return True, "223505"
-                    if norm.startswith("medico") or "medico" in norm:
-                        return True, None
                     return False, None
 
                 for r in linhas:
@@ -1364,7 +1484,7 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
 
                     valido, cbo_cod = _resolver_cbo_at40(r["cbo_nome"])
-                    if estab_id and valido and qty > 0:
+                    if estab_id and valido and cbo_cod and qty > 0:
                         db.execute(
                             """INSERT INTO fato_apuracao (
                                    fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
@@ -1375,7 +1495,7 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
 
                 # Garante linha com quantidade=0 para estabelecimentos e CBOs com meta no período sem produção
                 metas_rows = db.execute(
-                    "SELECT DISTINCT m.estabelecimento_id, m.cbo_codigo FROM metas m WHERE m.indicador_id = ?", (ind["id"],)
+                    "SELECT DISTINCT m.estabelecimento_id, m.cbo_codigo FROM metas m WHERE m.indicador_id = ? AND m.cbo_codigo IS NOT NULL", (ind["id"],)
                 ).fetchall()
                 for mr in metas_rows:
                     eid = mr["estabelecimento_id"]
@@ -1546,6 +1666,28 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                     (periodo_norm, ind_p21["id"]),
                 )
 
+            # Carregar CBOs autorizados a transferir territorialmente para a Unidade Base (eMulti)
+            # CBOs com transfere = 0 (por padrão Farmacêutico e Assistente Social) permanecem no local de realização
+            cbos_transferem = obter_cbos_transferencia_rel134(db)
+
+            # Garantir os CBOs de eMulti em indicador_cbo para P11 e P21
+            emulti_cbos = (
+                "251605", "223405", "223445", "223605", "223710",
+                "223810", "223905", "224140", "225133", "225250", "251510"
+            )
+            for ind_item in (ind_p11, ind_p21):
+                if ind_item:
+                    iid = ind_item["id"]
+                    for cbo in emulti_cbos:
+                        db.execute(
+                            """INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga)
+                               SELECT ?, ?, 0
+                               WHERE NOT EXISTS (
+                                   SELECT 1 FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo = ?
+                               )""",
+                            (iid, cbo, iid, cbo),
+                        )
+
             linhas = db.execute(
                 """SELECT cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome,
                           sum(quantidade) as total, max(importacao_id) as imp_id
@@ -1562,40 +1704,82 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                 if qty <= 0:
                     continue
 
-                nome_origem_low = (r["nome_estabelecimento"] or "").lower()
+                nome_origem = (r["nome_estabelecimento"] or "").strip()
+                nome_origem_low = nome_origem.lower()
                 if any(t in nome_origem_low for t in termos_nao_ubs):
                     continue
 
-                # 1. Verifica vínculo em indicador_unidade_origem
-                estab_id = None
+                cbo_cod = _resolver_cbo(db, None, r["cbo_nome"])
+                deve_transferir = bool(
+                    cbo_cod and (cbo_cod in cbos_transferem or any(str(cbo_cod).startswith(c) for c in cbos_transferem))
+                )
+
+                # 1. Unidade Base territorial (identificada pelo CNES da sede da equipe eMulti)
+                cnes_clean = str(r["cod_cnes"] or "").strip().lstrip("0")
+                estab_base = db.execute(
+                    """SELECT id, nome FROM estabelecimentos
+                       WHERE ltrim(cod_cnes, '0') = ?
+                         AND (upper(nome) LIKE 'UBS%' OR upper(nome) LIKE 'AMA/UBS%')
+                       ORDER BY id LIMIT 1""",
+                    (cnes_clean,),
+                ).fetchone()
+                if estab_base:
+                    unidade_base_id = estab_base["id"]
+                else:
+                    unidade_base_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+
+                # Determinar indicador de contrato da equipe eMulti (P11 ou P21) pela sede territorial
+                equipe_ind_obj = None
+                if unidade_base_id:
+                    c11 = db.execute("SELECT count(*) as c FROM metas WHERE estabelecimento_id = ? AND indicador_id = ?", (unidade_base_id, ind_p11["id"] if ind_p11 else 0)).fetchone()["c"]
+                    c21 = db.execute("SELECT count(*) as c FROM metas WHERE estabelecimento_id = ? AND indicador_id = ?", (unidade_base_id, ind_p21["id"] if ind_p21 else 0)).fetchone()["c"]
+                    if c11 > c21:
+                        equipe_ind_obj = ind_p11
+                    elif c21 > c11:
+                        equipe_ind_obj = ind_p21
+
+                # 2. Unidade de Realização (onde o profissional efetivamente atendeu)
+                unidade_realizou_id = None
                 ind_escolhido = None
+
+                # 2.1 Verifica vínculo explícito em indicador_unidade_origem
                 for ind_cand in (ind_p11, ind_p21):
                     if not ind_cand:
                         continue
                     v_row = db.execute(
                         """SELECT uo.estabelecimento_id FROM indicador_unidade_origem uo
                            WHERE uo.indicador_id = ? AND lower(trim(uo.nome_origem)) = lower(trim(?))""",
-                        (ind_cand["id"], r["nome_estabelecimento"]),
+                        (ind_cand["id"], nome_origem),
                     ).fetchone()
                     if v_row:
-                        estab_id = v_row["estabelecimento_id"]
+                        unidade_realizou_id = v_row["estabelecimento_id"]
                         ind_escolhido = ind_cand
                         break
 
-                # 2. Resolução da unidade base pelo CNES da equipe eMulti
-                if not estab_id:
-                    cnes_clean = str(r["cod_cnes"] or "").strip().lstrip("0")
-                    estab_base = db.execute(
-                        """SELECT id, nome FROM estabelecimentos
-                           WHERE ltrim(cod_cnes, '0') = ?
-                             AND (upper(nome) LIKE 'UBS%' OR upper(nome) LIKE 'AMA/UBS%')
-                           ORDER BY id LIMIT 1""",
-                        (cnes_clean,),
-                    ).fetchone()
-                    if estab_base:
-                        estab_id = estab_base["id"]
-                    else:
-                        estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cod_cnes"])
+                # 2.2 Se equipe volante com nome composto (ex: 'Emulti Granada/Trindade')
+                if not unidade_realizou_id and "/" in nome_origem:
+                    partes = nome_origem.split("/")
+                    ultimo = partes[-1].strip().lower()
+                    for pref in ["inativo - emab ", "inativo -  emab ", "inativo - emulti ", "emulti ", "emab "]:
+                        if ultimo.startswith(pref):
+                            ultimo = ultimo[len(pref):].strip()
+                            break
+                    for termo, eid in MAPEAMENTO_EMULTI_PADRAO:
+                        if termo in ultimo:
+                            unidade_realizou_id = eid
+                            break
+
+                # 2.3 Se equipe simples (sem barra), a unidade que realizou é a própria base
+                if not unidade_realizou_id:
+                    unidade_realizou_id = unidade_base_id
+
+                # Aplicação da regra de transferência territorial por CBO:
+                # - Se o CBO transfere (Fisio, Fono, Nutri, Psico, Psiquiatra, etc.): credita na Unidade Base
+                # - Se o CBO não transfere (Farmacêutico e Assistente Social): credita na Unidade de Realização
+                if deve_transferir and unidade_base_id:
+                    estab_id = unidade_base_id
+                else:
+                    estab_id = unidade_realizou_id or unidade_base_id
 
                 if not estab_id:
                     continue
@@ -1612,14 +1796,34 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                 if not is_ubs:
                     continue
 
+                # 3. Definição inteligente do Indicador (P11 ou P21)
                 if not ind_escolhido:
-                    is_esf = any("ESF" in s for s in servicos)
-                    ind_escolhido = ind_p11 if is_esf else ind_p21
+                    meta_11 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?", (estab_id, ind_p11["id"] if ind_p11 else 0, cbo_cod)).fetchone() if ind_p11 else None
+                    meta_21 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?", (estab_id, ind_p21["id"] if ind_p21 else 0, cbo_cod)).fetchone() if ind_p21 else None
+
+                    if meta_11 and not meta_21:
+                        ind_escolhido = ind_p11
+                    elif meta_21 and not meta_11:
+                        ind_escolhido = ind_p21
+                    elif meta_11 and meta_21:
+                        e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                        dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+                        ind_escolhido = ind_p11 if dest_m == "ESF" else ind_p21
+                    else:
+                        if equipe_ind_obj:
+                            ind_escolhido = equipe_ind_obj
+                        else:
+                            e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                            dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+                            is_esf = any("ESF" in s for s in servicos)
+                            if is_esf and "MISTA" in servicos:
+                                ind_escolhido = ind_p11 if dest_m == "ESF" else ind_p21
+                            else:
+                                ind_escolhido = ind_p11 if is_esf else ind_p21
 
                 if not ind_escolhido:
                     continue
 
-                cbo_cod = _resolver_cbo(db, None, r["cbo_nome"])
                 proc_cod = (r["procedimento_codigo"] or "").rstrip("A").strip()
                 if proc_cod:
                     _garantir_procedimento(db, proc_cod, r["procedimento_nome"])
@@ -1631,6 +1835,139 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                     (fonte_id, r["imp_id"], estab_id, cbo_cod, proc_cod or None, ind_escolhido["id"], periodo_norm, qty),
                 )
                 vinculadas += 1
+
+            # Para os indicadores eMulti (P21 e P11), buscar a produção dos CBOs configurados
+            # para busca direta no AT-02 (definidos dinamicamente em regras_rel134_cbos.buscar_at02,
+            # como Assistente Social e Farmacêutico), já que no AT-61 apenas as equipes volantes
+            # são trazidas e as UBSs locais registram sua produção ambulatorial no AT-02.
+            cbos_at02_alvo = obter_cbos_buscar_at02(db)
+            if cbos_at02_alvo:
+                has_at02 = db.execute("SELECT 1 FROM staging_at02 WHERE ano_mes = ? LIMIT 1", (periodo_norm,)).fetchone()
+                if has_at02:
+                    fonte_at02_row = db.execute("SELECT id FROM fontes_dados WHERE nome='AT02'").fetchone()
+                    fonte_at02_id = fonte_at02_row["id"] if fonte_at02_row else fonte_id
+
+                    for ind_alvo in (ind_p21, ind_p11):
+                        if not ind_alvo:
+                            continue
+
+                        placeholders_cbos_at02 = ",".join("?" * len(cbos_at02_alvo))
+
+                        # Remove apuração prévia desses CBOs para o indicador neste período para substituir pelo AT-02 oficial
+                        db.execute(
+                            f"""DELETE FROM fato_apuracao
+                               WHERE periodo = ? AND indicador_id = ? AND cbo_codigo IN ({placeholders_cbos_at02})
+                                 AND tipo_registro = 'apurado'""",
+                            [periodo_norm, ind_alvo["id"], *cbos_at02_alvo],
+                        )
+
+                        procs_ind_rows = db.execute(
+                            "SELECT procedimento_codigo FROM indicador_procedimento WHERE indicador_id = ?",
+                            (ind_alvo["id"],)
+                        ).fetchall()
+                        procs_validos = {r["procedimento_codigo"] for r in procs_ind_rows if r["procedimento_codigo"]}
+                        procs_validos.add("0301010030")
+
+                        estabs_alvo = db.execute(
+                            f"""SELECT DISTINCT e.id, e.nome, e.cod_cnes, e.destinacao_mista
+                               FROM metas m
+                               JOIN estabelecimentos e ON e.id = m.estabelecimento_id
+                               WHERE m.indicador_id = ? AND m.cbo_codigo IN ({placeholders_cbos_at02})""",
+                            [ind_alvo["id"], *cbos_at02_alvo],
+                        ).fetchall()
+
+                        placeholders_procs = ",".join("?" * len(procs_validos))
+                        for est in estabs_alvo:
+                            cnes_limpo = str(est["cod_cnes"] or "").strip().lstrip("0")
+                            cnes_lista = [cnes_limpo] if cnes_limpo else []
+                            for r_alt in db.execute(
+                                "SELECT cnes_alternativo FROM indicador_estabelecimento_cnes_alternativo WHERE indicador_id = ? AND estabelecimento_id = ?",
+                                (ind_alvo["id"], est["id"]),
+                            ).fetchall():
+                                ca = str(r_alt["cnes_alternativo"] or "").strip().lstrip("0")
+                                if ca and ca not in cnes_lista:
+                                    cnes_lista.append(ca)
+
+                            equipes_emulti = obter_equipes_emulti_unidade(db, est["id"], indicador_id=ind_alvo["id"])
+
+                            clausula_estab = []
+                            params_estab = []
+                            if cnes_lista:
+                                placeholders_cnes = ",".join("?" * len(cnes_lista))
+                                clausula_estab.append(f"(ltrim(s.cod_cnes, '0') IN ({placeholders_cnes}) AND lower(s.nome_estabelecimento) NOT LIKE '%emab%' AND lower(s.nome_estabelecimento) NOT LIKE '%emulti%')")
+                                params_estab.extend(cnes_lista)
+
+                            if equipes_emulti:
+                                placeholders_eq = ",".join("?" * len(equipes_emulti))
+                                clausula_estab.append(f"s.nome_estabelecimento IN ({placeholders_eq})")
+                                params_estab.extend(equipes_emulti)
+
+                            if not clausula_estab:
+                                continue
+
+                            condicao_estab = " OR ".join(clausula_estab)
+
+                            query_at02 = f"""
+                                SELECT s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento,
+                                       sum(s.quantidade) as total, max(s.importacao_id) as imp_id
+                                FROM staging_at02 s
+                                WHERE s.ano_mes = ?
+                                  AND ({condicao_estab})
+                                  AND s.cod_cbo_sus IN ({placeholders_cbos_at02})
+                                  AND s.cod_procedimento IN ({placeholders_procs})
+                                  AND lower(s.nome_estabelecimento) NOT LIKE '%caps%'
+                                  AND lower(s.nome_estabelecimento) NOT LIKE '%cnr%'
+                                  AND lower(s.nome_estabelecimento) NOT LIKE '%cecco%'
+                                GROUP BY s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento
+                            """
+                            params_at02 = [periodo_norm, *params_estab, *cbos_at02_alvo, *procs_validos]
+                            rows_at02 = db.execute(query_at02, params_at02).fetchall()
+
+                            for r_at02 in rows_at02:
+                                qtd_at02 = int(r_at02["total"] or 0)
+                                if qtd_at02 <= 0:
+                                    continue
+
+                                cbo_at02 = r_at02["cod_cbo_sus"]
+                                dest_m = (est["destinacao_mista"] or "TRAD").upper()
+
+                                # Se a unidade possui metas em ambos P11 e P21 para este CBO,
+                                # desempata conforme destinacao_mista (TRAD ou ESF) para não duplicar produção
+                                if ind_p21 and ind_p11:
+                                    if ind_alvo["id"] == ind_p11["id"]:
+                                        tem_meta_p21 = db.execute(
+                                            "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?",
+                                            (est["id"], ind_p21["id"], cbo_at02)
+                                        ).fetchone()
+                                        if tem_meta_p21 and dest_m == "TRAD":
+                                            continue
+                                    elif ind_alvo["id"] == ind_p21["id"]:
+                                        tem_meta_p11 = db.execute(
+                                            "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?",
+                                            (est["id"], ind_p11["id"], cbo_at02)
+                                        ).fetchone()
+                                        if tem_meta_p11 and dest_m == "ESF":
+                                            continue
+
+                                proc_c = (r_at02["cod_procedimento"] or "").strip()
+                                if proc_c:
+                                    _garantir_procedimento(db, proc_c, r_at02["nome_procedimento"])
+                                db.execute(
+                                    """INSERT INTO fato_apuracao (
+                                           fonte_id, importacao_id, estabelecimento_id, cbo_codigo, procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
+                                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'apurado')""",
+                                    (
+                                        fonte_at02_id,
+                                        r_at02["imp_id"] or 1,
+                                        est["id"],
+                                        r_at02["cod_cbo_sus"],
+                                        proc_c or None,
+                                        ind_alvo["id"],
+                                        periodo_norm,
+                                        qtd_at02,
+                                    ),
+                                )
+                                vinculadas += 1
 
             # Garante linha com quantidade=0 para estabelecimentos com meta no período sem produção
             for ind_item in (ind_p11, ind_p21):
@@ -1719,6 +2056,37 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
     return resumos.get(fonte_at, {"total_linhas": 0, "linhas_vinculadas": 0}) if fonte_at else resumos
 
 
+def obter_cbos_transferencia_rel134(db):
+    """
+    Retorna o conjunto de códigos CBO autorizados a transferir produção
+    territorial para a Unidade Base no relatório DTIC REL_134 (P12 e P22).
+    CBOs com transfere = 0 (como Farmacêutico e Assistente Social)
+    permanecem na própria unidade de realização e não são transferidos.
+    """
+    try:
+        rows = db.execute("SELECT cbo_codigo FROM regras_rel134_cbos WHERE transfere = 1").fetchall()
+        if rows:
+            return {str(r["cbo_codigo"]).strip() for r in rows if r["cbo_codigo"]}
+    except Exception:
+        pass
+    return {"223605", "223710", "223810", "223905", "224140", "225133", "225250", "251510"}
+
+
+def obter_cbos_buscar_at02(db):
+    """
+    Retorna o conjunto de códigos CBO configurados para buscar produção ambulatorial
+    diretamente no AT-02 (por exemplo, Farmacêutico e Assistente Social nas UBSs tradicionais
+    onde o AT-61 traz apenas equipes volantes cadastradas).
+    """
+    try:
+        rows = db.execute("SELECT cbo_codigo FROM regras_rel134_cbos WHERE buscar_at02 = 1").fetchall()
+        if rows:
+            return {str(r["cbo_codigo"]).strip() for r in rows if r["cbo_codigo"]}
+    except Exception:
+        pass
+    return {"223405", "223445", "251605"}
+
+
 def calcular_dtic_rel134(db, periodo, importacao_id=None):
     """
     Gera fato_apuracao para P12 (ESF) e P22 (TRAD) Atividades Coletivas eMulti
@@ -1759,6 +2127,9 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
                        )""",
                     (iid, cbo, iid, cbo),
                 )
+
+    # Carregar CBOs configurados para transferência territorial
+    cbos_transferem = obter_cbos_transferencia_rel134(db)
 
     # Carregar redirecionamentos específicos do REL 134
     redirecionamentos = {}
@@ -1802,15 +2173,17 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
         if not cbo_cod:
             continue
 
-        # Para Farmacêutico (2234) e Assistente Social (2516), a relação com a unidade base NÃO deve ser considerada
         if cbo_cod.startswith("2234"):
-            destino_id = origem_id
             cbo_cod = "223405"
         elif cbo_cod.startswith("2516"):
-            destino_id = origem_id
             cbo_cod = "251605"
-        else:
+
+        # Verifica se este CBO deve ser transferido para a base ou permanecer na unidade de realização
+        deve_transferir = (cbo_cod in cbos_transferem) or any(cbo_cod.startswith(c) for c in cbos_transferem)
+        if deve_transferir:
             destino_id = redirecionamentos.get(origem_id, origem_id)
+        else:
+            destino_id = origem_id
 
         chave = (destino_id, cbo_cod)
         if chave not in producao_agrupada:
@@ -1829,22 +2202,27 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
             max_imp_geral = dados["imp_id"]
 
         # Determinar se vai para P12 ou P22
-        tem_meta_12 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 12", (destino_id,)).fetchone()
-        tem_meta_22 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 22", (destino_id,)).fetchone()
-        if tem_meta_12 and not tem_meta_22:
+        tem_meta_cbo_12 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 12 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone()
+        tem_meta_cbo_22 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 22 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone()
+
+        e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (destino_id,)).fetchone()
+        dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+
+        if tem_meta_cbo_12 and not tem_meta_cbo_22:
             indicador_id = ind_p12["id"] if ind_p12 else 12
-        elif tem_meta_22 and not tem_meta_12:
+        elif tem_meta_cbo_22 and not tem_meta_cbo_12:
             indicador_id = ind_p22["id"] if ind_p22 else 22
+        elif tem_meta_cbo_12 and tem_meta_cbo_22:
+            indicador_id = (ind_p12["id"] if ind_p12 else 12) if dest_m == "ESF" else (ind_p22["id"] if ind_p22 else 22)
         else:
-            if db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 12 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone():
-                indicador_id = ind_p12["id"] if ind_p12 else 12
-            elif db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 22 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone():
-                indicador_id = ind_p22["id"] if ind_p22 else 22
+            servicos = [s[0].upper() for s in db.execute(
+                "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (destino_id,)
+            ).fetchall()]
+            is_esf = any("ESF" in s for s in servicos)
+            if is_esf and "MISTA" in servicos:
+                indicador_id = (ind_p12["id"] if ind_p12 else 12) if dest_m == "ESF" else (ind_p22["id"] if ind_p22 else 22)
             else:
-                servicos = [s[0].upper() for s in db.execute(
-                    "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (destino_id,)
-                ).fetchall()]
-                indicador_id = ind_p12["id"] if "ESF" in servicos else (ind_p22["id"] if ind_p22 else (ind_p12["id"] if ind_p12 else 12))
+                indicador_id = (ind_p12["id"] if ind_p12 else 12) if is_esf else (ind_p22["id"] if ind_p22 else (ind_p12["id"] if ind_p12 else 12))
 
         db.execute(
             """INSERT INTO fato_apuracao (
@@ -2022,14 +2400,17 @@ def calcular_sisad(db, periodo, importacao_id=None):
     ind_p32 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P32' LIMIT 1").fetchone()
     ind_p34 = db.execute("SELECT id FROM indicadores WHERE codigo = 'P34' LIMIT 1").fetchone()
 
+    import unicodedata
+
+    def _norm_u(s):
+        return "".join(c for c in unicodedata.normalize("NFD", str(s).upper()) if unicodedata.category(c) != "Mn").strip()
+
     # Mapeamento oficial de unidades SISAD para estabelecimentos
     mapa_unidades = {
         "EMAD GRANADA": 65,  # UBS Vila Granada-Alfredo F Paulino Filho
-        "EMAD UBS CANGAÍBA": 21,  # Ama/Ubs Integrada Cangaiba - Dr. Carlos Gentile De Mello
-        "EMAD UBS CANGAIBA": 21,
+        "EMAD UBS CANGAIBA": 21,  # Ama/Ubs Integrada Cangaiba - Dr. Carlos Gentile De Mello
         "EMAD UBS INTEGRAL TALARICO/MARINGA": 52,  # Ubs Jardim Maringa - Vila Talarico
-        "EMAD UBS SÃO NICOLAU": 59,  # Ubs Jardim Sao Nicolau
-        "EMAD UBS SAO NICOLAU": 59,
+        "EMAD UBS SAO NICOLAU": 59,  # Ubs Jardim Sao Nicolau
     }
 
     # Estabelecimento da EMAP (UBS Jardim Maringá)
@@ -2093,7 +2474,7 @@ def calcular_sisad(db, periodo, importacao_id=None):
     todas_emad_nomes = set(list(ativos_esq.keys()) + list(obitos_dir.keys()) + list(desosp_verm.keys()))
 
     for u_nome in todas_emad_nomes:
-        estab_id = mapa_unidades.get(u_nome)
+        estab_id = mapa_unidades.get(_norm_u(u_nome))
         if not estab_id:
             estab_id = _resolver_estabelecimento_por_nome(db, u_nome)
         if not estab_id:

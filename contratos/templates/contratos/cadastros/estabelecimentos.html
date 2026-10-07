@@ -46,6 +46,11 @@
       <option value="{{ c.nome }}">{{ c.nome }}</option>
       {% endfor %}
     </select>
+    <label>Destinação Mista (quando UBS Mista)</label>
+    <select name="destinacao_mista">
+      <option value="TRAD" selected>TRAD (Tradicional)</option>
+      <option value="ESF">ESF (Estratégia Saúde Família)</option>
+    </select>
     <button type="button" class="btn-link" onclick="alternarPainel('painel-nova-categoria')" style="margin-left:8px">+ nova categoria</button>
     <label style="display:flex;align-items:center;gap:6px;text-transform:none;font-weight:500"
            title="Nunca agrupar este cadastro por CNES na consolidação (ver Portaria/TA)">
@@ -98,6 +103,12 @@
     <option value="{{ c.nome }}">{{ c.nome }}</option>
     {% endfor %}
   </select>
+  <label>Destinação Mista (unidades mistas)</label>
+  <select name="bulk_destinacao_mista">
+    <option value="">-- não alterar --</option>
+    <option value="TRAD">TRAD (Tradicional)</option>
+    <option value="ESF">ESF (Estratégia Saúde Família)</option>
+  </select>
   <button type="submit" class="btn-secondary">Aplicar aos selecionados</button>
   <button type="submit" formaction="{{ url_for('cadastros.bulk_excluir_estabelecimentos') }}" formnovalidate
           onclick="return confirm('Excluir todos os estabelecimentos marcados? Essa ação não pode ser desfeita.')"
@@ -113,6 +124,7 @@
       <th><input type="checkbox" class="chk-todos" title="Marcar todas as linhas visíveis"></th>
       <th data-filtro>Nome</th><th data-filtro>CNES</th><th data-filtro>CMES</th><th data-filtro>Tipo(s) de serviço</th>
       <th data-filtro>Complexidade</th><th data-filtro>Categoria contrato</th>
+      <th data-filtro title="Para UBS Mistas, define se a produção de CBOs concorrentes (ex: Farmacêutico, Assistente Social) deve ser contabilizada como Tradicional (TRAD) ou ESF">Destinação Mista</th>
       <th data-filtro title="Exceção manual da consolidação por CNES: este cadastro sempre fica individual (por CMES)">Só CMES</th>
       <th data-filtro title="O que acontece com este cadastro quando a consolidação é por CNES (Portaria/TA)">Consolidação por CNES</th><th></th>
     </tr>
@@ -134,6 +146,17 @@
           {% endfor %}
         </select>
       </td>
+      <td style="min-width:140px">
+        {% set eh_mista = 'MISTA' in (e.tipos_servico or '').upper() %}
+        <select name="destinacao_mista" form="form-editar-{{ e.id }}"
+                style="width:100%;font-weight:600;{% if eh_mista %}border:1.5px solid #0284c7;background:#f0f9ff;{% endif %}color:{% if (e.destinacao_mista or 'TRAD') == 'ESF' %}#0d6efd{% else %}#16a34a{% endif %}">
+          <option value="TRAD" {% if (e.destinacao_mista or 'TRAD') == 'TRAD' %}selected{% endif %}>TRAD (Tradicional)</option>
+          <option value="ESF" {% if (e.destinacao_mista or 'TRAD') == 'ESF' %}selected{% endif %}>ESF (Saúde Família)</option>
+        </select>
+        {% if eh_mista %}
+          <div style="font-size:10px;color:#0284c7;font-weight:bold;margin-top:2px;">★ UBS MISTA</div>
+        {% endif %}
+      </td>
       <td style="text-align:center">
         <input type="checkbox" name="exige_cmes" value="1" form="form-editar-{{ e.id }}" style="width:auto" {% if e.exige_cmes %}checked{% endif %}>
       </td>
@@ -143,7 +166,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="10">Nenhum estabelecimento cadastrado.</td></tr>
+    <tr><td colspan="11">Nenhum estabelecimento cadastrado.</td></tr>
     {% endfor %}
   </tbody>
 </table>

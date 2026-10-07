@@ -976,10 +976,27 @@ def importar_sisad(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
     batch = []
     with abrir_binario_arquivo_ou_zip(caminho_arquivo, extensao_preferida=".xlsx") as f:
         wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
-        ws = wb[wb.sheetnames[0]]
+        # Procura a aba correta que possui as colunas do SISAD (evita abas de tabelas dinâmicas/resumos)
+        ws = None
+        cabecalho = None
+        for sname in wb.sheetnames:
+            cand = wb[sname]
+            first_row = next(cand.iter_rows(values_only=True, max_row=1), None)
+            if first_row:
+                cand_cab = [str(c).strip() if c else "" for c in first_row]
+                if "Unidade" in cand_cab and any("Admissao" in c for c in cand_cab):
+                    ws = cand
+                    cabecalho = cand_cab
+                    break
 
-        linhas_iter = ws.iter_rows(values_only=True)
-        cabecalho = [str(c).strip() if c else "" for c in next(linhas_iter)]
+        if ws is None:
+            ws = wb[wb.sheetnames[0]]
+            linhas_iter = ws.iter_rows(values_only=True)
+            cabecalho = [str(c).strip() if c else "" for c in next(linhas_iter)]
+        else:
+            linhas_iter = ws.iter_rows(values_only=True)
+            next(linhas_iter)  # Pula cabeçalho
+
         indices = {col: cabecalho.index(col) for col in _SISAD_COLUNAS if col in cabecalho}
 
         for linha in linhas_iter:

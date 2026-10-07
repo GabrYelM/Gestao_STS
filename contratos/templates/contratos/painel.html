@@ -63,6 +63,10 @@
     <div class="stat-valor">{{ alertas.sem_meta_linhas }}</div>
     <div class="stat-rotulo">📋 Sem Meta (Acompanhamento)</div>
   </div>
+  <div class="stat-card tom-info card-stat-obs" role="button" tabindex="0" onclick="filtrarPorObservacoes()" title="Clique para filtrar apenas linhas com anotações/observações">
+    <div class="stat-valor qtd-obs-valor">0</div>
+    <div class="stat-rotulo">💬 Linhas com Observações</div>
+  </div>
   <div class="stat-card tom-destaque" role="button" tabindex="0" onclick="limparFiltrosColuna()" title="Clique para limpar filtros e ver toda a produção">
     <div class="stat-valor">{{ "{:,}".format(alertas.total_apurado_geral).replace(",", ".") }}</div>
     <div class="stat-rotulo">📈 Total Apurado STS (Procedimentos)</div>
@@ -83,33 +87,29 @@
 
 <!-- CARDS MODO AUDITORIA (Comparação com Declarado Websaass) -->
 <div class="highlights cards-auditoria" style="display:none">
-  <div class="stat-card tom-sucesso" role="button" tabindex="0" onclick="abrirDetalheAlerta('auditoria_conformes', 'Conformes na Auditoria Websaass (Apurado = Declarado)')">
+  <div class="stat-card tom-sucesso card-stat-aud-conforme" role="button" tabindex="0" onclick="filtrarPorAuditoria('conforme')" title="Clique para filtrar apenas linhas conformes na auditoria Websaass (Apurado = Declarado)">
     <div class="stat-valor">{{ alertas.auditoria_conformes }}</div>
-    <div class="stat-rotulo">Conformes (Auditoria Websaass)</div>
+    <div class="stat-rotulo">✅ Conformes (Auditoria Websaass)</div>
   </div>
-  <div class="stat-card tom-perigo" role="button" tabindex="0" onclick="abrirDetalheAlerta('auditoria_divergentes', 'Divergentes na Auditoria Websaass (Apurado ≠ Declarado)')">
+  <div class="stat-card tom-perigo card-stat-aud-divergente" role="button" tabindex="0" onclick="filtrarPorAuditoria('divergente')" title="Clique para filtrar apenas linhas divergentes na auditoria Websaass (Apurado ≠ Declarado)">
     <div class="stat-valor">{{ alertas.auditoria_divergentes }}</div>
-    <div class="stat-rotulo">Divergentes (Auditoria Websaass)</div>
+    <div class="stat-rotulo">⚠️ Divergentes (Auditoria Websaass)</div>
   </div>
-  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_cbo', 'Indicadores sem CBO vinculado')">
-    <div class="stat-valor">{{ alertas.sem_cbo }}</div>
-    <div class="stat-rotulo">Indicadores sem CBO vinculado</div>
+  <div class="stat-card tom-info card-stat-obs" role="button" tabindex="0" onclick="filtrarPorObservacoes()" title="Clique para filtrar apenas linhas com anotações/observações">
+    <div class="stat-valor qtd-obs-valor">0</div>
+    <div class="stat-rotulo">💬 Linhas com Observações</div>
   </div>
-  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_estabelecimento', 'Indicadores sem estabelecimento vinculado')">
-    <div class="stat-valor">{{ alertas.sem_estabelecimento }}</div>
-    <div class="stat-rotulo">Indicadores sem estabelecimento vinculado</div>
+  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="filtrarPorStatusMeta('Sem meta')" title="Clique para filtrar indicadores de acompanhamento">
+    <div class="stat-valor">{{ alertas.sem_meta_linhas }}</div>
+    <div class="stat-rotulo">📋 Sem Meta (Acompanhamento)</div>
   </div>
-  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_procedimento', 'Indicadores sem procedimentos vinculados')">
-    <div class="stat-valor">{{ alertas.sem_procedimento }}</div>
-    <div class="stat-rotulo">Indicadores sem procedimentos vinculados</div>
-  </div>
-  <div class="stat-card tom-aviso" role="button" tabindex="0" onclick="abrirDetalheAlerta('sem_meta', 'Indicadores sem meta registrada')">
-    <div class="stat-valor">{{ alertas.sem_meta }}</div>
-    <div class="stat-rotulo">Indicadores sem meta registrada</div>
-  </div>
-  <div class="stat-card tom-perigo" role="button" tabindex="0" onclick="abrirDetalheAlerta('abaixo_da_meta', 'Indicadores abaixo da meta')">
+  <div class="stat-card tom-perigo" role="button" tabindex="0" onclick="filtrarPorStatusMeta('Abaixo de 90%')" title="Clique para filtrar indicadores abaixo da meta">
     <div class="stat-valor">{{ alertas.abaixo_da_meta }}</div>
-    <div class="stat-rotulo">Indicadores abaixo da meta</div>
+    <div class="stat-rotulo">⚠️ Indicadores abaixo da meta</div>
+  </div>
+  <div class="stat-card tom-destaque" role="button" tabindex="0" onclick="limparFiltrosColuna()" title="Clique para limpar filtros e ver toda a produção">
+    <div class="stat-valor">{{ "{:,}".format(alertas.total_apurado_geral).replace(",", ".") }}</div>
+    <div class="stat-rotulo">📈 Total Apurado STS (Procedimentos)</div>
   </div>
   {% if alertas.metas_sem_painel %}
   <a class="stat-card tom-aviso" style="text-decoration:none" href="{{ url_for('cadastros.administracao', aba='logs') }}#diagnostico-metas"
@@ -137,7 +137,301 @@
   </div>
 </div>
 
+<!-- Modal de Vínculo com Linhas do WebSaass -->
+<div class="modal fade" id="modal-vinculo-websaass" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2 px-3 bg-light border-bottom">
+        <div>
+          <h5 class="modal-title fs-6 fw-bold mb-0 text-dark">
+            <i class="bi bi-link-45deg text-primary me-1"></i> Configurar Vínculos com Linhas do WebSaass (Auditoria)
+          </h5>
+          <div class="small text-muted" id="modal-ws-subtitulo">
+            Gerencie o de/para entre o indicador contratual e as produções do WebSaass.
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+
+      <div class="modal-body p-3">
+        <!-- Barra de Contexto do Indicador -->
+        <div class="card p-2 mb-3 bg-light border">
+          <div class="row g-2 align-items-center">
+            <div class="col-md-5">
+              <label class="form-label small fw-bold text-muted mb-1">Indicador Contratual:</label>
+              <select class="form-select form-select-sm" id="modal-ws-select-indicador" onchange="aoMudarIndicadorModalWs()">
+                <!-- Preenchido dinamicamente -->
+              </select>
+            </div>
+            <div class="col-md-4" id="modal-ws-wrap-subgrupo" style="display:none">
+              <label class="form-label small fw-bold text-muted mb-1">Subgrupo:</label>
+              <select class="form-select form-select-sm" id="modal-ws-select-subgrupo" onchange="aoMudarSubgrupoModalWs()">
+                <option value="">(Nenhum / Geral)</option>
+              </select>
+            </div>
+            <div class="col-md-3" id="modal-ws-wrap-cbo" style="display:none">
+              <label class="form-label small fw-bold text-muted mb-1">Especialidade / CBO:</label>
+              <select class="form-select form-select-sm" id="modal-ws-select-cbo" onchange="aoMudarCboModalWs()">
+                <option value="">(Curinga / Geral)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seção 1: Linhas Atualmente Vinculadas -->
+        <div class="card mb-3 border">
+          <div class="card-header py-2 px-3 bg-white border-bottom d-flex align-items-center justify-content-between">
+            <span class="fw-bold small text-dark">
+              <i class="bi bi-check2-circle text-success me-1"></i> Linhas do WebSaass Vinculadas a este Indicador (<span id="modal-ws-cont-vinculadas">0</span>)
+            </span>
+            <span class="badge bg-light text-dark border small" id="modal-ws-total-qtd-vinculadas">Total na Competência: 0</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 200px;">
+              <table class="table table-sm table-hover mb-0" style="font-size: 12px;" id="modal-ws-tabela-vinculadas">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th style="width: 120px;">Cód. Produção</th>
+                    <th>Descrição da Produção (WebSaass)</th>
+                    <th>Serviço</th>
+                    <th style="width: 130px; text-align: right;">Qtd Competência</th>
+                    <th style="width: 110px; text-align: center;">Ação</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-ws-tbody-vinculadas">
+                  <tr><td colspan="5" class="text-center text-muted py-3">Carregando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seção 2: Catálogo do WebSaass (Vincular Linhas / Múltipla Seleção) -->
+        <div class="card border">
+          <div class="card-header py-2 px-3 bg-white border-bottom">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <span class="fw-bold small text-dark">
+                <i class="bi bi-search text-primary me-1"></i> Catálogo do WebSaass (Selecione para Vincular)
+              </span>
+              <button type="button" class="btn btn-primary btn-sm fw-semibold" id="modal-ws-btn-vincular-selecionadas" disabled onclick="aoClicarVincularSelecionadasWs()">
+                <i class="bi bi-link-45deg me-1"></i> Vincular Selecionadas (<span id="modal-ws-num-selecionadas">0</span>)
+              </button>
+            </div>
+
+            <!-- Filtros do Catálogo -->
+            <div class="row g-2 align-items-center mt-1">
+              <div class="col-md-6">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+                  <input type="text" class="form-control" id="modal-ws-filtro-busca" placeholder="Buscar por código, nome ou serviço (ex: M30, CD, prótese, 35.01)..." oninput="filtrarCatalogoWs()">
+                  <button class="btn btn-outline-secondary" type="button" onclick="limparBuscaCatalogoWs()"><i class="bi bi-x"></i></button>
+                </div>
+              </div>
+              <div class="col-md-6 d-flex align-items-center gap-1 justify-content-end flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-secondary active btn-filtro-tipo-ws" data-tipo="todos" onclick="alternarFiltroTipoWs('todos', this)">
+                  Todas (<span id="modal-ws-tot-todas">0</span>)
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-warning btn-filtro-tipo-ws" data-tipo="livres" onclick="alternarFiltroTipoWs('livres', this)">
+                  ⚠️ Não Vinculadas (<span id="modal-ws-tot-livres">0</span>)
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary btn-filtro-tipo-ws" data-tipo="outros" onclick="alternarFiltroTipoWs('outros', this)">
+                  Vinculadas a Outros (<span id="modal-ws-tot-outros">0</span>)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 270px;">
+              <table class="table table-sm table-hover align-middle mb-0" style="font-size: 12px;" id="modal-ws-tabela-catalogo">
+                <thead class="table-light sticky-top">
+                  <tr>
+                    <th style="width: 36px; text-align: center;">
+                      <input type="checkbox" class="form-check-input" id="modal-ws-chk-todos" onchange="aoMarcarTodosCatalogoWs(this)">
+                    </th>
+                    <th style="width: 120px;">Cód. Produção</th>
+                    <th>Descrição da Produção (WebSaass)</th>
+                    <th>Serviço</th>
+                    <th style="width: 120px; text-align: right;">Qtd Competência</th>
+                    <th style="width: 180px;">Status Atual</th>
+                    <th style="width: 100px; text-align: center;">Ação</th>
+                  </tr>
+                </thead>
+                <tbody id="modal-ws-tbody-catalogo">
+                  <tr><td colspan="7" class="text-center text-muted py-3">Carregando catálogo...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Rodapé do Card com Formulário Manual Opcional -->
+          <div class="card-footer bg-light py-2 px-3 border-top">
+            <details>
+              <summary class="small fw-semibold text-primary" style="cursor:pointer;">
+                <i class="bi bi-plus-circle me-1"></i> Linha nova não listada? Cadastrar manualmente código e nome da nova versão do WebSaass
+              </summary>
+              <form class="row g-2 mt-2 align-items-end" onsubmit="aoCadastrarLinhaManualWs(event)">
+                <div class="col-md-2">
+                  <label class="form-label small mb-1 fw-bold">Cód. Produção</label>
+                  <input type="text" class="form-control form-control-sm" id="modal-ws-novo-cod" placeholder="ex: 36.07.09" required>
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label small mb-1 fw-bold">Descrição da Produção (WebSaass)</label>
+                  <input type="text" class="form-control form-control-sm" id="modal-ws-novo-nome" placeholder="ex: M30 - UBS TRADICIONAL - TI PRÓTESE..." required>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small mb-1 fw-bold">Serviço (Opcional)</label>
+                  <input type="text" class="form-control form-control-sm" id="modal-ws-novo-servico" placeholder="ex: UBS - UNIDADE BÁSICA DE SAÚDE">
+                </div>
+                <div class="col-md-2">
+                  <button type="submit" class="btn btn-success btn-sm w-100 fw-semibold">
+                    <i class="bi bi-plus me-1"></i> Adicionar
+                  </button>
+                </div>
+              </form>
+            </details>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer py-2 px-3 bg-light border-top">
+        <span class="small text-muted me-auto" id="modal-ws-status-msg"></span>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal de Configuração / Troca de Profissional da Regra -->
+<div class="modal fade" id="modal-regra-profissional" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow border-0" style="border-radius: 12px; overflow: hidden;">
+      <div class="modal-header py-2 px-3 bg-light border-bottom">
+        <div>
+          <h5 class="modal-title fs-6 fw-bold mb-0 text-dark">
+            <i class="bi bi-person-fill-gear text-primary me-1"></i> Configurar Profissional da Regra
+          </h5>
+          <div class="small text-muted" id="modal-rp-subtitulo">
+            Defina o profissional cuja produção será contabilizada neste exame/subgrupo.
+          </div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+
+      <div class="modal-body p-3">
+        <!-- Detalhes do Procedimento / Indicador -->
+        <div class="card p-2 mb-3 bg-light border" style="font-size: 13px;">
+          <div class="row g-1">
+            <div class="col-12">
+              <span class="text-muted fw-semibold">Indicador / Subgrupo:</span>
+              <span class="fw-bold text-dark ms-1" id="modal-rp-indicador-subgrupo">-</span>
+            </div>
+            <div class="col-12">
+              <span class="text-muted fw-semibold">Procedimento:</span>
+              <span class="fw-bold text-primary ms-1" id="modal-rp-procedimento">-</span>
+            </div>
+            <div class="col-12 mt-1" id="modal-rp-wrap-atual">
+              <span class="text-muted fw-semibold">Profissional Atualmente Atribuído:</span>
+              <div class="mt-1">
+                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-6" id="modal-rp-prof-atual">
+                  -
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seletor do Novo Profissional -->
+        <form id="form-modal-regra-profissional" onsubmit="salvarModalRegraProfissional(event)">
+          <input type="hidden" id="modal-rp-indicador-id">
+          <input type="hidden" id="modal-rp-subgrupo-id">
+          <input type="hidden" id="modal-rp-estabelecimento-id">
+          <input type="hidden" id="modal-rp-procedimento-codigo">
+          <input type="hidden" id="modal-rp-periodo">
+          <input type="hidden" id="modal-rp-vinculo-id">
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-dark mb-1">
+              Selecione o Profissional Responsável:
+            </label>
+            <select class="form-select" id="modal-rp-select-profissional" onchange="aoMudarSelectProfissionalModal(this)">
+              <option value="">Carregando profissionais...</option>
+            </select>
+            <div class="form-text small text-muted" id="modal-rp-ajuda-candidatos">
+              Exibindo médicos e profissionais que registraram este procedimento no AT-02 da unidade.
+            </div>
+          </div>
+
+          <div class="mb-3" id="modal-rp-wrap-outro" style="display:none;">
+            <label class="form-label small fw-bold text-dark mb-1">
+              Ou digite o nome completo do profissional:
+            </label>
+            <input type="text" class="form-control form-control-sm" id="modal-rp-input-custom-nome" placeholder="Ex: Ronaldo Della Monica Silva">
+          </div>
+
+          <div class="alert alert-info py-2 px-3 small mb-0" style="font-size: 12px;">
+            <i class="bi bi-info-circle me-1"></i>
+            Ao salvar, a regra será gravada no cadastro do procedimento e a apuração da competência será <strong>recalculada automaticamente</strong>.
+          </div>
+
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-sm btn-primary" id="modal-rp-btn-salvar">
+              <span class="spinner-border spinner-border-sm me-1" id="modal-rp-spinner" style="display:none;" role="status"></span>
+              <i class="bi bi-check2 me-1" id="modal-rp-icone-salvar"></i> Salvar e Recalcular
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 <style>
+  .btn-regra-prof {
+    background: transparent;
+    border: 1px solid #bfdbfe;
+    color: #2563eb;
+    padding: 1px 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    transition: all .15s ease;
+  }
+  .btn-regra-prof:hover {
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+  }
+  .regra-prof-banner {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  .btn-editar-ws {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    padding: 1px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    transition: all .15s ease;
+    opacity: 0.6;
+  }
+  .linha-resumo:hover .btn-editar-ws, .btn-editar-ws:hover {
+    color: #2563eb;
+    background: #eff6ff;
+    opacity: 1;
+  }
+  .celula-websaass {
+    min-width: 90px;
+  }
   .stat-card[role="button"] { cursor: pointer; transition: box-shadow .15s ease, transform .1s ease; }
   .stat-card[role="button"]:hover { box-shadow: 0 2px 8px rgba(16,24,40,.12); transform: translateY(-1px); }
   .contratos-container .stat-card.tom-sucesso { border-left-color: var(--cor-sucesso); background: #f0fdf4; }
@@ -146,6 +440,12 @@
   .contratos-container .stat-card.tom-info .stat-valor { color: #1d4ed8; }
   .contratos-container .stat-card.tom-destaque { border-left-color: #0891b2; background: #f0fdfa; }
   .contratos-container .stat-card.tom-destaque .stat-valor { color: #0e7490; }
+
+  .stat-card.filtro-card-ativo {
+    outline: 2.5px solid #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25) !important;
+    transform: translateY(-2px);
+  }
 
   /* Seletor de Modo no Topo */
   .seletor-modos-painel {
@@ -271,6 +571,9 @@ async function abrirDetalheAlerta(tipo, titulo) {
   <button type="button" class="btn btn-outline-secondary btn-sm" onclick="limparFiltrosColuna()">
     <i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros da tabela
   </button>
+  <button type="button" class="btn btn-outline-primary btn-sm fw-semibold" onclick="abrirModalVinculoWebsaassGeral()" title="Configurar de/para e vínculos de linhas do WebSaass">
+    <i class="bi bi-link-45deg me-1"></i> Vínculos WebSaass
+  </button>
   <span class="toolbar-texto small text-muted ms-2" title="A consolidação por CNES é definida por indicador (Administração > Indicadores). Nos indicadores marcados, o Painel mostra só o estabelecimento principal do CNES e soma os demais CMES do mesmo CNES.">
     <i class="bi bi-info-circle me-1"></i> Consolidação por CNES: {{ qtd_indicadores_cnes }} indicador(es)
   </span>
@@ -378,11 +681,16 @@ async function abrirDetalheAlerta(tipo, titulo) {
     {% for r in resultados %}
     <tr class="linha-resumo" data-indicador-id="{{ r.indicador_id }}" data-estabelecimento-id="{{ r.estabelecimento_id }}"
         data-estabelecimento-ids="{{ r.estabelecimento_ids | join(',') }}" data-subgrupo-id="{{ r.subgrupo_id or '' }}"
-        data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}" data-status-meta="{{ r.status_rotulo }}">
+        data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}" data-status-meta="{{ r.status_rotulo }}"
+        data-auditoria-rotulo="{{ r.auditoria_rotulo or '' }}"
+        data-auditoria-tipo="{% if r.auditoria_rotulo == 'Conforme (OK)' %}conforme{% elif r.auditoria_rotulo and r.auditoria_rotulo != 'Sem produção' %}divergente{% else %}sem_producao{% endif %}">
       <td style="text-align: center; white-space: nowrap;">
         <div style="display: inline-flex; align-items: center; gap: 4px;">
           <button type="button" class="btn-expandir" onclick="alternarLinha(this)" title="Ver procedimentos e profissionais">+</button>
           <button type="button" class="btn-obs" onclick="alternarObservacao(this)" title="Adicionar / ver observação desta linha"><i class="fa-regular fa-comment-dots"></i></button>
+          {% if r.indicador_codigo == 'P44' and r.subgrupo_id == 22 %}
+            <button type="button" class="btn-regra-prof" onclick="abrirModalRegraProfissional(this)" title="Configurar profissional responsável pelo laudo (Regra: Ronaldo Della Monica Silva)"><i class="bi bi-person-gear"></i></button>
+          {% endif %}
         </div>
       </td>
       <td>
@@ -392,15 +700,27 @@ async function abrirDetalheAlerta(tipo, titulo) {
           {% else %}
             {{ r.indicador_codigo }} - {{ r.indicador_nome }}{% if r.subgrupo_nome %} · Subgrupo: {{ r.subgrupo_nome }}{% endif %}
           {% endif %}
+          {% if r.indicador_codigo == 'P44' and r.subgrupo_id == 22 %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle ms-1 badge-regra-prof" style="cursor:pointer; font-size:11px;" onclick="abrirModalRegraProfissional(this)" title="Clique para trocar o profissional vinculado a este laudo">
+              <i class="bi bi-person-check me-1"></i>Ronaldo Della Monica Silva <i class="bi bi-pencil ms-1" style="font-size:10px;"></i>
+            </span>
+          {% endif %}
         </div>
         <div class="celula-indicador-secundaria">{{ r.indicador_tipo }}{% if r.complexidade %} · {{ r.complexidade }}{% endif %}{% if r.servico %} · {{ r.servico }}{% endif %}</div>
         {% if r.fonte_dados %}<div class="celula-indicador-secundaria" title="Fonte de dados oficial (Portaria)">📊 {{ r.fonte_dados }}</div>{% endif %}
       </td>
-      <td>{{ r.estabelecimento_nome }}{% if r.grupo_cnes %} · CNES {{ r.grupo_cnes }} ({{ r.qtd_cmes }} CMES){% endif %}</td>
+      <td class="celula-estabelecimento">{{ r.estabelecimento_nome }}{% if r.grupo_cnes %} · CNES {{ r.grupo_cnes }} ({{ r.qtd_cmes }} CMES){% endif %}</td>
       <td>{{ (r.cbo_codigo + ' - ' + r.cbo_nome) if r.cbo_codigo else 'Curinga / Geral' }}</td>
       <td>{{ r.periodo }}</td>
       <td><strong>{{ "{:,}".format(r.valor_apurado).replace(",", ".") }}</strong></td>
-      <td class="col-auditoria">{{ "{:,}".format(r.valor_declarado).replace(",", ".") if r.valor_declarado is not none else "-" }}</td>
+      <td class="col-auditoria celula-websaass">
+        <div class="d-flex align-items-center justify-content-between gap-1 w-100">
+          <span class="val-declarado-texto">{{ "{:,}".format(r.valor_declarado).replace(",", ".") if r.valor_declarado is not none else "-" }}</span>
+          <button type="button" class="btn-editar-ws" onclick="abrirModalVinculoWebsaass(this)" title="Configurar vínculos com linhas do WebSaass">
+            <i class="bi bi-link-45deg"></i>
+          </button>
+        </div>
+      </td>
       <td class="col-auditoria">
         {% if r.divergencia == 0 %}
           <span style="color:var(--cor-sucesso);font-weight:600">0</span>
@@ -520,6 +840,7 @@ async function abrirDetalheAlerta(tipo, titulo) {
   }
   .celula-indicador-principal { font-weight: 500; font-size: 12px; line-height: 1.25; word-break: break-word; }
   .celula-indicador-secundaria { font-size: 10.5px; color: var(--cor-texto-sutil); margin-top: 1px; line-height: 1.2; word-break: break-word; }
+  .celula-estabelecimento { font-size: 11.5px; font-weight: normal; color: #334155; line-height: 1.25; word-break: break-word; }
 
   /* Autofiltro estilo Excel moderno */
   .header-excel-container {
@@ -847,22 +1168,73 @@ function chaveLinha(tr) {
 }
 
 function montarHtmlTabelaProfissionais(dados, idPrefixo) {
-  if (dados.profissionais.length === 0) {
+  if (!dados.profissionais || dados.profissionais.length === 0) {
     return '<p style="font-size:12px;color:var(--cor-texto-muted);margin:0">Nenhum profissional encontrado (ou a linha é de uma fonte sem detalhe por profissional, como o Webssas).</p>';
   }
-  let html = '<table><thead><tr><th></th><th>Profissional</th><th>CBO</th><th>Apurado STS</th></tr></thead><tbody>';
+  if (Array.isArray(dados.profissionais)) {
+    dados.profissionais.sort((a, b) => {
+      const nomeA = (a.nome_profissional || a.nome || '').trim();
+      const nomeB = (b.nome_profissional || b.nome || '').trim();
+      return nomeA.localeCompare(nomeB, 'pt-BR', { sensitivity: 'base' });
+    });
+  }
+
+  const temOrigem = dados.profissionais.some(p => p.origem_rotulo);
+  const thOrigem = temOrigem ? '<th style="text-align:left; min-width:180px;">Origem da Produção</th>' : '';
+  const colspanDetalhe = temOrigem ? 4 : 3;
+
+  let bannerRegraHtml = '';
+  if (dados.regra_profissional || dados.subgrupo_id == 22) {
+    const profNome = (dados.regra_profissional && dados.regra_profissional.nome_profissional) || 'Ronaldo Della Monica Silva';
+    const procCod = (dados.regra_profissional && dados.regra_profissional.procedimento_codigo) || '0211020036';
+    const procNome = (dados.regra_profissional && dados.regra_profissional.procedimento_nome) || 'Eletrocardiograma';
+    bannerRegraHtml = `
+      <div class="regra-prof-banner p-2 mb-2 d-flex justify-content-between align-items-center">
+        <div>
+          <i class="bi bi-person-check-fill text-primary me-1"></i>
+          <strong>Regra Ativa:</strong> Contabilizando exclusivamente o profissional <strong>${profNome}</strong> para o procedimento <code>${procCod}</code> (${procNome}).
+        </div>
+        <button type="button" class="btn btn-sm btn-primary py-0 px-2 ms-2" style="font-size:11px; white-space:nowrap;" onclick="abrirModalRegraProfissionalDoDrilldown(this)">
+          <i class="bi bi-person-gear me-1"></i> Trocar Profissional
+        </button>
+      </div>
+    `;
+  }
+
+  let html = `${bannerRegraHtml}<table><thead><tr><th></th><th>Profissional / Equipe</th><th>CBO</th>${thOrigem}<th>Apurado STS</th></tr></thead><tbody>`;
   dados.profissionais.forEach((p, i) => {
     const idLinha = idPrefixo + '-prof-' + i;
     const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+
+    let tdOrigem = '';
+    if (temOrigem) {
+      let badgeHtml = '';
+      if (p.is_transferido) {
+        badgeHtml = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-arrow-right-circle-fill"></i> ${p.origem_rotulo}</span>`;
+      } else if (p.origem_rotulo && (p.origem_rotulo.startsWith('eMulti:') || p.origem_rotulo.toLowerCase().includes('emulti') || p.origem_rotulo.toLowerCase().includes('emab'))) {
+        badgeHtml = `<span class="badge" style="background:#f3e8ff; color:#6b21a8; border:1px solid #e9d5ff; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-people-fill"></i> ${p.origem_rotulo}</span>`;
+      } else if (p.origem_rotulo && p.origem_rotulo.startsWith('UBS:')) {
+        badgeHtml = `<span class="badge" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-house-door-fill"></i> ${p.origem_rotulo}</span>`;
+      } else if (p.origem_rotulo && p.origem_rotulo.includes('AT-02')) {
+        badgeHtml = `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-search"></i> ${p.origem_rotulo}</span>`;
+      } else if (p.origem_rotulo) {
+        badgeHtml = `<span class="badge" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; font-weight:500; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-house-door"></i> ${p.origem_rotulo}</span>`;
+      } else {
+        badgeHtml = '<span style="color:var(--cor-texto-muted); font-size:11px;">-</span>';
+      }
+      tdOrigem = `<td style="padding:6px 10px;">${badgeHtml}</td>`;
+    }
+
     html += `<tr>
-      <td><button type="button" class="btn-expandir" onclick="alternarProfissional(this, '${encodeURIComponent(p.nome_profissional)}', '${encodeURIComponent(p.cbo_codigo || '')}')" title="Ver detalhes">+</button></td>
+      <td><button type="button" class="btn-expandir" onclick="alternarProfissional(this, '${encodeURIComponent(p.nome_profissional)}', '${encodeURIComponent(p.cbo_codigo || '')}', '${encodeURIComponent(p.nome_estabelecimento || '')}')" title="Ver detalhes">+</button></td>
       <td><strong>${p.nome_profissional}</strong></td>
       <td>${p.cbo_codigo ? (p.cbo_nome ? p.cbo_codigo + ' - ' + p.cbo_nome : p.cbo_codigo) : ''}</td>
+      ${tdOrigem}
       <td class="col-apurado-prof"><strong>${qtdFormatada}</strong></td>
     </tr>
     <tr class="linha-detalhe-profissional" id="${idLinha}" style="display:none">
       <td></td>
-      <td colspan="3" class="conteudo-detalhe-profissional"><em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em></td>
+      <td colspan="${colspanDetalhe}" class="conteudo-detalhe-profissional"><em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em></td>
     </tr>`;
   });
   html += '</tbody></table>';
@@ -1020,7 +1392,12 @@ function montarHtmlLinhaDetalhe(dados, idPrefixo) {
       const rotuloProfs = qtdProfs === 1 ? '1 profissional' : `${qtdProfs} profissionais`;
 
       let linhasProfHtml = '';
-      (p.profissionais || []).forEach(prof => {
+      const profsProc = [...(p.profissionais || [])].sort((a, b) => {
+        const nomeA = (a.profissional || a.nome_profissional || a.nome || '').trim();
+        const nomeB = (b.profissional || b.nome_profissional || b.nome || '').trim();
+        return nomeA.localeCompare(nomeB, 'pt-BR', { sensitivity: 'base' });
+      });
+      profsProc.forEach(prof => {
         linhasProfHtml += `
           <tr style="border-bottom:1px solid #f8fafc;">
             <td style="padding:5px 10px;"><strong>${prof.profissional}</strong></td>
@@ -1152,10 +1529,17 @@ function atualizarLinhaResumoNoDom(trResumo, linha) {
   // 1. Apurado STS
   tds[5].innerHTML = `<strong>${formatarNumeroPtBr(linha.valor_apurado || 0)}</strong>`;
 
-  // 2. Declarado
-  tds[6].textContent = linha.valor_declarado !== null && linha.valor_declarado !== undefined
+  // 2. Declarado WebSaass
+  const valDec = linha.valor_declarado !== null && linha.valor_declarado !== undefined
     ? formatarNumeroPtBr(linha.valor_declarado)
     : '-';
+  tds[6].innerHTML = `
+    <div class="d-flex align-items-center justify-content-between gap-1 w-100">
+      <span class="val-declarado-texto">${valDec}</span>
+      <button type="button" class="btn-editar-ws" onclick="abrirModalVinculoWebsaass(this)" title="Configurar vínculos com linhas do WebSaass">
+        <i class="bi bi-link-45deg"></i>
+      </button>
+    </div>`;
 
   // 3. Divergência
   const div = linha.divergencia;
@@ -1192,8 +1576,16 @@ function atualizarLinhaResumoNoDom(trResumo, linha) {
   // 6. Atualiza o status da meta no atributo data da linha
   trResumo.dataset.statusMeta = linha.status_rotulo || '';
 
-  // 7. Badge Auditoria WebSaass
+  // 7. Badge Auditoria WebSaass e datasets para filtro
   tds[10].innerHTML = `<span class="badge ${linha.auditoria_classe || ''}">${linha.auditoria_rotulo || '-'}</span>`;
+  trResumo.dataset.auditoriaRotulo = linha.auditoria_rotulo || '';
+  if (linha.auditoria_rotulo === 'Conforme (OK)') {
+    trResumo.dataset.auditoriaTipo = 'conforme';
+  } else if (linha.auditoria_rotulo && linha.auditoria_rotulo !== 'Sem produção') {
+    trResumo.dataset.auditoriaTipo = 'divergente';
+  } else {
+    trResumo.dataset.auditoriaTipo = 'sem_producao';
+  }
 
   // Efeito suave de destaque na linha pai recalculada
   trResumo.style.transition = 'background-color 0.4s ease';
@@ -1216,19 +1608,23 @@ function montarHtmlProcedimentos(dados, contexto) {
                '</div>';
     html += '<table style="width:100%; border-collapse:collapse; margin-top:4px;">' +
             '<thead><tr style="background:#f8fafc; border-bottom:1px solid #e2e8f0;">' +
-            '<th style="text-align:left; padding:6px 10px;">Unidade de Realização</th>' +
-            '<th style="text-align:left; padding:6px 10px;">Tipo de Atividade</th>' +
-            '<th style="text-align:right; width:150px; padding:6px 10px;">Nº de Participantes</th>' +
-            '<th style="text-align:right; width:130px; padding:6px 10px;">Qtd Atividades</th>' +
+            '<th style="text-align:left; padding:6px 10px; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Unidade de Realização</th>' +
+            '<th style="text-align:left; padding:6px 10px; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Tipo de Atividade</th>' +
+            '<th style="text-align:right; width:150px; padding:6px 10px; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Nº de Participantes</th>' +
+            '<th style="text-align:right; width:130px; padding:6px 10px; font-size:11px; text-transform:uppercase; color:#64748b; font-weight:600;">Qtd Atividades</th>' +
             '</tr></thead><tbody>';
     atividades.forEach(a => {
       const qtdFormatada = Number(a.apurado || 0).toLocaleString('pt-BR');
       const partFormatada = Number(a.num_participantes || 0).toLocaleString('pt-BR');
+      let badgeTransferido = '';
+      if (a.is_transferido) {
+        badgeTransferido = ' <span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-size:10px; margin-left:6px;"><i class="bi bi-arrow-right-circle-fill" style="margin-right:3px;"></i>Transferido p/ Base</span>';
+      }
       html += `<tr style="border-bottom:1px solid #f1f5f9;">
-        <td style="padding:6px 10px;"><strong>${a.nome_unidade || '-'}</strong></td>
-        <td style="padding:6px 10px;">${a.tipo_atividade || 'Atividade Coletiva'}</td>
-        <td style="text-align:right; padding:6px 10px; color:#334155; font-weight:600;"><span class="badge" style="background:#f1f5f9; color:#0f172a; font-size:11px; border:1px solid #e2e8f0;">👥 ${partFormatada}</span></td>
-        <td style="text-align:right; padding:6px 10px;"><strong style="color:var(--cor-sucesso,#15803d); font-size:12.5px;">${qtdFormatada}</strong></td>
+        <td style="padding:5px 10px; font-size:11px; color:#334155; font-weight:normal; line-height:1.25;">${a.nome_unidade || '-'}${badgeTransferido}</td>
+        <td style="padding:5px 10px; font-size:11.5px; color:#475569;">${a.tipo_atividade || 'Atividade Coletiva'}</td>
+        <td style="text-align:right; padding:5px 10px; color:#334155; font-weight:600;"><span class="badge" style="background:#f1f5f9; color:#0f172a; font-size:11px; border:1px solid #e2e8f0;">👥 ${partFormatada}</span></td>
+        <td style="text-align:right; padding:5px 10px;"><strong style="color:var(--cor-sucesso,#15803d); font-size:12px;">${qtdFormatada}</strong></td>
       </tr>`;
     });
     html += '</tbody></table>';
@@ -1429,7 +1825,7 @@ async function aplicarAcaoProcedimento(tipo, codigo, nome, btn) {
       if (trResumo) {
         cacheDetalhe.delete(chaveLinha(trResumo));
       }
-      const chaveProf = [indicadorId, estabelecimentoIds, subgrupoId, cboCodigo, periodo, profissional, cboProfissional].join('|');
+      const chaveProf = [indicadorId, estabelecimentoIds, subgrupoId, cboCodigo, periodo, profissional, cboProfissional, contexto.estabelecimentoOrigem || ''].join('|');
       cacheProfissional.delete(chaveProf);
 
       // 2. Atualiza os dados da linha-resumo pai no DOM
@@ -1447,6 +1843,7 @@ async function aplicarAcaoProcedimento(tipo, codigo, nome, btn) {
           periodo: periodo,
           profissional: profissional,
           cbo_profissional: cboProfissional,
+          estabelecimento_origem: contexto.estabelecimentoOrigem || '',
         });
         const respProf = await fetch('{{ url_for("painel.profissional_detalhe") }}?' + params.toString());
         const dadosProf = await respProf.json();
@@ -1625,6 +2022,10 @@ function salvarObservacaoLinha(textarea) {
     localStorage.removeItem(chave);
     atualizarEstadoVisualBotaoObs(btnObs, false);
   }
+  atualizarContadorObservacoes();
+  if (filtroObservacoesAtivo) {
+    aplicarFiltrosColuna();
+  }
 
   if (statusEl) {
     statusEl.textContent = 'Salvando...';
@@ -1653,6 +2054,7 @@ function inicializarObservacoes() {
       atualizarEstadoVisualBotaoObs(btnObs, false);
     }
   });
+  atualizarContadorObservacoes();
 }
 
 async function alternarLinha(botao) {
@@ -1687,7 +2089,7 @@ async function alternarLinha(botao) {
   }
 }
 
-async function alternarProfissional(botao, profissionalCodificado, cboProfissionalCodificado) {
+async function alternarProfissional(botao, profissionalCodificado, cboProfissionalCodificado, estabCodificado) {
   const trDetalhe = botao.closest('tr').nextElementSibling;
   const aberto = trDetalhe.style.display !== 'none';
 
@@ -1703,7 +2105,8 @@ async function alternarProfissional(botao, profissionalCodificado, cboProfission
   if (!celula.dataset.carregado) {
     const profissional = decodeURIComponent(profissionalCodificado);
     const cboProfissional = decodeURIComponent(cboProfissionalCodificado || '');
-    const chave = [botao.dataset.indicadorId, botao.dataset.estabelecimentoIds, botao.dataset.subgrupoId, botao.dataset.cboCodigo, botao.dataset.periodo, profissional, cboProfissional].join('|');
+    const estabOrigem = estabCodificado ? decodeURIComponent(estabCodificado) : '';
+    const chave = [botao.dataset.indicadorId, botao.dataset.estabelecimentoIds, botao.dataset.subgrupoId, botao.dataset.cboCodigo, botao.dataset.periodo, profissional, cboProfissional, estabOrigem].join('|');
     let dados = cacheProfissional.get(chave);
     if (!dados) {
       const params = new URLSearchParams({
@@ -1714,6 +2117,7 @@ async function alternarProfissional(botao, profissionalCodificado, cboProfission
         periodo: botao.dataset.periodo,
         profissional: profissional,
         cbo_profissional: cboProfissional,
+        estabelecimento_origem: estabOrigem,
       });
       const resp = await fetch('{{ url_for("painel.profissional_detalhe") }}?' + params.toString());
       dados = await resp.json();
@@ -1727,6 +2131,7 @@ async function alternarProfissional(botao, profissionalCodificado, cboProfission
       periodo: botao.dataset.periodo,
       profissional: profissional,
       cboProfissional: cboProfissional,
+      estabelecimentoOrigem: estabOrigem,
     };
     celula._contexto = contexto;
     celula.innerHTML = montarHtmlProcedimentos(dados, contexto);
@@ -2090,6 +2495,50 @@ function atualizarIconesFunil() {
 }
 
 let filtroStatusMetaAtivo = null;
+let filtroAuditoriaAtivo = null;
+let filtroObservacoesAtivo = false;
+
+function atualizarContadorObservacoes() {
+  let totalComObs = 0;
+  document.querySelectorAll('#tabela-painel tbody tr.linha-resumo').forEach(tr => {
+    const chave = gerarChaveObservacao(tr);
+    const texto = localStorage.getItem(chave);
+    if (texto && texto.trim()) {
+      totalComObs++;
+    }
+  });
+  document.querySelectorAll('.qtd-obs-valor').forEach(el => {
+    el.textContent = totalComObs;
+  });
+}
+
+function atualizarCardsFiltroAtivo() {
+  document.querySelectorAll('.card-stat-obs').forEach(c => {
+    c.classList.toggle('filtro-card-ativo', filtroObservacoesAtivo);
+  });
+  document.querySelectorAll('.card-stat-aud-conforme').forEach(c => {
+    c.classList.toggle('filtro-card-ativo', filtroAuditoriaAtivo === 'conforme');
+  });
+  document.querySelectorAll('.card-stat-aud-divergente').forEach(c => {
+    c.classList.toggle('filtro-card-ativo', filtroAuditoriaAtivo === 'divergente');
+  });
+}
+
+function filtrarPorAuditoria(tipo) {
+  if (filtroAuditoriaAtivo === tipo) {
+    filtroAuditoriaAtivo = null;
+  } else {
+    filtroAuditoriaAtivo = tipo;
+  }
+  atualizarCardsFiltroAtivo();
+  aplicarFiltrosColuna();
+}
+
+function filtrarPorObservacoes() {
+  filtroObservacoesAtivo = !filtroObservacoesAtivo;
+  atualizarCardsFiltroAtivo();
+  aplicarFiltrosColuna();
+}
 
 function aplicarFiltrosColuna() {
   const colunas = Object.keys(filtrosAtivos).map(Number);
@@ -2105,6 +2554,21 @@ function aplicarFiltrosColuna() {
     if (visivel && filtroStatusMetaAtivo) {
       const statusTr = (tr.dataset.statusMeta || '').trim();
       if (statusTr !== filtroStatusMetaAtivo) {
+        visivel = false;
+      }
+    }
+
+    if (visivel && filtroAuditoriaAtivo) {
+      const tipoAud = (tr.dataset.auditoriaTipo || '').trim();
+      if (tipoAud !== filtroAuditoriaAtivo) {
+        visivel = false;
+      }
+    }
+
+    if (visivel && filtroObservacoesAtivo) {
+      const chave = gerarChaveObservacao(tr);
+      const obs = localStorage.getItem(chave);
+      if (!obs || !obs.trim()) {
         visivel = false;
       }
     }
@@ -2130,6 +2594,9 @@ function aplicarFiltrosColuna() {
 
 function limparFiltrosColuna() {
   filtroStatusMetaAtivo = null;
+  filtroAuditoriaAtivo = null;
+  filtroObservacoesAtivo = false;
+  atualizarCardsFiltroAtivo();
   Object.keys(filtrosAtivos).forEach(k => delete filtrosAtivos[k]);
   atualizarIconesFunil();
   aplicarFiltrosColuna();
@@ -2167,6 +2634,733 @@ function alternarModoPainel(modo) {
     cardsAud.forEach(el => el.style.display = 'none');
     cardsProd.forEach(el => el.style.display = '');
     localStorage.setItem('contratos_modo_painel', 'producao');
+  }
+}
+
+// ============================================================================
+// MODAL DE VÍNCULO COM LINHAS DO WEBSAASS (DE/PARA DE PRODUÇÃO)
+// ============================================================================
+let dadosModalWs = null;
+let filtroCatalogoTipoWs = 'todos';
+
+function abrirModalVinculoWebsaass(btnOuTr) {
+  let trResumo = null;
+  if (btnOuTr) {
+    trResumo = btnOuTr.closest ? btnOuTr.closest('tr.linha-resumo') : btnOuTr;
+  }
+  const modalEl = document.getElementById('modal-vinculo-websaass');
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+
+  const indId = trResumo ? trResumo.dataset.indicadorId : null;
+  const sgId = trResumo ? (trResumo.dataset.subgrupoId || null) : null;
+  const cbo = trResumo ? (trResumo.dataset.cboCodigo || null) : null;
+  const per = trResumo ? (trResumo.dataset.periodo || null) : null;
+  const estabIds = trResumo ? (trResumo.dataset.estabelecimentoIds || trResumo.dataset.estabelecimentoId || null) : null;
+
+  carregarDadosVinculoWebsaass(indId, sgId, cbo, per, estabIds);
+}
+
+function abrirModalVinculoWebsaassGeral() {
+  abrirModalVinculoWebsaass(null);
+}
+
+async function carregarDadosVinculoWebsaass(indicadorId, subgrupoId, cboCodigo, periodo, estabelecimentoIds) {
+  const tbodyVinc = document.getElementById('modal-ws-tbody-vinculadas');
+  const tbodyCat = document.getElementById('modal-ws-tbody-catalogo');
+  if (tbodyVinc) tbodyVinc.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando vínculos...</td></tr>';
+  if (tbodyCat) tbodyCat.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm me-2"></span>Carregando catálogo do WebSaass...</td></tr>';
+
+  const params = new URLSearchParams();
+  if (indicadorId) params.set('indicador_id', indicadorId);
+  if (subgrupoId) params.set('subgrupo_id', subgrupoId);
+  if (cboCodigo) params.set('cbo_codigo', cboCodigo);
+  if (periodo) params.set('periodo', periodo);
+  if (estabelecimentoIds) params.set('estabelecimento_ids', estabelecimentoIds);
+
+  try {
+    const resp = await fetch('{{ url_for("painel.websaass_info_vinculos") }}?' + params.toString());
+    const data = await resp.json();
+    if (!data.ok) {
+      if (tbodyVinc) tbodyVinc.innerHTML = `<tr><td colspan="5" class="text-danger py-3 text-center">${data.erro || 'Erro ao carregar dados.'}</td></tr>`;
+      return;
+    }
+
+    dadosModalWs = data;
+    preencherControlesModalWs(data);
+    renderizarTabelaVinculadasWs(data.vinculadas || []);
+    renderizarCatalogoWs();
+  } catch (err) {
+    if (tbodyVinc) tbodyVinc.innerHTML = '<tr><td colspan="5" class="text-danger py-3 text-center">Falha na requisição ao servidor.</td></tr>';
+  }
+}
+
+function preencherControlesModalWs(data) {
+  const ind = data.indicador;
+  const selInd = document.getElementById('modal-ws-select-indicador');
+  selInd.innerHTML = '';
+  (data.todos_indicadores || []).forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = `${item.codigo} - ${item.nome}`;
+    if (item.id === ind.id) opt.selected = true;
+    selInd.appendChild(opt);
+  });
+
+  // Subgrupos
+  const wrapSg = document.getElementById('modal-ws-wrap-subgrupo');
+  const selSg = document.getElementById('modal-ws-select-subgrupo');
+  selSg.innerHTML = '<option value="">(Geral / Sem subgrupo)</option>';
+  if (data.subgrupos_indicador && data.subgrupos_indicador.length > 0) {
+    wrapSg.style.display = '';
+    data.subgrupos_indicador.forEach(sg => {
+      const opt = document.createElement('option');
+      opt.value = sg.id;
+      opt.textContent = sg.nome;
+      if (ind.subgrupo_id && String(ind.subgrupo_id) === String(sg.id)) opt.selected = true;
+      selSg.appendChild(opt);
+    });
+  } else {
+    wrapSg.style.display = 'none';
+  }
+
+  // CBOs
+  const wrapCbo = document.getElementById('modal-ws-wrap-cbo');
+  const selCbo = document.getElementById('modal-ws-select-cbo');
+  selCbo.innerHTML = '<option value="">(Curinga / Geral)</option>';
+  if (data.cbos_indicador && data.cbos_indicador.length > 0) {
+    wrapCbo.style.display = '';
+    data.cbos_indicador.forEach(cb => {
+      const opt = document.createElement('option');
+      opt.value = cb.codigo;
+      opt.textContent = `${cb.codigo} - ${cb.nome}`;
+      if (ind.cbo_codigo && String(ind.cbo_codigo) === String(cb.codigo)) opt.selected = true;
+      selCbo.appendChild(opt);
+    });
+  } else {
+    wrapCbo.style.display = 'none';
+  }
+
+  let subtxt = `Indicador: <strong>${ind.codigo} - ${ind.nome}</strong>`;
+  if (data.estabelecimento && data.estabelecimento.nome) {
+    subtxt += ` · Unidade: <strong class="text-primary"><i class="bi bi-hospital me-1"></i>${data.estabelecimento.nome}</strong>`;
+  }
+  if (ind.subgrupo_nome) subtxt += ` · Subgrupo: <strong>${ind.subgrupo_nome}</strong>`;
+  if (ind.cbo_codigo) subtxt += ` · CBO: <strong>${ind.cbo_codigo} (${ind.cbo_nome || ''})</strong>`;
+  if (data.periodo) subtxt += ` · Competência: <strong>${data.periodo}</strong>`;
+  document.getElementById('modal-ws-subtitulo').innerHTML = subtxt;
+
+  const thQtdVinc = document.querySelector('#modal-ws-tabela-vinculadas thead th:nth-child(4)');
+  if (thQtdVinc) {
+    thQtdVinc.textContent = data.estabelecimento ? 'Qtd na Unidade' : 'Qtd Competência';
+  }
+  const thQtdCat = document.querySelector('#modal-ws-tabela-catalogo thead th:nth-child(5)');
+  if (thQtdCat) {
+    thQtdCat.textContent = data.estabelecimento ? 'Qtd na Unidade' : 'Qtd Competência';
+  }
+}
+
+function _obterEstabIdsModalWs() {
+  if (!dadosModalWs || !dadosModalWs.estabelecimento) return null;
+  return dadosModalWs.estabelecimento.ids || dadosModalWs.estabelecimento.id || null;
+}
+
+function aoMudarIndicadorModalWs() {
+  const indId = document.getElementById('modal-ws-select-indicador').value;
+  carregarDadosVinculoWebsaass(indId, null, null, dadosModalWs ? dadosModalWs.periodo : null, _obterEstabIdsModalWs());
+}
+
+function aoMudarSubgrupoModalWs() {
+  const indId = document.getElementById('modal-ws-select-indicador').value;
+  const sgId = document.getElementById('modal-ws-select-subgrupo').value || null;
+  const cbo = document.getElementById('modal-ws-select-cbo').value || null;
+  carregarDadosVinculoWebsaass(indId, sgId, cbo, dadosModalWs ? dadosModalWs.periodo : null, _obterEstabIdsModalWs());
+}
+
+function aoMudarCboModalWs() {
+  const indId = document.getElementById('modal-ws-select-indicador').value;
+  const sgId = document.getElementById('modal-ws-select-subgrupo').value || null;
+  const cbo = document.getElementById('modal-ws-select-cbo').value || null;
+  carregarDadosVinculoWebsaass(indId, sgId, cbo, dadosModalWs ? dadosModalWs.periodo : null, _obterEstabIdsModalWs());
+}
+
+function renderizarTabelaVinculadasWs(vinculadas) {
+  const tbody = document.getElementById('modal-ws-tbody-vinculadas');
+  const contEl = document.getElementById('modal-ws-cont-vinculadas');
+  const totalQtdEl = document.getElementById('modal-ws-total-qtd-vinculadas');
+  const temUnidade = !!(dadosModalWs && dadosModalWs.estabelecimento);
+
+  contEl.textContent = vinculadas.length;
+  let somaQtd = 0;
+  let somaRede = 0;
+
+  if (vinculadas.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center py-3 text-muted" style="background:#fafafa;">
+          <div class="mb-1"><i class="bi bi-exclamation-circle text-warning fs-5"></i></div>
+          Nenhuma linha do WebSaass vinculada a esta regra contratual.<br>
+          <span class="small text-secondary">A quantidade declarada deste indicador constará como 0 até que ao menos uma linha seja vinculada.</span>
+        </td>
+      </tr>`;
+    totalQtdEl.textContent = temUnidade ? 'Total na Unidade: 0' : 'Total na Competência: 0';
+    return;
+  }
+
+  let html = '';
+  vinculadas.forEach(v => {
+    somaQtd += (v.total_qtd_periodo || 0);
+    somaRede += (v.total_qtd_rede !== undefined ? v.total_qtd_rede : (v.total_qtd_periodo || 0));
+    const qtdFmt = Number(v.total_qtd_periodo || 0).toLocaleString('pt-BR');
+
+    let qtdHtml = `<span class="badge ${v.total_qtd_periodo > 0 ? 'bg-success' : 'bg-light text-muted border'}">${qtdFmt}</span>`;
+    if (temUnidade && v.total_qtd_rede !== undefined && v.total_qtd_rede !== v.total_qtd_periodo) {
+      const redeFmt = Number(v.total_qtd_rede || 0).toLocaleString('pt-BR');
+      qtdHtml += `<div class="text-muted" style="font-size: 10px; line-height: 1.1;" title="Total de todas as unidades na rede: ${redeFmt}">Rede: ${redeFmt}</div>`;
+    }
+
+    html += `
+      <tr>
+        <td><code class="px-1 py-0 bg-light border rounded text-dark fw-bold">${v.cod_producao || '-'}</code></td>
+        <td class="fw-semibold text-dark">
+          ${v.producao || '-'}
+          ${v.subgrupo_nome ? `<span class="badge bg-light text-secondary border ms-1">${v.subgrupo_nome}</span>` : ''}
+          ${v.cbo_codigo ? `<span class="badge bg-light text-primary border ms-1">CBO: ${v.cbo_codigo}</span>` : ''}
+        </td>
+        <td class="text-muted small">${v.servico || '-'}</td>
+        <td style="text-align: right;">${qtdHtml}</td>
+        <td style="text-align: center;">
+          <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2" style="font-size:11px;"
+                  onclick="aoDesvincularLinhaWs(${v.id}, '${(v.cod_producao || '').replace(/'/g, "\\'")}', '${(v.producao || '').replace(/'/g, "\\'")}')"
+                  title="Desvincular esta linha">
+            <i class="bi bi-trash"></i> Desvincular
+          </button>
+        </td>
+      </tr>`;
+  });
+
+  tbody.innerHTML = html;
+  if (temUnidade) {
+    totalQtdEl.innerHTML = `Total na Unidade: <strong>${Number(somaQtd).toLocaleString('pt-BR')}</strong> <span class="text-muted small ms-1">(Rede: ${Number(somaRede).toLocaleString('pt-BR')})</span>`;
+  } else {
+    totalQtdEl.textContent = `Total na Competência: ${Number(somaQtd).toLocaleString('pt-BR')}`;
+  }
+}
+
+function alternarFiltroTipoWs(tipo, btn) {
+  filtroCatalogoTipoWs = tipo;
+  document.querySelectorAll('.btn-filtro-tipo-ws').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderizarCatalogoWs();
+}
+
+function filtrarCatalogoWs() {
+  renderizarCatalogoWs();
+}
+
+function limparBuscaCatalogoWs() {
+  document.getElementById('modal-ws-filtro-busca').value = '';
+  renderizarCatalogoWs();
+}
+
+function renderizarCatalogoWs() {
+  if (!dadosModalWs || !dadosModalWs.disponiveis) return;
+  const tbody = document.getElementById('modal-ws-tbody-catalogo');
+  const termo = (document.getElementById('modal-ws-filtro-busca').value || '').trim().toLowerCase();
+
+  let totTodas = 0;
+  let totLivres = 0;
+  let totOutros = 0;
+
+  dadosModalWs.disponiveis.forEach(item => {
+    totTodas++;
+    if (item.status === 'nao_vinculado') totLivres++;
+    else if (item.status === 'vinculado_outro') totOutros++;
+  });
+
+  document.getElementById('modal-ws-tot-todas').textContent = totTodas;
+  document.getElementById('modal-ws-tot-livres').textContent = totLivres;
+  document.getElementById('modal-ws-tot-outros').textContent = totOutros;
+
+  const filtrados = dadosModalWs.disponiveis.filter(item => {
+    if (filtroCatalogoTipoWs === 'livres' && item.status !== 'nao_vinculado') return false;
+    if (filtroCatalogoTipoWs === 'outros' && item.status !== 'vinculado_outro') return false;
+
+    if (termo) {
+      const matchCod = (item.cod_producao || '').toLowerCase().includes(termo);
+      const matchProd = (item.producao || '').toLowerCase().includes(termo);
+      const matchServ = (item.servico || '').toLowerCase().includes(termo);
+      if (!matchCod && !matchProd && !matchServ) return false;
+    }
+    return true;
+  });
+
+  if (filtrados.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-muted">Nenhuma linha do WebSaass encontrada com os filtros selecionados.</td></tr>';
+    atualizarContadorSelecionadasWs();
+    return;
+  }
+
+  let html = '';
+  const temUnidade = !!(dadosModalWs && dadosModalWs.estabelecimento);
+  filtrados.forEach((item, idx) => {
+    const isVinculadoAtual = item.status === 'vinculado_atual';
+    const qtdFmt = Number(item.total_qtd_periodo || 0).toLocaleString('pt-BR');
+
+    let qtdCatHtml = `<span class="badge ${item.total_qtd_periodo > 0 ? 'bg-primary' : 'bg-light text-muted border'}">${qtdFmt}</span>`;
+    if (temUnidade && item.total_qtd_rede !== undefined && item.total_qtd_rede !== item.total_qtd_periodo) {
+      const redeFmt = Number(item.total_qtd_rede || 0).toLocaleString('pt-BR');
+      qtdCatHtml += `<div class="text-muted" style="font-size: 10px; line-height: 1.1;" title="Total de todas as unidades na rede: ${redeFmt}">Rede: ${redeFmt}</div>`;
+    }
+
+    let badgeStatus = '';
+    if (item.status === 'nao_vinculado') {
+      badgeStatus = '<span class="badge bg-warning text-dark border">⚠️ Não Vinculado</span>';
+    } else if (item.status === 'vinculado_atual') {
+      badgeStatus = '<span class="badge bg-success">✓ Já vinculado aqui</span>';
+    } else {
+      badgeStatus = `<span class="badge bg-light text-secondary border text-truncate d-inline-block" style="max-width:170px;" title="${item.vinculo_desc}">${item.vinculo_desc}</span>`;
+    }
+
+    html += `
+      <tr class="${isVinculadoAtual ? 'table-success bg-opacity-10' : ''}">
+        <td style="text-align:center;">
+          ${isVinculadoAtual ? '<i class="bi bi-check text-success fs-5"></i>' : `
+            <input type="checkbox" class="form-check-input chk-ws-catalogo"
+                   data-cod="${item.cod_producao || ''}"
+                   data-nome="${(item.producao || '').replace(/"/g, '&quot;')}"
+                   data-servico="${(item.servico || '').replace(/"/g, '&quot;')}"
+                   data-id="${item.de_para_id || ''}"
+                   onchange="atualizarContadorSelecionadasWs()">
+          `}
+        </td>
+        <td><code class="px-1 py-0 bg-light border rounded text-dark">${item.cod_producao || '-'}</code></td>
+        <td class="fw-semibold text-dark">${item.producao || '-'}</td>
+        <td class="text-muted small">${item.servico || '-'}</td>
+        <td style="text-align:right;">${qtdCatHtml}</td>
+        <td>${badgeStatus}</td>
+        <td style="text-align:center;">
+          ${isVinculadoAtual ? '<span class="small text-success fw-bold">Ativo</span>' : `
+            <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2" style="font-size:11px;"
+                    onclick="aoVincularLinhaIndividualWs('${item.cod_producao}', '${(item.producao || '').replace(/'/g, "\\'")}', '${(item.servico || '').replace(/'/g, "\\'")}', '${item.de_para_id || ''}')"
+                    title="Vincular esta linha ao indicador">
+              + Vincular
+            </button>
+          `}
+        </td>
+      </tr>`;
+  });
+
+  tbody.innerHTML = html;
+  atualizarContadorSelecionadasWs();
+}
+
+function aoMarcarTodosCatalogoWs(chkMaster) {
+  const marcar = chkMaster.checked;
+  document.querySelectorAll('#modal-ws-tbody-catalogo .chk-ws-catalogo').forEach(chk => {
+    chk.checked = marcar;
+  });
+  atualizarContadorSelecionadasWs();
+}
+
+function atualizarContadorSelecionadasWs() {
+  const marcados = document.querySelectorAll('#modal-ws-tbody-catalogo .chk-ws-catalogo:checked');
+  const qtd = marcados.length;
+  document.getElementById('modal-ws-num-selecionadas').textContent = qtd;
+  const btn = document.getElementById('modal-ws-btn-vincular-selecionadas');
+  if (btn) btn.disabled = qtd === 0;
+
+  const totalChks = document.querySelectorAll('#modal-ws-tbody-catalogo .chk-ws-catalogo');
+  const chkMaster = document.getElementById('modal-ws-chk-todos');
+  if (chkMaster) {
+    chkMaster.checked = totalChks.length > 0 && qtd === totalChks.length;
+    chkMaster.indeterminate = qtd > 0 && qtd < totalChks.length;
+  }
+}
+
+async function aoVincularLinhaIndividualWs(cod, nome, servico, deParaId) {
+  const linha = {
+    cod_producao: cod,
+    producao: nome,
+    servico: servico,
+    de_para_id: deParaId ? parseInt(deParaId, 10) : null,
+  };
+  await enviarVinculacaoWs([linha]);
+}
+
+async function aoClicarVincularSelecionadasWs() {
+  const linhas = [];
+  document.querySelectorAll('#modal-ws-tbody-catalogo .chk-ws-catalogo:checked').forEach(chk => {
+    linhas.push({
+      cod_producao: chk.dataset.cod,
+      producao: chk.dataset.nome,
+      servico: chk.dataset.servico,
+      de_para_id: chk.dataset.id ? parseInt(chk.dataset.id, 10) : null,
+    });
+  });
+  if (linhas.length === 0) return;
+  await enviarVinculacaoWs(linhas);
+}
+
+async function aoCadastrarLinhaManualWs(e) {
+  e.preventDefault();
+  const cod = document.getElementById('modal-ws-novo-cod').value.trim();
+  const nome = document.getElementById('modal-ws-novo-nome').value.trim();
+  const servico = document.getElementById('modal-ws-novo-servico').value.trim();
+  if (!cod || !nome) {
+    alert('Informe o código e a descrição da produção.');
+    return;
+  }
+  await enviarVinculacaoWs([{ cod_producao: cod, producao: nome, servico: servico }]);
+  document.getElementById('modal-ws-novo-cod').value = '';
+  document.getElementById('modal-ws-novo-nome').value = '';
+  document.getElementById('modal-ws-novo-servico').value = '';
+}
+
+async function enviarVinculacaoWs(linhas) {
+  if (!dadosModalWs || !dadosModalWs.indicador) return;
+  const statusMsg = document.getElementById('modal-ws-status-msg');
+  if (statusMsg) statusMsg.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando vínculos e recalculando apuração WebSaass...';
+
+  try {
+    const resp = await fetch('{{ url_for("painel.websaass_vincular_linhas") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        indicador_id: dadosModalWs.indicador.id,
+        subgrupo_id: dadosModalWs.indicador.subgrupo_id,
+        cbo_codigo: dadosModalWs.indicador.cbo_codigo,
+        periodo: dadosModalWs.periodo,
+        linhas: linhas,
+      }),
+    });
+    const res = await resp.json();
+    if (res.ok) {
+      mostrarToast(res.mensagem || 'Vínculos atualizados com sucesso!', 'sucesso');
+      if (statusMsg) statusMsg.textContent = 'Vínculos salvos e apuração recalculada!';
+      setTimeout(() => { if (statusMsg) statusMsg.textContent = ''; }, 3000);
+
+      atualizarLinhasPainelAposWs(res.linhas_atualizadas);
+      atualizarCardsAuditoria(res.alertas);
+
+      carregarDadosVinculoWebsaass(
+        dadosModalWs.indicador.id,
+        dadosModalWs.indicador.subgrupo_id,
+        dadosModalWs.indicador.cbo_codigo,
+        dadosModalWs.periodo,
+        _obterEstabIdsModalWs()
+      );
+    } else {
+      alert(res.erro || 'Erro ao vincular linhas.');
+      if (statusMsg) statusMsg.textContent = '';
+    }
+  } catch (err) {
+    alert('Falha na comunicação com o servidor.');
+    if (statusMsg) statusMsg.textContent = '';
+  }
+}
+
+async function aoDesvincularLinhaWs(deParaId, cod, nome) {
+  if (!confirm(`Deseja desvincular a linha do WebSaass:\n\n[${cod}] ${nome}\n\ndeste indicador? O declarado deste indicador será recalculado.`)) {
+    return;
+  }
+  const statusMsg = document.getElementById('modal-ws-status-msg');
+  if (statusMsg) statusMsg.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Desvinculando linha e recalculando...';
+
+  try {
+    const resp = await fetch('{{ url_for("painel.websaass_desvincular_linha") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        de_para_id: deParaId,
+        indicador_id: dadosModalWs.indicador.id,
+      }),
+    });
+    const res = await resp.json();
+    if (res.ok) {
+      mostrarToast(res.mensagem || 'Linha desvinculada!', 'sucesso');
+      if (statusMsg) statusMsg.textContent = 'Linha desvinculada com sucesso!';
+      setTimeout(() => { if (statusMsg) statusMsg.textContent = ''; }, 3000);
+
+      atualizarLinhasPainelAposWs(res.linhas_atualizadas);
+      atualizarCardsAuditoria(res.alertas);
+
+      carregarDadosVinculoWebsaass(
+        dadosModalWs.indicador.id,
+        dadosModalWs.indicador.subgrupo_id,
+        dadosModalWs.indicador.cbo_codigo,
+        dadosModalWs.periodo,
+        _obterEstabIdsModalWs()
+      );
+    } else {
+      alert(res.erro || 'Erro ao desvincular linha.');
+      if (statusMsg) statusMsg.textContent = '';
+    }
+  } catch (err) {
+    alert('Falha ao comunicar com o servidor.');
+    if (statusMsg) statusMsg.textContent = '';
+  }
+}
+
+function atualizarLinhasPainelAposWs(linhasAtualizadas) {
+  if (!linhasAtualizadas || !Array.isArray(linhasAtualizadas)) return;
+
+  const mapa = new Map();
+  linhasAtualizadas.forEach(l => {
+    const chave = `${l.indicador_id}|${l.estabelecimento_id}|${l.subgrupo_id || ''}|${l.cbo_codigo || ''}|${l.periodo || ''}`;
+    mapa.set(chave, l);
+  });
+
+  document.querySelectorAll('#tabela-painel tbody tr.linha-resumo').forEach(tr => {
+    const indId = tr.dataset.indicadorId;
+    const estabId = tr.dataset.estabelecimentoId;
+    const sgId = tr.dataset.subgrupoId || '';
+    const cbo = tr.dataset.cboCodigo || '';
+    const per = tr.dataset.periodo || '';
+
+    const chave = `${indId}|${estabId}|${sgId}|${cbo}|${per}`;
+    const dadosNovos = mapa.get(chave);
+    if (dadosNovos) {
+      atualizarLinhaResumoNoDom(tr, dadosNovos);
+    }
+  });
+
+  aplicarFiltrosColuna();
+}
+
+function atualizarCardsAuditoria(alertas) {
+  if (!alertas) return;
+  const cardConf = document.querySelector('.card-stat-aud-conforme .stat-valor');
+  if (cardConf && alertas.auditoria_conformes !== undefined) {
+    cardConf.textContent = alertas.auditoria_conformes;
+  }
+  const cardDiv = document.querySelector('.card-stat-aud-divergente .stat-valor');
+  if (cardDiv && alertas.auditoria_divergentes !== undefined) {
+    cardDiv.textContent = alertas.auditoria_divergentes;
+  }
+let contextoRegraProfAtual = null;
+
+async function abrirModalRegraProfissional(elemento) {
+  const trResumo = elemento.closest('tr.linha-resumo');
+  if (!trResumo) return;
+
+  const indId = trResumo.dataset.indicadorId;
+  const subId = trResumo.dataset.subgrupoId || '';
+  const estabId = trResumo.dataset.estabelecimentoId || trResumo.dataset.estabelecimentoIds || '';
+  const per = trResumo.dataset.periodo || '';
+
+  await carregarEAbrirModalRegraProf(indId, subId, estabId, per, trResumo);
+}
+
+async function abrirModalRegraProfissionalDoDrilldown(elemento) {
+  const trDetalhe = elemento.closest('tr.linha-detalhe');
+  const trResumo = trDetalhe ? trDetalhe.previousElementSibling : null;
+  if (!trResumo) return;
+
+  const indId = trResumo.dataset.indicadorId;
+  const subId = trResumo.dataset.subgrupoId || '';
+  const estabId = trResumo.dataset.estabelecimentoId || trResumo.dataset.estabelecimentoIds || '';
+  const per = trResumo.dataset.periodo || '';
+
+  await carregarEAbrirModalRegraProf(indId, subId, estabId, per, trResumo);
+}
+
+async function carregarEAbrirModalRegraProf(indicadorId, subgrupoId, estabelecimentoId, periodo, trResumo) {
+  const modalEl = document.getElementById('modal-regra-profissional');
+  if (!modalEl) return;
+  const modal = new bootstrap.Modal(modalEl);
+
+  document.getElementById('modal-rp-indicador-subgrupo').textContent = 'Carregando...';
+  document.getElementById('modal-rp-procedimento').textContent = 'Carregando...';
+  document.getElementById('modal-rp-prof-atual').textContent = '...';
+
+  const selectProf = document.getElementById('modal-rp-select-profissional');
+  selectProf.innerHTML = '<option value="">Carregando lista de profissionais...</option>';
+  document.getElementById('modal-rp-wrap-outro').style.display = 'none';
+  document.getElementById('modal-rp-input-custom-nome').value = '';
+
+  modal.show();
+
+  contextoRegraProfAtual = {
+    indicadorId,
+    subgrupoId,
+    estabelecimentoId,
+    periodo,
+    trResumo,
+  };
+
+  try {
+    const params = new URLSearchParams({
+      indicador_id: indicadorId,
+      subgrupo_id: subgrupoId,
+      estabelecimento_id: estabelecimentoId,
+      periodo: periodo,
+    });
+    const resp = await fetch('{{ url_for("painel.api_regra_profissional") }}?' + params.toString());
+    const dados = await resp.json();
+
+    if (!dados.ok) {
+      alert(dados.erro || 'Erro ao carregar dados da regra.');
+      modal.hide();
+      return;
+    }
+
+    document.getElementById('modal-rp-indicador-id').value = dados.indicador_id;
+    document.getElementById('modal-rp-subgrupo-id').value = dados.subgrupo_id || '';
+    document.getElementById('modal-rp-estabelecimento-id').value = estabelecimentoId;
+    document.getElementById('modal-rp-procedimento-codigo').value = dados.procedimento_codigo;
+    document.getElementById('modal-rp-periodo').value = periodo;
+    document.getElementById('modal-rp-vinculo-id').value = dados.vinculo_id || '';
+
+    document.getElementById('modal-rp-indicador-subgrupo').textContent = `${dados.indicador_codigo} - ${dados.indicador_nome} · Subgrupo: ${dados.subgrupo_nome || 'Geral'}`;
+    document.getElementById('modal-rp-procedimento').textContent = `${dados.procedimento_codigo} - ${dados.procedimento_nome}`;
+    document.getElementById('modal-rp-prof-atual').textContent = dados.profissional_atual || '(Nenhum / Aberto para todos)';
+
+    selectProf.innerHTML = '';
+
+    if (dados.profissional_atual) {
+      const optAtual = document.createElement('option');
+      optAtual.value = dados.profissional_atual;
+      optAtual.textContent = `⭐ ${dados.profissional_atual} (Atualmente Configurado)`;
+      optAtual.selected = true;
+      selectProf.appendChild(optAtual);
+    }
+
+    const optGroupAt02 = document.createElement('optgroup');
+    optGroupAt02.label = 'Profissionais com Produção neste Exame (AT-02 da Unidade)';
+
+    let temAt02 = false;
+    dados.candidatos.forEach(c => {
+      if (c.origem === 'AT-02 da Unidade') {
+        temAt02 = true;
+        const opt = document.createElement('option');
+        opt.value = c.nome;
+        opt.textContent = `${c.nome} (${c.quantidade_mes} exames no mês${c.cbo_nome ? ' · ' + c.cbo_nome : ''})`;
+        if (!dados.profissional_atual && !selectProf.value) {
+          opt.selected = true;
+        }
+        optGroupAt02.appendChild(opt);
+      }
+    });
+    if (temAt02) selectProf.appendChild(optGroupAt02);
+
+    const optGroupGeral = document.createElement('optgroup');
+    optGroupGeral.label = 'Outros Profissionais Cadastrados';
+    dados.candidatos.forEach(c => {
+      if (c.origem !== 'AT-02 da Unidade' && c.nome !== dados.profissional_atual) {
+        const opt = document.createElement('option');
+        opt.value = c.nome;
+        opt.textContent = `${c.nome} (CBO: ${c.cbo_codigo || '-'})`;
+        optGroupGeral.appendChild(opt);
+      }
+    });
+    if (optGroupGeral.children.length > 0) selectProf.appendChild(optGroupGeral);
+
+    const optCustom = document.createElement('option');
+    optCustom.value = '__custom__';
+    optCustom.textContent = '✏️ Outro profissional (Digitar nome)...';
+    selectProf.appendChild(optCustom);
+
+    const optSem = document.createElement('option');
+    optSem.value = '';
+    optSem.textContent = '🔓 Sem restrição (Contabilizar qualquer profissional)';
+    selectProf.appendChild(optSem);
+
+  } catch (err) {
+    alert('Erro ao carregar candidatos a profissional.');
+    modal.hide();
+  }
+}
+
+function aoMudarSelectProfissionalModal(sel) {
+  const wrapOutro = document.getElementById('modal-rp-wrap-outro');
+  if (sel.value === '__custom__') {
+    wrapOutro.style.display = '';
+    document.getElementById('modal-rp-input-custom-nome').focus();
+  } else {
+    wrapOutro.style.display = 'none';
+  }
+}
+
+async function salvarModalRegraProfissional(evt) {
+  evt.preventDefault();
+  const selectProf = document.getElementById('modal-rp-select-profissional');
+  let nomeEscolhido = selectProf.value;
+
+  if (nomeEscolhido === '__custom__') {
+    nomeEscolhido = (document.getElementById('modal-rp-input-custom-nome').value || '').trim();
+    if (!nomeEscolhido) {
+      alert('Por favor, informe o nome do profissional.');
+      return;
+    }
+  }
+
+  const btnSalvar = document.getElementById('modal-rp-btn-salvar');
+  const spinner = document.getElementById('modal-rp-spinner');
+  const icone = document.getElementById('modal-rp-icone-salvar');
+
+  btnSalvar.disabled = true;
+  spinner.style.display = 'inline-block';
+  icone.style.display = 'none';
+
+  try {
+    const payload = {
+      vinculo_id: document.getElementById('modal-rp-vinculo-id').value,
+      indicador_id: document.getElementById('modal-rp-indicador-id').value,
+      subgrupo_id: document.getElementById('modal-rp-subgrupo-id').value,
+      estabelecimento_id: document.getElementById('modal-rp-estabelecimento-id').value,
+      procedimento_codigo: document.getElementById('modal-rp-procedimento-codigo').value,
+      periodo: document.getElementById('modal-rp-periodo').value,
+      nome_profissional: nomeEscolhido,
+    };
+
+    const resp = await fetch('{{ url_for("painel.api_salvar_regra_profissional") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const res = await resp.json();
+
+    if (res.ok) {
+      mostrarToast(res.mensagem || 'Profissional atualizado com sucesso!', 'sucesso');
+
+      atualizarLinhasPainelAposWs(res.linhas_atualizadas);
+      atualizarCardsAuditoria(res.alertas);
+
+      if (contextoRegraProfAtual && contextoRegraProfAtual.trResumo) {
+        const badgeProf = contextoRegraProfAtual.trResumo.querySelector('.badge-regra-prof');
+        if (badgeProf) {
+          badgeProf.innerHTML = `<i class="bi bi-person-check me-1"></i>${res.novo_profissional || 'Todos'} <i class="bi bi-pencil ms-1" style="font-size:10px;"></i>`;
+        }
+
+        const chave = chaveLinha(contextoRegraProfAtual.trResumo);
+        cacheDetalhe.delete(chave);
+        const trDetalhe = getTrDetalhe(contextoRegraProfAtual.trResumo);
+        if (trDetalhe && trDetalhe.style.display !== 'none') {
+          const celula = trDetalhe.querySelector('.conteudo-detalhe');
+          if (celula) {
+            delete celula.dataset.carregado;
+            const dadosNovos = await carregarDetalhe(contextoRegraProfAtual.trResumo);
+            const idPrefixo = 'l' + Array.from(document.querySelectorAll('.linha-resumo')).indexOf(contextoRegraProfAtual.trResumo);
+            celula.innerHTML = montarHtmlProfissionais(dadosNovos, idPrefixo);
+            celula.dataset.carregado = '1';
+          }
+        }
+      }
+
+      const modalEl = document.getElementById('modal-regra-profissional');
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+
+    } else {
+      alert(res.erro || 'Erro ao salvar regra de profissional.');
+    }
+  } catch (err) {
+    alert('Erro de comunicação com o servidor.');
+  } finally {
+    btnSalvar.disabled = false;
+    spinner.style.display = 'none';
+    icone.style.display = 'inline-block';
   }
 }
 
