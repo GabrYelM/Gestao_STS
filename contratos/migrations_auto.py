@@ -1458,19 +1458,43 @@ def _migrar_v24(conn):
         # P42
         if p42:
             iid = p42[0] if isinstance(p42, (tuple, list)) else p42["id"]
-            conn.execute(
-                """UPDATE de_para_websaass_indicador
-                   SET cbo_codigo = '223240'
-                   WHERE indicador_id = ? AND cod_producao = '9.10.06'""",
-                (iid,),
-            )
+            # Ortodontia/Ortopedia (subgrupo 4): associa produções de RT ao CBO 223240_RT
             conn.execute(
                 """UPDATE de_para_websaass_indicador
                    SET cbo_codigo = '223240_RT'
                    WHERE indicador_id = ? AND (
-                       cod_producao = '9.10.23'
+                       cod_producao IN ('9.10.06', '9.10.23')
                        OR producao LIKE '%- RT%' OR producao LIKE '%(RT)%' OR producao LIKE '% RT'
                    )""",
+                (iid,),
+            )
+            # Remove meta duplicada do CBO base quando a unidade possui meta de RT no mesmo subgrupo
+            conn.execute(
+                """DELETE FROM metas
+                   WHERE indicador_id = ? AND subgrupo_id = 4 AND cbo_codigo = '223240' AND (rt IS NULL OR rt != 'SIM')
+                     AND EXISTS (
+                         SELECT 1 FROM metas m2
+                         WHERE m2.ta_id = metas.ta_id
+                           AND m2.estabelecimento_id = metas.estabelecimento_id
+                           AND m2.indicador_id = metas.indicador_id
+                           AND m2.subgrupo_id = 4
+                           AND m2.cbo_codigo = '223240_RT'
+                     )""",
+                (iid,),
+            )
+            # Remove apurado zerado órfão do CBO base quando já existe registro de RT
+            conn.execute(
+                """DELETE FROM fato_apuracao
+                   WHERE indicador_id = ? AND subgrupo_id = 4 AND cbo_codigo = '223240'
+                     AND tipo_registro = 'apurado' AND quantidade = 0
+                     AND EXISTS (
+                         SELECT 1 FROM fato_apuracao f2
+                         WHERE f2.periodo = fato_apuracao.periodo
+                           AND f2.estabelecimento_id = fato_apuracao.estabelecimento_id
+                           AND f2.indicador_id = fato_apuracao.indicador_id
+                           AND f2.subgrupo_id = 4
+                           AND f2.cbo_codigo = '223240_RT'
+                     )""",
                 (iid,),
             )
 
@@ -1529,9 +1553,10 @@ def _migrar_v24(conn):
 
     # 4.3 Garantir coluna destinacao_mista em estabelecimentos
     if not _coluna_existe(conn, "estabelecimentos", "destinacao_mista"):
-        conn.execute("ALTER TABLE estabelecimentos ADD COLUMN destinacao_mista TEXT DEFAULT 'TRAD'")
-        conn.execute("UPDATE estabelecimentos SET destinacao_mista = 'TRAD' WHERE lower(nome) LIKE '%trindade%'")
+        conn.execute("ALTER TABLE estabelecimentos ADD COLUMN destinacao_mista TEXT DEFAULT 'ESF'")
         aplicou = True
+    conn.execute("UPDATE estabelecimentos SET destinacao_mista = 'ESF'")
+    conn.execute("UPDATE estabelecimentos SET destinacao_mista = 'TRAD' WHERE lower(nome) LIKE '%trindade%'")
 
     # 4.4 Garantir vínculo de Cardiologista (35.01.02) do HD Bloco Clínico no P43
     if _tabela_existe(conn, "de_para_websaass_indicador"):
@@ -1582,6 +1607,31 @@ def _migrar_v24(conn):
                        WHERE indicador_id = ? AND subgrupo_id = ? AND procedimento_codigo = '0211020036' AND (nome_profissional IS NULL OR nome_profissional = '')""",
                     (p44_id, sg_id)
                 )
+
+    # 4.6 Garantir tabela painel_observacoes para armazenar anotações das linhas do painel
+    if not _tabela_existe(conn, "painel_observacoes"):
+        conn.execute("""
+            CREATE TABLE painel_observacoes (
+                chave               TEXT PRIMARY KEY,
+                indicador_id        INTEGER NOT NULL,
+                estabelecimento_id  INTEGER NOT NULL,
+                subgrupo_id         INTEGER,
+                cbo_codigo          TEXT,
+                periodo             TEXT NOT NULL,
+                texto               TEXT NOT NULL,
+                atualizado_em       TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        aplicou = True
+
+    # 4.7 Limpar metas espúrias de Farmácia e Assistente Social em P11 e P12 em estabelecimentos com destinacao_mista = 'TRAD'
+    if _tabela_existe(conn, "metas"):
+        conn.execute("""
+            DELETE FROM metas
+            WHERE estabelecimento_id IN (SELECT id FROM estabelecimentos WHERE destinacao_mista = 'TRAD')
+              AND indicador_id IN (11, 12)
+              AND cbo_codigo IN ('223405', '251605')
+        """)
 
     # 5. Recriação da view resultados_indicador (v24)
     row = conn.execute(

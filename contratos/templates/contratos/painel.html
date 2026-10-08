@@ -578,13 +578,13 @@ async function abrirDetalheAlerta(tipo, titulo) {
     <i class="bi bi-info-circle me-1"></i> Consolidação por CNES: {{ qtd_indicadores_cnes }} indicador(es)
   </span>
   <div class="ms-auto d-flex align-items-center gap-2">
-    <a class="btn btn-outline-success btn-sm fw-semibold" href="{{ url_for('relatorios.auditoria_websass_xlsx') }}" title="Planilha completa comparando Apurado STS vs Declarado Websaass">
+    <a class="btn btn-outline-success btn-sm fw-semibold" href="{{ url_for('relatorios.auditoria_websass_xlsx') }}" title="Planilha completa comparando Apurado STS vs Declarado Websaass" onclick="return prepararExportacaoObs(this, event)">
       <i class="bi bi-file-earmark-excel me-1"></i> Exportar Auditoria (Websaass)
     </a>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('painel.exportar_excel', formato='resumido') }}">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('painel.exportar_excel', formato='resumido') }}" onclick="return prepararExportacaoObs(this, event)">
       <i class="bi bi-file-earmark-excel me-1"></i> Exportar Excel (resumido)
     </a>
-    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('painel.exportar_excel', formato='expandido') }}">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('painel.exportar_excel', formato='expandido') }}" onclick="return prepararExportacaoObs(this, event)">
       <i class="bi bi-file-earmark-excel me-1"></i> Exportar (expandido)
     </a>
   </div>
@@ -683,11 +683,12 @@ async function abrirDetalheAlerta(tipo, titulo) {
         data-estabelecimento-ids="{{ r.estabelecimento_ids | join(',') }}" data-subgrupo-id="{{ r.subgrupo_id or '' }}"
         data-cbo-codigo="{{ r.cbo_codigo or '' }}" data-periodo="{{ r.periodo }}" data-status-meta="{{ r.status_rotulo }}"
         data-auditoria-rotulo="{{ r.auditoria_rotulo or '' }}"
+        data-observacao="{{ r.observacao or '' }}"
         data-auditoria-tipo="{% if r.auditoria_rotulo == 'Conforme (OK)' %}conforme{% elif r.auditoria_rotulo and r.auditoria_rotulo != 'Sem produção' %}divergente{% else %}sem_producao{% endif %}">
       <td style="text-align: center; white-space: nowrap;">
         <div style="display: inline-flex; align-items: center; gap: 4px;">
           <button type="button" class="btn-expandir" onclick="alternarLinha(this)" title="Ver procedimentos e profissionais">+</button>
-          <button type="button" class="btn-obs" onclick="alternarObservacao(this)" title="Adicionar / ver observação desta linha"><i class="fa-regular fa-comment-dots"></i></button>
+          <button type="button" class="btn-obs {% if r.observacao %}tem-obs{% endif %}" onclick="alternarObservacao(this)" title="{% if r.observacao %}Esta linha possui observação preenchida (clique para ver/editar){% else %}Adicionar / ver observação desta linha{% endif %}"><i class="{% if r.observacao %}fa-solid{% else %}fa-regular{% endif %} fa-comment-dots"></i></button>
           {% if r.indicador_codigo == 'P44' and r.subgrupo_id == 22 %}
             <button type="button" class="btn-regra-prof" onclick="abrirModalRegraProfissional(this)" title="Configurar profissional responsável pelo laudo (Regra: Ronaldo Della Monica Silva)"><i class="bi bi-person-gear"></i></button>
           {% endif %}
@@ -763,7 +764,7 @@ async function abrirDetalheAlerta(tipo, titulo) {
               <button type="button" class="btn btn-sm btn-link text-secondary p-0" onclick="fecharObservacaoLinha(this)" title="Recolher caixa" style="font-size:11px; text-decoration:none;"><i class="fa-solid fa-xmark me-1"></i>Recolher</button>
             </div>
           </div>
-          <textarea class="campo-observacao" placeholder="Digite suas anotações ou justificativas para esta linha..." oninput="salvarObservacaoLinha(this)"></textarea>
+          <textarea class="campo-observacao" placeholder="Digite suas anotações ou justificativas para esta linha..." oninput="salvarObservacaoLinha(this)">{{ r.observacao or '' }}</textarea>
         </div>
       </td>
     </tr>
@@ -2015,6 +2016,8 @@ function salvarObservacaoLinha(textarea) {
   const btnObs = trResumo.querySelector('.btn-obs');
   const statusEl = trObs.querySelector('.obs-salvo-status');
 
+  trResumo.dataset.observacao = texto;
+
   if (texto) {
     localStorage.setItem(chave, texto);
     atualizarEstadoVisualBotaoObs(btnObs, true);
@@ -2029,32 +2032,132 @@ function salvarObservacaoLinha(textarea) {
 
   if (statusEl) {
     statusEl.textContent = 'Salvando...';
-    clearTimeout(timeoutSalvarObs);
-    timeoutSalvarObs = setTimeout(() => {
-      statusEl.textContent = 'Salvo automaticamente';
-      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
-    }, 400);
   }
+
+  clearTimeout(timeoutSalvarObs);
+  timeoutSalvarObs = setTimeout(async () => {
+    try {
+      const resp = await fetch("{{ url_for('painel.api_salvar_observacao') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chave: chave,
+          indicador_id: trResumo.dataset.indicadorId,
+          estabelecimento_id: trResumo.dataset.estabelecimentoId,
+          subgrupo_id: trResumo.dataset.subgrupoId || null,
+          cbo_codigo: trResumo.dataset.cboCodigo || null,
+          periodo: trResumo.dataset.periodo,
+          texto: texto
+        })
+      });
+      const data = await resp.json();
+      if (data.ok && statusEl) {
+        statusEl.textContent = 'Salvo automaticamente';
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 2000);
+      }
+    } catch (err) {
+      console.warn('Erro ao salvar observação no servidor:', err);
+      if (statusEl) statusEl.textContent = 'Salvo localmente';
+    }
+  }, 400);
 }
 
 function inicializarObservacoes() {
+  const itensParaSync = [];
+
   document.querySelectorAll('#tabela-painel tbody tr.linha-resumo').forEach(trResumo => {
     const chave = gerarChaveObservacao(trResumo);
-    const textoSalvo = localStorage.getItem(chave);
+    const textoServidor = (trResumo.dataset.observacao || '').trim();
+    const textoLocal = (localStorage.getItem(chave) || '').trim();
     const btnObs = trResumo.querySelector('.btn-obs');
     const trObs = getTrObservacao(trResumo);
 
-    if (textoSalvo && textoSalvo.trim()) {
+    let textoFinal = textoServidor;
+    // Se o servidor ainda não tem, mas o localStorage tem do uso anterior:
+    if (!textoFinal && textoLocal) {
+      textoFinal = textoLocal;
+      itensParaSync.push({
+        chave: chave,
+        indicador_id: trResumo.dataset.indicadorId,
+        estabelecimento_id: trResumo.dataset.estabelecimentoId,
+        subgrupo_id: trResumo.dataset.subgrupoId || null,
+        cbo_codigo: trResumo.dataset.cboCodigo || null,
+        periodo: trResumo.dataset.periodo,
+        texto: textoLocal
+      });
+    }
+
+    if (textoFinal) {
+      localStorage.setItem(chave, textoFinal);
+      trResumo.dataset.observacao = textoFinal;
       atualizarEstadoVisualBotaoObs(btnObs, true);
       if (trObs) {
         const textarea = trObs.querySelector('.campo-observacao');
-        if (textarea) textarea.value = textoSalvo;
+        if (textarea) textarea.value = textoFinal;
       }
     } else {
+      localStorage.removeItem(chave);
       atualizarEstadoVisualBotaoObs(btnObs, false);
     }
   });
+
+  if (itensParaSync.length > 0) {
+    fetch("{{ url_for('painel.api_sincronizar_observacoes') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itens: itensParaSync })
+    }).catch(e => console.warn('Erro ao sincronizar observações antigas:', e));
+  }
+
   atualizarContadorObservacoes();
+}
+
+async function prepararExportacaoObs(linkEl, event) {
+  if (timeoutSalvarObs) {
+    clearTimeout(timeoutSalvarObs);
+    timeoutSalvarObs = null;
+  }
+
+  const itens = [];
+  document.querySelectorAll('#tabela-painel tbody tr.linha-resumo').forEach(trResumo => {
+    const trObs = getTrObservacao(trResumo);
+    const textarea = trObs ? trObs.querySelector('.campo-observacao') : null;
+    const texto = textarea ? textarea.value.trim() : (trResumo.dataset.observacao || '').trim();
+    if (texto) {
+      itens.push({
+        chave: gerarChaveObservacao(trResumo),
+        indicador_id: trResumo.dataset.indicadorId,
+        estabelecimento_id: trResumo.dataset.estabelecimentoId,
+        subgrupo_id: trResumo.dataset.subgrupoId || null,
+        cbo_codigo: trResumo.dataset.cboCodigo || null,
+        periodo: trResumo.dataset.periodo,
+        texto: texto
+      });
+    }
+  });
+
+  if (itens.length > 0) {
+    event.preventDefault();
+    const textoOriginal = linkEl.innerHTML;
+    linkEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Exportando...';
+    linkEl.classList.add('disabled');
+    try {
+      await fetch("{{ url_for('painel.api_sincronizar_observacoes') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens: itens })
+      });
+    } catch (e) {
+      console.warn('Erro ao sincronizar antes da exportação:', e);
+    }
+    window.location.href = linkEl.href;
+    setTimeout(() => {
+      linkEl.innerHTML = textoOriginal;
+      linkEl.classList.remove('disabled');
+    }, 2500);
+    return false;
+  }
+  return true;
 }
 
 async function alternarLinha(botao) {
@@ -3122,6 +3225,14 @@ function atualizarLinhasPainelAposWs(linhasAtualizadas) {
     const dadosNovos = mapa.get(chave);
     if (dadosNovos) {
       atualizarLinhaResumoNoDom(tr, dadosNovos);
+    } else if (dadosModalWs && dadosModalWs.indicador && String(indId) === String(dadosModalWs.indicador.id)) {
+      // Se a linha pertencia ao indicador recalculado mas não consta mais nos resultados
+      // (ex: era linha zerada sem meta cujo vínculo foi removido/transferido), remove do DOM
+      const nextTr = tr.nextElementSibling;
+      if (nextTr && nextTr.classList.contains('linha-detalhe')) {
+        nextTr.remove();
+      }
+      tr.remove();
     }
   });
 
@@ -3138,6 +3249,8 @@ function atualizarCardsAuditoria(alertas) {
   if (cardDiv && alertas.auditoria_divergentes !== undefined) {
     cardDiv.textContent = alertas.auditoria_divergentes;
   }
+}
+
 let contextoRegraProfAtual = null;
 
 async function abrirModalRegraProfissional(elemento) {

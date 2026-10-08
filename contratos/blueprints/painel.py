@@ -9,7 +9,8 @@ from ..funcoes import (
     consolidacao, diagnostico_metas, pendencias, obter_cbos_transferencia_rel134,
     obter_cbos_buscar_at02, MAPEAMENTO_EMULTI_PADRAO, _resolver_cbo, resolver_unidade_at57,
     obter_equipes_emulti_unidade,
-    calcular_webssas, _normalizar_periodo, _periodo_para_webssas, _normalizar_nome_prof
+    calcular_webssas, _normalizar_periodo, _periodo_para_webssas, _normalizar_nome_prof,
+    _garantir_linhas_subgrupos
 )
 
 bp = Blueprint("painel", __name__, url_prefix="/contratos")
@@ -40,6 +41,21 @@ def _resultados_filtrados(db):
         if has_staging:
             from ..funcoes import sincronizar_apuracao_dinamica
             sincronizar_apuracao_dinamica(db)
+    else:
+        # Garante que os CBOs de eMulti no AT-02 estejam apurados se houver staging_at02
+        has_emulti_at02 = db.execute("""
+            SELECT 1 FROM fato_apuracao f
+            JOIN indicadores i ON i.id = f.indicador_id
+            WHERE i.codigo IN ('P11', 'P21') AND f.tipo_registro = 'apurado' AND f.quantidade > 0
+            LIMIT 1
+        """).fetchone()
+        if not has_emulti_at02:
+            has_stg_at02 = db.execute("SELECT 1 FROM staging_at02 LIMIT 1").fetchone()
+            if has_stg_at02:
+                from ..funcoes import _garantir_emulti_at02
+                for p_row in db.execute("SELECT DISTINCT ano_mes FROM staging_at02 WHERE ano_mes IS NOT NULL").fetchall():
+                    _garantir_emulti_at02(db, p_row["ano_mes"])
+                db.commit()
 
     linhas = [
         dict(r) for r in db.execute(
@@ -101,7 +117,35 @@ def status_auditoria(apurado, declarado, meta):
     return (f"Declarado maior ({dif_str})", "badge-vermelho", dif)
 
 
+def _gerar_chave_observacao(indicador_id, estabelecimento_id, subgrupo_id=None, cbo_codigo=None, periodo=""):
+    sub = "" if subgrupo_id is None else str(subgrupo_id)
+    cbo = "" if not cbo_codigo or str(cbo_codigo).lower() in ("none", "null") else str(cbo_codigo).strip()
+    per = "" if not periodo else str(periodo).strip()
+    est = "" if estabelecimento_id is None else str(estabelecimento_id)
+    ind = "" if indicador_id is None else str(indicador_id)
+    return f"obs_painel_{ind}_{est}_{sub}_{cbo}_{per}"
+
+
+def _gerar_chave_observacao_linha(linha):
+    return _gerar_chave_observacao(
+        linha.get("indicador_id"),
+        linha.get("estabelecimento_id"),
+        linha.get("subgrupo_id"),
+        linha.get("cbo_codigo"),
+        linha.get("periodo", ""),
+    )
+
+
+def _carregar_mapa_observacoes(db):
+    try:
+        rows = db.execute("SELECT chave, texto FROM painel_observacoes WHERE TRIM(texto) != ''").fetchall()
+        return {r["chave"]: r["texto"] for r in rows}
+    except Exception:
+        return {}
+
+
 def _resultados_com_status(db):
+    obs_map = _carregar_mapa_observacoes(db)
     linhas = []
     for r in _resultados_filtrados(db):
         linha = dict(r)
@@ -115,6 +159,10 @@ def _resultados_com_status(db):
         linha["divergencia"] = divergencia
         linha["auditoria_rotulo"] = aud_rotulo
         linha["auditoria_classe"] = aud_classe
+
+        chave_obs = _gerar_chave_observacao_linha(linha)
+        linha["chave_obs"] = chave_obs
+        linha["observacao"] = obs_map.get(chave_obs, "")
 
         linhas.append(linha)
     return linhas
@@ -158,6 +206,7 @@ def _contadores_alerta(db):
     metas_andamento = sum(1 for r in linhas_f if r.get("percentual_meta") is not None and 90 <= r["percentual_meta"] < 100)
     metas_abaixo = sum(1 for r in linhas_f if r.get("percentual_meta") is not None and r["percentual_meta"] < 90)
     sem_meta_linhas = sum(1 for r in linhas_f if r.get("percentual_meta") is None)
+    linhas_com_obs = sum(1 for r in linhas_f if (r.get("observacao") or "").strip())
 
     total_apurado_geral = sum(r.get("valor_apurado") or 0 for r in linhas_f)
     total_metas_geral = sum(r.get("valor_meta") or 0 for r in linhas_f if r.get("valor_meta") is not None)
@@ -180,6 +229,7 @@ def _contadores_alerta(db):
         "metas_andamento": metas_andamento,
         "metas_abaixo": metas_abaixo,
         "sem_meta_linhas": sem_meta_linhas,
+        "linhas_com_obs": linhas_com_obs,
         "total_apurado_geral": total_apurado_geral,
         "total_metas_geral": total_metas_geral,
         "total_unidades": total_unidades,
@@ -2139,7 +2189,7 @@ def exportar_excel():
     db = get_db()
     formato = request.args.get("formato", "resumido")
 
-    resultados = _resultados_filtrados(db)
+    resultados = _resultados_com_status(db)
 
     wb = Workbook()
     resumo_ws = wb.active
@@ -2147,19 +2197,22 @@ def exportar_excel():
     cabecalho_resumo = [
         "Indicador", "Nome do indicador", "Subgrupo", "Tipo", "Complexidade", "Serviço",
         "Estabelecimento", "CBO", "Período", "Apurado", "Declarado", "Meta", "% Meta", "Status",
+        "Observações",
     ]
     resumo_ws.append(cabecalho_resumo)
     for cel in resumo_ws[1]:
         cel.font = Font(bold=True)
 
     for r in resultados:
-        rotulo_status, _ = status_meta(r["percentual_meta"])
+        rotulo_status = r.get("status_rotulo") or ""
+        obs = r.get("observacao") or ""
         resumo_ws.append([
             r["indicador_codigo"], r["indicador_nome"], r.get("subgrupo_nome") or "", r["indicador_tipo"],
             r["complexidade"], r["servico"], r["estabelecimento_nome"],
             (f"{r['cbo_codigo']} - {r['cbo_nome']}" if r["cbo_codigo"] else "Curinga / Geral"),
             r["periodo"], r["valor_apurado"], r["valor_declarado"],
             r["valor_meta"], r["percentual_meta"], rotulo_status,
+            obs,
         ])
     for col in resumo_ws.columns:
         largura = max(len(str(c.value)) if c.value is not None else 0 for c in col) + 2
@@ -2170,6 +2223,7 @@ def exportar_excel():
         detalhe_ws.append([
             "Indicador", "Subgrupo", "Estabelecimento", "CBO da linha", "Período",
             "Profissional", "CBO do profissional", "Procedimento", "Nome do procedimento", "Apurado",
+            "Observações da Linha",
         ])
         for cel in detalhe_ws[1]:
             cel.font = Font(bold=True)
@@ -2177,27 +2231,31 @@ def exportar_excel():
         for r in resultados:
             rotulo_indicador = f"{r['indicador_codigo']} - {r['indicador_nome']}"
             rotulo_cbo = f"{r['cbo_codigo']} - {r['cbo_nome']}" if r["cbo_codigo"] else "Curinga / Geral"
+            obs = r.get("observacao") or ""
             profissionais = _profissionais_da_linha(
                 db, r["indicador_id"], r["estabelecimento_ids"], r["cbo_codigo"], r["periodo"],
                 r.get("subgrupo_id"),
             )
             for prof in profissionais:
+                prof_dict = dict(prof)
                 procedimentos = _procedimentos_do_profissional(
                     db, r["indicador_id"], r["estabelecimento_ids"], r["cbo_codigo"],
-                    r["periodo"], prof["nome_profissional"], r.get("subgrupo_id"), prof["cbo_codigo"],
-                    estabelecimento_origem=prof.get("nome_estabelecimento"),
+                    r["periodo"], prof_dict["nome_profissional"], r.get("subgrupo_id"), prof_dict.get("cbo_codigo"),
+                    estabelecimento_origem=prof_dict.get("nome_estabelecimento"),
                 )
                 rotulo_cbo_prof = (
-                    f"{prof['cbo_codigo']} - {prof['cbo_nome']}" if prof["cbo_codigo"] and prof["cbo_nome"]
-                    else (prof["cbo_codigo"] or "")
+                    f"{prof_dict['cbo_codigo']} - {prof_dict['cbo_nome']}" if prof_dict.get("cbo_codigo") and prof_dict.get("cbo_nome")
+                    else (prof_dict.get("cbo_codigo") or "")
                 )
                 for p in procedimentos:
-                    if not p.get("considerado", True):
+                    p_dict = dict(p)
+                    if not p_dict.get("considerado", True):
                         continue
                     detalhe_ws.append([
                         rotulo_indicador, r.get("subgrupo_nome") or "", r["estabelecimento_nome"], rotulo_cbo,
-                        r["periodo"], prof["nome_profissional"], rotulo_cbo_prof,
-                        p["codigo"], p["nome"], p["apurado"],
+                        r["periodo"], prof_dict["nome_profissional"], rotulo_cbo_prof,
+                        p_dict.get("codigo"), p_dict.get("nome"), p_dict.get("apurado"),
+                        obs,
                     ])
 
         for col in detalhe_ws.columns:
@@ -2215,6 +2273,88 @@ def exportar_excel():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
     )
+
+
+# ----------------------------------------------------------------------------
+# ROTAS DE PERSISTÊNCIA DAS OBSERVAÇÕES DO PAINEL
+# ----------------------------------------------------------------------------
+
+@bp.route("/api/salvar_observacao", methods=["POST"])
+def api_salvar_observacao():
+    db = get_db()
+    dados = request.get_json(silent=True) or {}
+    chave = (dados.get("chave") or "").strip()
+    texto = (dados.get("texto") or "").strip()
+
+    if not chave:
+        return jsonify({"ok": False, "erro": "Chave não informada"}), 400
+
+    indicador_id = dados.get("indicador_id")
+    estabelecimento_id = dados.get("estabelecimento_id")
+    subgrupo_id = dados.get("subgrupo_id")
+    cbo_codigo = dados.get("cbo_codigo")
+    periodo = dados.get("periodo") or ""
+
+    if subgrupo_id in ("", "None", "null"):
+        subgrupo_id = None
+    if cbo_codigo in ("", "None", "null"):
+        cbo_codigo = None
+
+    if texto:
+        db.execute(
+            """INSERT INTO painel_observacoes (chave, indicador_id, estabelecimento_id, subgrupo_id, cbo_codigo, periodo, texto, atualizado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(chave) DO UPDATE SET texto = excluded.texto, atualizado_em = datetime('now')""",
+            (chave, indicador_id, estabelecimento_id, subgrupo_id, cbo_codigo, periodo, texto)
+        )
+    else:
+        db.execute("DELETE FROM painel_observacoes WHERE chave = ?", (chave,))
+    db.commit()
+
+    return jsonify({"ok": True, "chave": chave, "texto": texto})
+
+
+@bp.route("/api/sincronizar_observacoes", methods=["POST"])
+def api_sincronizar_observacoes():
+    db = get_db()
+    dados = request.get_json(silent=True) or {}
+    itens = dados.get("itens") or []
+
+    processados = 0
+    for item in itens:
+        chave = (item.get("chave") or "").strip()
+        texto = (item.get("texto") or "").strip()
+        if not chave or not texto:
+            continue
+        indicador_id = item.get("indicador_id")
+        estabelecimento_id = item.get("estabelecimento_id")
+        subgrupo_id = item.get("subgrupo_id")
+        cbo_codigo = item.get("cbo_codigo")
+        periodo = item.get("periodo") or ""
+
+        if subgrupo_id in ("", "None", "null"):
+            subgrupo_id = None
+        if cbo_codigo in ("", "None", "null"):
+            cbo_codigo = None
+
+        db.execute(
+            """INSERT INTO painel_observacoes (chave, indicador_id, estabelecimento_id, subgrupo_id, cbo_codigo, periodo, texto, atualizado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(chave) DO UPDATE SET texto = excluded.texto, atualizado_em = datetime('now')""",
+            (chave, indicador_id, estabelecimento_id, subgrupo_id, cbo_codigo, periodo, texto)
+        )
+        processados += 1
+
+    if processados > 0:
+        db.commit()
+
+    return jsonify({"ok": True, "processados": processados})
+
+
+@bp.route("/api/obter_observacoes", methods=["GET"])
+def api_obter_observacoes():
+    db = get_db()
+    return jsonify({"ok": True, "observacoes": _carregar_mapa_observacoes(db)})
 
 
 # ----------------------------------------------------------------------------
@@ -2573,10 +2713,12 @@ def websaass_vincular_linhas():
 
     db.commit()
 
-    # Recalcula WebSaass para todos os períodos do staging
+    # Recalcula WebSaass para todos os períodos do staging e garante limpeza de linhas órfãs
     periodos_stg = [r[0] for r in db.execute("SELECT DISTINCT periodo FROM staging_webssas WHERE periodo IS NOT NULL").fetchall()]
     for p in periodos_stg:
         calcular_webssas(db, p)
+        _garantir_linhas_subgrupos(db, _normalizar_periodo(p))
+    db.commit()
 
     linhas_res = _resultados_com_status(db)
     linhas_atualizadas = [
@@ -2636,6 +2778,8 @@ def websaass_desvincular_linha():
     periodos_stg = [r[0] for r in db.execute("SELECT DISTINCT periodo FROM staging_webssas WHERE periodo IS NOT NULL").fetchall()]
     for p in periodos_stg:
         calcular_webssas(db, p)
+        _garantir_linhas_subgrupos(db, _normalizar_periodo(p))
+    db.commit()
 
     linhas_res = _resultados_com_status(db)
     linhas_atualizadas = [

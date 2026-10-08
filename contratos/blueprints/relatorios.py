@@ -350,6 +350,7 @@ def auditoria_websass_xlsx():
         "Subgrupo", "Tipo", "Complexidade", "Serviço", "CBO", "Nome CBO",
         "Período", "Apurado (STS)", "Declarado (Websaass)", "Divergência",
         "Meta Contratual", "% Meta Atingida", "Status Meta", "Status Auditoria Websaass",
+        "Observações",
     ]
     _cabecalho(ws_auditoria, titulos)
 
@@ -411,6 +412,7 @@ def auditoria_websass_xlsx():
             pct,
             r.get("status_rotulo") or "",
             rot_aud,
+            r.get("observacao") or "",
         ])
 
         cell_status = ws_auditoria.cell(row=row_idx, column=18)

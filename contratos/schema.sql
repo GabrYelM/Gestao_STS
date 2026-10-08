@@ -877,3 +877,19 @@ CREATE INDEX IF NOT EXISTS idx_procedimento_portes_cod ON procedimento_portes(co
 CREATE INDEX IF NOT EXISTS idx_procedimento_portes_porte ON procedimento_portes(porte);
 CREATE INDEX IF NOT EXISTS idx_procedimento_portes_inst ON procedimento_portes(instrumento);
 
+-- ----------------------------------------------------------------------------
+-- 10. ANOTAÇÕES / OBSERVAÇÕES DAS LINHAS DO PAINEL (Exportáveis em Excel)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS painel_observacoes (
+    chave               TEXT PRIMARY KEY,
+    indicador_id        INTEGER NOT NULL,
+    estabelecimento_id  INTEGER NOT NULL,
+    subgrupo_id         INTEGER,
+    cbo_codigo          TEXT,
+    periodo             TEXT NOT NULL,
+    texto               TEXT NOT NULL,
+    atualizado_em       TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_painel_obs_ind_estab ON painel_observacoes(indicador_id, estabelecimento_id, periodo);
+
+
