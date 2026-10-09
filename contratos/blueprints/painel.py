@@ -644,8 +644,13 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
                 estabelecimento_ids,
             ).fetchall()
             for r_red in rows_red:
-                if r_red["unidade_origem_id"] not in estabs_busca:
-                    estabs_busca.append(r_red["unidade_origem_id"])
+                u_orig_id = r_red["unidade_origem_id"]
+                tem_meta_orig = db.execute(
+                    "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id IN (12, 22) AND cbo_codigo = ?",
+                    (u_orig_id, cbo_alvo),
+                ).fetchone()
+                if not tem_meta_orig and u_orig_id not in estabs_busca:
+                    estabs_busca.append(u_orig_id)
 
         cnes_busca = []
         if estabs_busca:
@@ -667,7 +672,6 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
                   FROM staging_dtic_rel134 s
                   LEFT JOIN cbo c ON c.codigo = s.cbo_prof
                   WHERE LOWER(COALESCE(s.supervisao, '')) LIKE '%penha%'
-                    AND UPPER(TRIM(COALESCE(s.emulti, ''))) = 'SIM'
                     AND CAST(COALESCE(s.num_participantes, '0') AS INTEGER) > 1
                     AND LOWER(COALESCE(s.tipo_atividade, '')) NOT LIKE '%reuni%'
                     AND s.ano = ? AND (s.mes = ? OR s.mes = ?)
@@ -679,9 +683,32 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
                 sql += " AND s.cbo_prof LIKE '2234%'"
             elif cbo_codigo.startswith("2516"):
                 sql += " AND s.cbo_prof LIKE '2516%'"
+            elif cbo_codigo.startswith("2236"):
+                sql += " AND s.cbo_prof LIKE '2236%'"
+            elif cbo_codigo.startswith("2238"):
+                sql += " AND s.cbo_prof LIKE '2238%'"
+            elif cbo_codigo.startswith("2237"):
+                sql += " AND s.cbo_prof LIKE '2237%'"
+            elif cbo_codigo.startswith("2239"):
+                sql += " AND s.cbo_prof LIKE '2239%'"
+            elif cbo_codigo.startswith("2241"):
+                sql += " AND s.cbo_prof LIKE '2241%'"
+            elif cbo_codigo.startswith("2515"):
+                sql += " AND s.cbo_prof LIKE '2515%'"
+            elif cbo_codigo.startswith("225133"):
+                sql += " AND s.cbo_prof LIKE '225133%'"
+            elif cbo_codigo.startswith("225250"):
+                sql += " AND s.cbo_prof LIKE '225250%'"
             else:
                 sql += " AND (s.cbo_prof = ? OR s.cbo_prof LIKE ?)"
                 params.extend([cbo_codigo, f"{cbo_codigo}%"])
+        else:
+            sql += """ AND (
+                s.cbo_prof LIKE '2516%' OR s.cbo_prof LIKE '2234%' OR s.cbo_prof LIKE '2236%'
+                OR s.cbo_prof LIKE '2238%' OR s.cbo_prof LIKE '225250%' OR s.cbo_prof LIKE '225133%'
+                OR s.cbo_prof LIKE '2237%' OR s.cbo_prof LIKE '2241%' OR s.cbo_prof LIKE '2515%'
+                OR s.cbo_prof LIKE '2239%'
+            )"""
         sql += " GROUP BY s.nome_profissional ORDER BY s.nome_profissional ASC"
         rows = db.execute(sql, params).fetchall()
         resultado = []
@@ -777,6 +804,55 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
 
             if not estab_id or (estabs_set and estab_id not in estabs_set):
                 continue
+
+            # Garante que a linha pertença exatamente ao indicador consultado (P09/P10 vs P19/P20)
+            tem_meta_09_10 = db.execute(
+                "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id IN (SELECT id FROM indicadores WHERE codigo IN ('P09', 'P10'))",
+                (estab_id,)
+            ).fetchone()
+            tem_meta_19_20 = db.execute(
+                "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id IN (SELECT id FROM indicadores WHERE codigo IN ('P19', 'P20'))",
+                (estab_id,)
+            ).fetchone()
+
+            # Checa se a equipe/unidade possui vínculo explícito configurado em outro modelo de PICS
+            outro_vinc = db.execute(
+                """SELECT i.codigo FROM indicador_unidade_origem uo
+                   JOIN indicadores i ON i.id = uo.indicador_id
+                   WHERE i.codigo IN ('P09', 'P10', 'P19', 'P20') AND lower(trim(uo.nome_origem)) = lower(trim(?))""",
+                (nome_est,)
+            ).fetchall()
+            outros_cods = {ov["codigo"] for ov in outro_vinc}
+            eh_vinculada_esf = any(c in ("P09", "P10") for c in outros_cods)
+            eh_vinculada_trad = any(c in ("P19", "P20") for c in outros_cods)
+
+            if ind_cod in ("P09", "P10") and eh_vinculada_trad and not eh_vinculada_esf:
+                continue
+            if ind_cod in ("P19", "P20") and eh_vinculada_esf and not eh_vinculada_trad:
+                continue
+
+            if tem_meta_09_10 and tem_meta_19_20:
+                e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+                nome_low = nome_est.lower()
+                eh_equipe = "emulti" in nome_low or "emab" in nome_low
+                if eh_equipe:
+                    ind_alvo_eh_esf = (dest_m == "ESF")
+                else:
+                    servicos = [s[0].upper() for s in db.execute(
+                        "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?", (estab_id,)
+                    ).fetchall()]
+                    ind_alvo_eh_esf = any("ESF" in s for s in servicos)
+
+                ind_atual_eh_esf = ind_cod in ("P09", "P10")
+                if ind_alvo_eh_esf != ind_atual_eh_esf:
+                    continue
+            elif tem_meta_09_10 and not tem_meta_19_20:
+                if ind_cod in ("P19", "P20"):
+                    continue
+            elif tem_meta_19_20 and not tem_meta_09_10:
+                if ind_cod in ("P09", "P10"):
+                    continue
 
             # CNES da sede da equipe volante
             cnes_sede = str(r["cod_cnes"] or "").strip().lstrip("0")
@@ -972,18 +1048,28 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
             if not unidade_realizou_id:
                 unidade_realizou_id = unidade_base_id
 
+            tem_meta_realizou = False
+            if unidade_realizou_id and c_cod:
+                tem_meta_realizou = bool(db.execute(
+                    """SELECT 1 FROM metas 
+                       WHERE estabelecimento_id = ? 
+                         AND indicador_id IN (11, 21) 
+                         AND cbo_codigo = ?""",
+                    (unidade_realizou_id, c_cod),
+                ).fetchone())
+
             # Unidade final
-            estab_final = unidade_base_id if deve_transferir and unidade_base_id else (unidade_realizou_id or unidade_base_id)
+            estab_final = unidade_base_id if (deve_transferir and unidade_base_id and not tem_meta_realizou) else (unidade_realizou_id or unidade_base_id)
             if not estab_final or (estabs_set and estab_final not in estabs_set):
                 continue
 
             # Rótulo de Origem
-            if deve_transferir and unidade_realizou_id and unidade_base_id and unidade_realizou_id != unidade_base_id:
+            if deve_transferir and not tem_meta_realizou and unidade_realizou_id and unidade_base_id and unidade_realizou_id != unidade_base_id:
                 estab_part = db.execute("SELECT nome FROM estabelecimentos WHERE id = ?", (unidade_realizou_id,)).fetchone()
                 nome_part = estab_part["nome"] if estab_part else "Unidade Parceira"
                 origem_rotulo = f"Transferido de: {nome_part}"
                 is_transferido = True
-            elif not deve_transferir and unidade_realizou_id and unidade_base_id and unidade_realizou_id != unidade_base_id:
+            elif unidade_realizou_id and unidade_base_id and unidade_realizou_id != unidade_base_id:
                 origem_rotulo = f"Origem Local: {nome_origem}"
                 is_transferido = False
             else:
@@ -1230,8 +1316,13 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                 estabelecimento_ids,
             ).fetchall()
             for r_red in rows_red:
-                if r_red["unidade_origem_id"] not in estabs_busca:
-                    estabs_busca.append(r_red["unidade_origem_id"])
+                u_orig_id = r_red["unidade_origem_id"]
+                tem_meta_orig = db.execute(
+                    "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id IN (12, 22) AND cbo_codigo = ?",
+                    (u_orig_id, cbo_alvo),
+                ).fetchone()
+                if not tem_meta_orig and u_orig_id not in estabs_busca:
+                    estabs_busca.append(u_orig_id)
 
         cnes_busca = []
         if estabs_busca:
@@ -1262,7 +1353,6 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                          SUM(CAST(COALESCE(s.num_participantes, '0') AS INTEGER)) AS num_participantes
                   FROM staging_dtic_rel134 s
                   WHERE LOWER(COALESCE(s.supervisao, '')) LIKE '%penha%'
-                    AND UPPER(TRIM(COALESCE(s.emulti, ''))) = 'SIM'
                     AND CAST(COALESCE(s.num_participantes, '0') AS INTEGER) > 1
                     AND LOWER(COALESCE(s.tipo_atividade, '')) NOT LIKE '%reuni%'
                     AND s.ano = ? AND (s.mes = ? OR s.mes = ?)
@@ -1275,9 +1365,32 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                 sql += " AND s.cbo_prof LIKE '2234%'"
             elif str(cbo_alvo).startswith("2516"):
                 sql += " AND s.cbo_prof LIKE '2516%'"
+            elif str(cbo_alvo).startswith("2236"):
+                sql += " AND s.cbo_prof LIKE '2236%'"
+            elif str(cbo_alvo).startswith("2238"):
+                sql += " AND s.cbo_prof LIKE '2238%'"
+            elif str(cbo_alvo).startswith("2237"):
+                sql += " AND s.cbo_prof LIKE '2237%'"
+            elif str(cbo_alvo).startswith("2239"):
+                sql += " AND s.cbo_prof LIKE '2239%'"
+            elif str(cbo_alvo).startswith("2241"):
+                sql += " AND s.cbo_prof LIKE '2241%'"
+            elif str(cbo_alvo).startswith("2515"):
+                sql += " AND s.cbo_prof LIKE '2515%'"
+            elif str(cbo_alvo).startswith("225133"):
+                sql += " AND s.cbo_prof LIKE '225133%'"
+            elif str(cbo_alvo).startswith("225250"):
+                sql += " AND s.cbo_prof LIKE '225250%'"
             else:
                 sql += " AND (s.cbo_prof = ? OR s.cbo_prof LIKE ?)"
                 params.extend([cbo_alvo, f"{cbo_alvo}%"])
+        else:
+            sql += """ AND (
+                s.cbo_prof LIKE '2516%' OR s.cbo_prof LIKE '2234%' OR s.cbo_prof LIKE '2236%'
+                OR s.cbo_prof LIKE '2238%' OR s.cbo_prof LIKE '225250%' OR s.cbo_prof LIKE '225133%'
+                OR s.cbo_prof LIKE '2237%' OR s.cbo_prof LIKE '2241%' OR s.cbo_prof LIKE '2515%'
+                OR s.cbo_prof LIKE '2239%'
+            )"""
         sql += " GROUP BY s.nome_unidade, s.cnes, s.tipo_atividade ORDER BY apurado DESC, s.nome_unidade"
         rows = db.execute(sql, params).fetchall()
         return [
@@ -1480,7 +1593,17 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
             if not unidade_realizou_id:
                 unidade_realizou_id = unidade_base_id
 
-            estab_final = unidade_base_id if deve_transferir and unidade_base_id else (unidade_realizou_id or unidade_base_id)
+            tem_meta_realizou = False
+            if unidade_realizou_id and c_cod:
+                tem_meta_realizou = bool(db.execute(
+                    """SELECT 1 FROM metas 
+                       WHERE estabelecimento_id = ? 
+                         AND indicador_id IN (11, 21) 
+                         AND cbo_codigo = ?""",
+                    (unidade_realizou_id, c_cod),
+                ).fetchone())
+
+            estab_final = unidade_base_id if (deve_transferir and unidade_base_id and not tem_meta_realizou) else (unidade_realizou_id or unidade_base_id)
             if estabs_set and estab_final in estabs_set:
                 proc_n = r["procedimento_nome"] or "Atendimento Individual eMulti"
                 res_proc[proc_n] += int(r["total"] or 0)
@@ -2170,6 +2293,58 @@ def vincular_procedimento():
     })
 
 
+def _carregar_mapa_websaass(db):
+    """
+    Carrega o catálogo de vínculos cadastrados em de_para_websaass_indicador,
+    organizados em dicionário indexado por (indicador_id, subgrupo_id, cbo_codigo).
+    """
+    dp_rows = db.execute("""
+        SELECT indicador_id, subgrupo_id, cbo_codigo, cod_producao, producao, servico
+        FROM de_para_websaass_indicador
+        WHERE indicador_id IS NOT NULL AND cod_producao IS NOT NULL AND trim(cod_producao) != ''
+        ORDER BY cod_producao
+    """).fetchall()
+
+    mapa = {}
+    for r in dp_rows:
+        cbo = str(r["cbo_codigo"]).strip() if r["cbo_codigo"] else None
+        sg = r["subgrupo_id"]
+        ind_id = r["indicador_id"]
+        mapa.setdefault((ind_id, sg, cbo), []).append(r)
+    return mapa
+
+
+def _resolver_vinculo_websaass(mapa_ws, indicador_id, subgrupo_id=None, cbo_codigo=None):
+    """
+    Retorna (codigos_ws, producoes_ws) para uma combinação de indicador, subgrupo e CBO.
+    Aplica fallback hierárquico caso não encontre correspondência exata.
+    """
+    cbo = str(cbo_codigo).strip() if cbo_codigo else None
+    matches = mapa_ws.get((indicador_id, subgrupo_id, cbo))
+    if not matches and cbo and ("_PMMB" in cbo or "_RT" in cbo):
+        cbo_clean = cbo.replace("_PMMB", "").replace("_RT", "")
+        matches = mapa_ws.get((indicador_id, subgrupo_id, cbo_clean))
+    if not matches and subgrupo_id is not None:
+        matches = mapa_ws.get((indicador_id, None, cbo))
+        if not matches and cbo and ("_PMMB" in cbo or "_RT" in cbo):
+            cbo_clean = cbo.replace("_PMMB", "").replace("_RT", "")
+            matches = mapa_ws.get((indicador_id, None, cbo_clean))
+    if not matches and cbo is not None:
+        matches = mapa_ws.get((indicador_id, subgrupo_id, None))
+    if not matches:
+        matches = mapa_ws.get((indicador_id, None, None))
+
+    if not matches:
+        return "", ""
+
+    cods = ", ".join(dict.fromkeys(it["cod_producao"] for it in matches if it["cod_producao"]))
+    prods = " | ".join(dict.fromkeys(
+        f"{it['cod_producao']} - {' '.join(it['producao'].split())}" if it["producao"] else it["cod_producao"]
+        for it in matches if it["cod_producao"]
+    ))
+    return cods, prods
+
+
 @bp.route("/exportar_excel")
 def exportar_excel():
     """
@@ -2190,13 +2365,16 @@ def exportar_excel():
     formato = request.args.get("formato", "resumido")
 
     resultados = _resultados_com_status(db)
+    mapa_ws = _carregar_mapa_websaass(db)
 
     wb = Workbook()
     resumo_ws = wb.active
     resumo_ws.title = "Resumo"
     cabecalho_resumo = [
         "Indicador", "Nome do indicador", "Subgrupo", "Tipo", "Complexidade", "Serviço",
-        "Estabelecimento", "CBO", "Período", "Apurado", "Declarado", "Meta", "% Meta", "Status",
+        "Estabelecimento", "CBO", "Período", "Apurado", "Declarado",
+        "Cód. WebSaass", "Indicador WebSaass",
+        "Meta", "% Meta", "Status",
         "Observações",
     ]
     resumo_ws.append(cabecalho_resumo)
@@ -2206,11 +2384,15 @@ def exportar_excel():
     for r in resultados:
         rotulo_status = r.get("status_rotulo") or ""
         obs = r.get("observacao") or ""
+        ws_cods, ws_prods = _resolver_vinculo_websaass(
+            mapa_ws, r["indicador_id"], r.get("subgrupo_id"), r.get("cbo_codigo")
+        )
         resumo_ws.append([
             r["indicador_codigo"], r["indicador_nome"], r.get("subgrupo_nome") or "", r["indicador_tipo"],
             r["complexidade"], r["servico"], r["estabelecimento_nome"],
             (f"{r['cbo_codigo']} - {r['cbo_nome']}" if r["cbo_codigo"] else "Curinga / Geral"),
             r["periodo"], r["valor_apurado"], r["valor_declarado"],
+            ws_cods, ws_prods,
             r["valor_meta"], r["percentual_meta"], rotulo_status,
             obs,
         ])
@@ -2222,6 +2404,7 @@ def exportar_excel():
         detalhe_ws = wb.create_sheet("Detalhe - Profissional-Proced")
         detalhe_ws.append([
             "Indicador", "Subgrupo", "Estabelecimento", "CBO da linha", "Período",
+            "Cód. WebSaass", "Indicador WebSaass",
             "Profissional", "CBO do profissional", "Procedimento", "Nome do procedimento", "Apurado",
             "Observações da Linha",
         ])
@@ -2232,6 +2415,9 @@ def exportar_excel():
             rotulo_indicador = f"{r['indicador_codigo']} - {r['indicador_nome']}"
             rotulo_cbo = f"{r['cbo_codigo']} - {r['cbo_nome']}" if r["cbo_codigo"] else "Curinga / Geral"
             obs = r.get("observacao") or ""
+            ws_cods, ws_prods = _resolver_vinculo_websaass(
+                mapa_ws, r["indicador_id"], r.get("subgrupo_id"), r.get("cbo_codigo")
+            )
             profissionais = _profissionais_da_linha(
                 db, r["indicador_id"], r["estabelecimento_ids"], r["cbo_codigo"], r["periodo"],
                 r.get("subgrupo_id"),
@@ -2253,7 +2439,8 @@ def exportar_excel():
                         continue
                     detalhe_ws.append([
                         rotulo_indicador, r.get("subgrupo_nome") or "", r["estabelecimento_nome"], rotulo_cbo,
-                        r["periodo"], prof_dict["nome_profissional"], rotulo_cbo_prof,
+                        r["periodo"], ws_cods, ws_prods,
+                        prof_dict["nome_profissional"], rotulo_cbo_prof,
                         p_dict.get("codigo"), p_dict.get("nome"), p_dict.get("apurado"),
                         obs,
                     ])

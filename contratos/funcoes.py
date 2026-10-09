@@ -340,9 +340,23 @@ def autovincular_emulti_indicador(db, indicador_id):
         nome_origem = r["nome_estabelecimento"]
         estab_id, _ = resolver_unidade_at57(db, nome_origem, r["cod_cnes"], indicador_id=None)
         if estab_id:
-            # Se o indicador tem metas, vincula apenas as equipes pertinentes a ele
+            # Se a unidade tem metas, vincula apenas as equipes pertinentes a ela
             if estabs_meta and estab_id not in estabs_meta:
                 continue
+
+            # Se a unidade de destino for mista, valida se o indicador é compatível com a destinacao_mista
+            ind_row = db.execute("SELECT codigo FROM indicadores WHERE id = ?", (indicador_id,)).fetchone()
+            ind_codigo = ind_row["codigo"] if ind_row else ""
+            e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+            dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+
+            # Se a unidade destina eMulti para TRAD, equipes eMulti/eMAB não devem ir para indicadores ESF (P09, P10, P11, P12)
+            if dest_m == "TRAD" and ind_codigo in ("P09", "P10", "P11", "P12"):
+                continue
+            # Se a unidade destina eMulti para ESF, equipes eMulti/eMAB não devem ir para indicadores TRAD (P19, P20, P21, P22)
+            if dest_m == "ESF" and ind_codigo in ("P19", "P20", "P21", "P22"):
+                continue
+
             db.execute(
                 """INSERT INTO indicador_unidade_origem (indicador_id, nome_origem, estabelecimento_id)
                    VALUES (?, ?, ?)
@@ -1871,11 +1885,20 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
 
                 grupo = (r["grupo"] or "").upper()
                 is_coletivo = "COLETIV" in grupo
+                cand_esf = ind_p10 if is_coletivo else ind_p09
+                cand_trad = ind_p20 if is_coletivo else ind_p19
 
-                # 1. Verifica se há vínculo explícito em indicador_unidade_origem
+                # 1. Resolução preliminar do estabelecimento de destino para avaliar contexto
+                estab_id_cand, _ = resolver_unidade_at57(db, r["nome_estabelecimento"], r["cod_cnes"])
+                dest_m = "TRAD"
+                if estab_id_cand:
+                    e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (estab_id_cand,)).fetchone()
+                    dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+
+                # Verifica vínculo manual em indicador_unidade_origem
                 estab_id = None
                 ind_escolhido = None
-                candidatos = (ind_p10, ind_p20) if is_coletivo else (ind_p09, ind_p19)
+                candidatos = (cand_trad, cand_esf) if dest_m == "TRAD" else (cand_esf, cand_trad)
                 for ind_candidato in candidatos:
                     if not ind_candidato:
                         continue
@@ -1891,7 +1914,7 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
 
                 # 2. Se não houver vínculo manual, aplica regra do último nome (eMulti) ou CNES/Nome
                 if not estab_id:
-                    estab_id, _ = resolver_unidade_at57(db, r["nome_estabelecimento"], r["cod_cnes"])
+                    estab_id = estab_id_cand
 
                 if not estab_id:
                     continue
@@ -1910,15 +1933,32 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                 if not is_ubs:
                     continue
 
-                # 3. Define o indicador correto por tipo de serviço:
+                # 3. Define o indicador correto por perfil de metas, modelo e equipe:
                 # P09 e P10: apenas unidades da Estratégia de Saúde da Família (ESF)
                 # P19 e P20: apenas unidades Tradicionais (TRAD)
                 if not ind_escolhido:
-                    is_esf = any("ESF" in s for s in servicos)
-                    if is_esf:
-                        ind_escolhido = ind_p10 if is_coletivo else ind_p09
+                    tem_meta_esf = estab_id in (metas_p10 if is_coletivo else metas_p09)
+                    tem_meta_trad = estab_id in (metas_p20 if is_coletivo else metas_p19)
+
+                    if tem_meta_esf and not tem_meta_trad:
+                        ind_escolhido = cand_esf
+                    elif tem_meta_trad and not tem_meta_esf:
+                        ind_escolhido = cand_trad
+                    elif tem_meta_esf and tem_meta_trad:
+                        # Unidade mista com metas em ambos os modelos (ex: UBS Eng Trindade)
+                        e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (estab_id,)).fetchone()
+                        dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
+                        eh_equipe = "emulti" in nome_origem_low or "emab" in nome_origem_low
+                        if eh_equipe:
+                            # A equipe volante eMulti/EMAB segue a destinação mista da unidade
+                            ind_escolhido = cand_esf if dest_m == "ESF" else cand_trad
+                        else:
+                            # Produção da própria unidade básica
+                            is_esf_unit = any("ESF" in s for s in servicos)
+                            ind_escolhido = cand_esf if is_esf_unit else cand_trad
                     else:
-                        ind_escolhido = ind_p20 if is_coletivo else ind_p19
+                        is_esf = any("ESF" in s for s in servicos)
+                        ind_escolhido = cand_esf if is_esf else cand_trad
 
                 if not ind_escolhido:
                     continue
@@ -2092,9 +2132,20 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                     unidade_realizou_id = unidade_base_id
 
                 # Aplicação da regra de transferência territorial por CBO:
-                # - Se o CBO transfere (Fisio, Fono, Nutri, Psico, Psiquiatra, etc.): credita na Unidade Base
-                # - Se o CBO não transfere (Farmacêutico e Assistente Social): credita na Unidade de Realização
-                if deve_transferir and unidade_base_id:
+                # - Se a unidade de realização possui meta cadastrada para este CBO em P11 ou P21,
+                #   a produção permanece na unidade de realização.
+                # - Caso contrário, se o CBO transfere (Fisio, Fono, Nutri, Psico, etc.), credita na Unidade Base territorial.
+                tem_meta_realizou = False
+                if unidade_realizou_id and cbo_cod:
+                    tem_meta_realizou = bool(db.execute(
+                        """SELECT 1 FROM metas 
+                           WHERE estabelecimento_id = ? 
+                             AND indicador_id IN (?, ?) 
+                             AND cbo_codigo = ?""",
+                        (unidade_realizou_id, ind_p11["id"] if ind_p11 else 0, ind_p21["id"] if ind_p21 else 0, cbo_cod),
+                    ).fetchone())
+
+                if deve_transferir and unidade_base_id and not tem_meta_realizou:
                     estab_id = unidade_base_id
                 else:
                     estab_id = unidade_realizou_id or unidade_base_id
@@ -2327,16 +2378,53 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
 
     ano_ref = periodo_norm[:4]
     mes_ref = periodo_norm[4:6]
-    mes_sem_zero = str(int(mes_ref))
+    mes_sem_zero = str(int(mes_ref)) if mes_ref.isdigit() else mes_ref
 
-    # Staging query com os 5 filtros utilizando estritamente as colunas ano e mes para o período
+    def _resolver_cbo_rel134(cod):
+        if not cod:
+            return None
+        c = str(cod).split(".")[0].strip()
+        if c.startswith("2516"):      # Assistente Social
+            return "251605"
+        if c.startswith("2234"):      # Farmacêutico
+            return "223405"
+        if c.startswith("2236"):      # Fisioterapeuta Geral
+            return "223605"
+        if c.startswith("2238"):      # Fonoaudiólogo Geral
+            return "223810"
+        if c.startswith("225250"):    # Médico Ginecologista e Obstetra
+            return "225250"
+        if c.startswith("225133"):    # Médico Psiquiatra
+            return "225133"
+        if c.startswith("2237"):      # Nutricionista
+            return "223710"
+        if c.startswith("2241"):      # Profissional de Educação Física na Saúde
+            return "224140"
+        if c.startswith("2515"):      # Psicólogo Clínico
+            return "251510"
+        if c.startswith("2239"):      # Terapeuta Ocupacional
+            return "223905"
+        return None
+
+    # Staging query filtrando pelos CBOs de eMulti e desconsiderando reuniões (sem filtrar coluna emulti)
     query = """
         SELECT cnes, nome_unidade, cbo_prof, num_participantes, ano, mes, importacao_id
         FROM staging_dtic_rel134
         WHERE LOWER(COALESCE(supervisao, '')) LIKE '%penha%'
-          AND UPPER(TRIM(COALESCE(emulti, ''))) = 'SIM'
           AND CAST(COALESCE(num_participantes, '0') AS INTEGER) > 1
           AND LOWER(COALESCE(tipo_atividade, '')) NOT LIKE '%reuni%'
+          AND (
+              cbo_prof LIKE '2516%'
+              OR cbo_prof LIKE '2234%'
+              OR cbo_prof LIKE '2236%'
+              OR cbo_prof LIKE '2238%'
+              OR cbo_prof LIKE '225250%'
+              OR cbo_prof LIKE '225133%'
+              OR cbo_prof LIKE '2237%'
+              OR cbo_prof LIKE '2241%'
+              OR cbo_prof LIKE '2515%'
+              OR cbo_prof LIKE '2239%'
+          )
           AND ano = ? AND (mes = ? OR mes = ?)
     """
     params = [ano_ref, mes_ref, mes_sem_zero]
@@ -2358,18 +2446,24 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
         if not origem_id:
             continue
 
-        cbo_cod = str(r["cbo_prof"] or "").split(".")[0].strip()
+        cbo_cod = _resolver_cbo_rel134(r["cbo_prof"])
         if not cbo_cod:
             continue
 
-        if cbo_cod.startswith("2234"):
-            cbo_cod = "223405"
-        elif cbo_cod.startswith("2516"):
-            cbo_cod = "251605"
+        # Verifica se este CBO deve ser transferido para a base ou permanecer na unidade de realização:
+        # Se a unidade de origem já possui meta própria para este CBO em P12 ou P22, ela NÃO transfere para a base.
+        tem_meta_origem = False
+        if origem_id and cbo_cod:
+            tem_meta_origem = bool(db.execute(
+                """SELECT 1 FROM metas 
+                   WHERE estabelecimento_id = ? 
+                     AND indicador_id IN (12, 22) 
+                     AND cbo_codigo = ?""",
+                (origem_id, cbo_cod),
+            ).fetchone())
 
-        # Verifica se este CBO deve ser transferido para a base ou permanecer na unidade de realização
         deve_transferir = (cbo_cod in cbos_transferem) or any(cbo_cod.startswith(c) for c in cbos_transferem)
-        if deve_transferir:
+        if deve_transferir and not tem_meta_origem:
             destino_id = redirecionamentos.get(origem_id, origem_id)
         else:
             destino_id = origem_id
