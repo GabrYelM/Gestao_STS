@@ -45,11 +45,21 @@ MESES_EXTENSO_PARA_NUM = {
 def _normalizar_periodo(periodo):
     """
     Normaliza qualquer formato de competência para 'AAAAMM' (ex.: '202608').
-    Aceita '202608', '2026-08', '2026/08', '08/2026', 'AGO 2026', 'AGO/2026', 'Agosto 2026'.
+    Aceita '202608', '2026-08', '2026-08-01', '2026-08-01 00:00:00',
+    '2026/08', '08/2026', 'AGO 2026', 'AGO/2026', 'Agosto 2026'.
     """
     if not periodo:
         return ""
-    p = str(periodo).strip().upper().replace("-", "").replace("/", "").replace(" ", "")
+    if hasattr(periodo, "strftime"):
+        return periodo.strftime("%Y%m")
+    raw = str(periodo).strip()
+    m_iso = re.match(r"^(\d{4})[-/](\d{2})(?:[-/]\d{2}(?:\s+.*)?)?$", raw)
+    if m_iso:
+        return f"{m_iso.group(1)}{m_iso.group(2)}"
+    m_br = re.match(r"^(\d{2})[-/](\d{2})[-/](\d{4})(?:\s+.*)?$", raw)
+    if m_br:
+        return f"{m_br.group(3)}{m_br.group(2)}"
+    p = raw.upper().replace("-", "").replace("/", "").replace(" ", "")
     if len(p) == 6 and p.isdigit():
         return p
     if len(p) == 6 and p[:2].isdigit() and p[2:].isdigit():
@@ -77,6 +87,41 @@ def _periodo_para_webssas(periodo):
         sigla = MESES_NUM_PARA_SIGLA.get(mes, mes)
         return f"{sigla} {ano}"
     return periodo
+
+
+def _obter_importacao_sistema_id(db, periodo=None):
+    """
+    Retorna um importacao_id válido para registros sintéticos/automáticos do sistema em fato_apuracao.
+    Garante integridade referencial com a tabela importacoes (FK: fato_apuracao.importacao_id -> importacoes.id).
+    """
+    row = db.execute(
+        "SELECT id FROM importacoes WHERE nome_arquivo = 'Sistema / Sincronização Automática' LIMIT 1"
+    ).fetchone()
+    if row:
+        return row["id"]
+
+    if periodo:
+        p_norm = _normalizar_periodo(periodo)
+        row = db.execute(
+            "SELECT id FROM importacoes WHERE periodo_referencia = ? ORDER BY id DESC LIMIT 1",
+            (p_norm,)
+        ).fetchone()
+        if row:
+            return row["id"]
+
+    row = db.execute("SELECT id FROM importacoes ORDER BY id DESC LIMIT 1").fetchone()
+    if row:
+        return row["id"]
+
+    fonte_padrao = db.execute("SELECT id FROM fontes_dados LIMIT 1").fetchone()
+    fid = fonte_padrao["id"] if fonte_padrao else 1
+    cursor = db.execute(
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, linhas_importadas, status)
+           VALUES (?, 'Sistema / Sincronização Automática', ?, 0, 'concluido')""",
+        (fid, _normalizar_periodo(periodo) if periodo else "SISTEMA"),
+    )
+    db.commit()
+    return cursor.lastrowid
 
 
 def _resolver_estabelecimento(db, cod_cmes, cod_cnes=None, com_origem=False):
@@ -113,17 +158,78 @@ def _resolver_estabelecimento(db, cod_cmes, cod_cnes=None, com_origem=False):
     return (achado, origem) if com_origem else achado
 
 
+def _normalizar_texto_chave(txt):
+    if not txt:
+        return ""
+    txt = unicodedata.normalize("NFKD", str(txt))
+    txt = "".join(c for c in txt if not unicodedata.combining(c))
+    return re.sub(r"[^a-zA-Z0-9]", "", txt).upper()
+
+
+def _resolver_estabelecimento_websaass(db, nome_unidade):
+    """
+    Resolve a unidade do WebSaass para estabelecimento_id de forma robusta e dinâmica,
+    tolerando acentos, diacríticos, pontuações, caracteres corrompidos e variações de grafia.
+    """
+    if not nome_unidade:
+        return None
+    nome_raw = str(nome_unidade).strip()
+    if not nome_raw:
+        return None
+
+    # 1. Tentativa exata direta em de_para_websaass_unidade
+    row = db.execute(
+        "SELECT estabelecimento_id FROM de_para_websaass_unidade WHERE lower(trim(nome_websass)) = lower(?) LIMIT 1",
+        (nome_raw,),
+    ).fetchone()
+    if row:
+        return row["estabelecimento_id"]
+
+    # 2. Tentativa exata em estabelecimentos
+    row = db.execute(
+        "SELECT id FROM estabelecimentos WHERE lower(trim(nome)) = lower(?) LIMIT 1",
+        (nome_raw,),
+    ).fetchone()
+    if row:
+        return row["id"]
+
+    # 3. Tentativa normalizada (sem acentos/espaços/pontuações)
+    norm_u = _normalizar_texto_chave(nome_raw)
+    if norm_u:
+        for r in db.execute("SELECT nome_websass, estabelecimento_id FROM de_para_websaass_unidade").fetchall():
+            if _normalizar_texto_chave(r["nome_websass"]) == norm_u:
+                return r["estabelecimento_id"]
+        for r in db.execute("SELECT id, nome FROM estabelecimentos").fetchall():
+            if _normalizar_texto_chave(r["nome"]) == norm_u:
+                return r["id"]
+
+    # 4. Fallback por palavras-chave principais da STS Penha
+    norm_u_lower = nome_raw.lower()
+    palavras_chave = [
+        ("estev", 53), ("patriarca", 54), ("villalobo", 55),
+        ("goulart", 56), ("trindade", 57), ("maring", 52),
+        ("francisco", 58), ("nicolau", 59), ("anchieta", 61),
+        ("arthur alvim", 60), ("aricanduva", 62), ("cassio", 63),
+        ("emilio", 64), ("granada", 65), ("raspa", 66), ("guilhermina", 66),
+        ("val", 67), ("cangaiba", 21), ("cruzeiro", 4), ("nobrega", 5),
+        ("silvia", 6), ("cer iii", 18), ("cer ii", 19), ("hatiro", 44),
+        ("wilson", 17), ("nordeste", 2), ("maurice", 3),
+    ]
+    for termo, eid in palavras_chave:
+        if termo in norm_u_lower:
+            return eid
+
+    return None
+
+
 def _resolver_estabelecimento_por_nome(db, nome_estabelecimento):
     """Localiza o estabelecimento pelo nome na Penha, desconsiderando variações de maiúsculas/acentos."""
     if not nome_estabelecimento:
         return None
+    res = _resolver_estabelecimento_websaass(db, nome_estabelecimento)
+    if res:
+        return res
     nome = str(nome_estabelecimento).strip().lower()
-    row = db.execute("SELECT id FROM estabelecimentos WHERE lower(nome) = ?", (nome,)).fetchone()
-    if row:
-        return row["id"]
-    row = db.execute("SELECT estabelecimento_id FROM de_para_websaass_unidade WHERE lower(trim(nome_websass)) = ?", (nome,)).fetchone()
-    if row:
-        return row["estabelecimento_id"]
     row = db.execute("SELECT id FROM estabelecimentos WHERE lower(nome) LIKE ?", (f"%{nome}%",)).fetchone()
     if row:
         return row["id"]
@@ -465,7 +571,8 @@ def _candidatos_indicador_subgrupo(db, procedimento_codigo, estabelecimento_id, 
         if prof_req:
             if not nome_profissional:
                 continue
-            if _normalizar_nome_prof(prof_req) != _normalizar_nome_prof(nome_profissional):
+            nomes_permitidos = {_normalizar_nome_prof(n) for n in prof_req.replace(";", ",").split(",") if n.strip()}
+            if _normalizar_nome_prof(nome_profissional) not in nomes_permitidos:
                 continue
 
         chave = (indicador_id, subgrupo_id)
@@ -550,6 +657,8 @@ SERVICOS_COMPATIVEIS = {
     "UBS_TRAD": {"UBS_TRAD", "UBS_MISTA"},
     "EMULTI_ESF": {"EMULTI_ESF", "EMULTI_MISTA"},
     "EMULTI_TRAD": {"EMULTI_TRAD", "EMULTI_MISTA"},
+    "HOSPITAL_DIA": {"HOSPITAL_DIA", "TELE"},
+    "CNR": {"CNR"},
 }
 
 
@@ -673,13 +782,14 @@ def _garantir_linhas_subgrupos(db, periodo_norm):
             if not existe:
                 ind_row = db.execute("SELECT fonte_id FROM indicadores WHERE id = ?", (iid,)).fetchone()
                 fid = ind_row["fonte_id"] if ind_row and ind_row["fonte_id"] else 1
+                imp_id = _obter_importacao_sistema_id(db, periodo_norm)
                 db.execute(
                     """INSERT INTO fato_apuracao (
                            fonte_id, importacao_id, estabelecimento_id, profissional_id,
                            cbo_codigo, procedimento_codigo, indicador_id, periodo,
                            quantidade, tipo_registro, subgrupo_id
-                       ) VALUES (?, 1, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
-                    (fid, eid, sc["cbo_codigo"], iid, periodo_norm, sc["subgrupo_id"]),
+                       ) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                    (fid, imp_id, eid, sc["cbo_codigo"], iid, periodo_norm, sc["subgrupo_id"]),
                 )
 
     # Limpeza de linhas órfãs com apurado zerado
@@ -759,13 +869,14 @@ def _garantir_linhas_pmmb(db, periodo_norm):
         if not existe:
             ind_row = db.execute("SELECT fonte_id FROM indicadores WHERE id = ?", (iid,)).fetchone()
             fid = ind_row["fonte_id"] if ind_row and ind_row["fonte_id"] else 1
+            imp_id = _obter_importacao_sistema_id(db, periodo_norm)
             db.execute(
                 """INSERT INTO fato_apuracao (
                        fonte_id, importacao_id, estabelecimento_id, profissional_id,
                        cbo_codigo, procedimento_codigo, indicador_id, periodo,
                        quantidade, tipo_registro, subgrupo_id
-                   ) VALUES (?, 1, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
-                (fid, eid, cbo_pmmb, iid, periodo_norm, sgid),
+                   ) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                (fid, imp_id, eid, cbo_pmmb, iid, periodo_norm, sgid),
             )
 
 
@@ -775,6 +886,12 @@ def _garantir_linhas_rt(db, periodo_norm):
     ou profissionais cadastrados com RT (profissionais.rt = 1) tenham linha no painel (fato_apuracao com apurado=0)
     caso não haja produção registrada no mês.
     """
+    ids_esf_odonto = {
+        r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo IN ('P07', 'P08', 'M29')").fetchall()
+    } | {7, 8}
+    ids_trad_odonto = {
+        r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo IN ('P17', 'P18', 'M30')").fetchall()
+    } | {17, 18}
     metas_rt = db.execute(
         """SELECT DISTINCT m.estabelecimento_id, m.indicador_id, m.subgrupo_id, m.cbo_codigo
            FROM metas m
@@ -784,7 +901,9 @@ def _garantir_linhas_rt(db, periodo_norm):
         eid = row["estabelecimento_id"]
         iid = row["indicador_id"]
         sgid = row["subgrupo_id"]
-        cbo_base = row["cbo_codigo"] or ("223293" if iid in (7, 8) else ("223208" if iid in (17, 18) else "223240"))
+        cbo_base = row["cbo_codigo"] or (
+            "223293" if iid in ids_esf_odonto else ("223208" if iid in ids_trad_odonto else "223240")
+        )
         cbo_rt = f"{cbo_base}_RT" if not cbo_base.endswith("_RT") else cbo_base
         existe = db.execute(
             """SELECT 1 FROM fato_apuracao
@@ -796,13 +915,14 @@ def _garantir_linhas_rt(db, periodo_norm):
         if not existe:
             ind_row = db.execute("SELECT fonte_id FROM indicadores WHERE id = ?", (iid,)).fetchone()
             fid = ind_row["fonte_id"] if ind_row and ind_row["fonte_id"] else 1
+            imp_id = _obter_importacao_sistema_id(db, periodo_norm)
             db.execute(
                 """INSERT INTO fato_apuracao (
                        fonte_id, importacao_id, estabelecimento_id, profissional_id,
                        cbo_codigo, procedimento_codigo, indicador_id, periodo,
                        quantidade, tipo_registro, subgrupo_id
-                   ) VALUES (?, 1, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
-                (fid, eid, cbo_rt, iid, periodo_norm, sgid),
+                   ) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                (fid, imp_id, eid, cbo_rt, iid, periodo_norm, sgid),
             )
 
 
@@ -867,24 +987,12 @@ def _garantir_emulti_at02(db, periodo_norm):
                 if ca and ca not in cnes_lista:
                     cnes_lista.append(ca)
 
-            equipes_emulti = obter_equipes_emulti_unidade(db, est["id"], indicador_id=ind_alvo["id"])
-
-            clausula_estab = []
-            params_estab = []
-            if cnes_lista:
-                placeholders_cnes = ",".join("?" * len(cnes_lista))
-                clausula_estab.append(f"(ltrim(s.cod_cnes, '0') IN ({placeholders_cnes}) AND lower(s.nome_estabelecimento) NOT LIKE '%emab%' AND lower(s.nome_estabelecimento) NOT LIKE '%emulti%')")
-                params_estab.extend(cnes_lista)
-
-            if equipes_emulti:
-                placeholders_eq = ",".join("?" * len(equipes_emulti))
-                clausula_estab.append(f"s.nome_estabelecimento IN ({placeholders_eq})")
-                params_estab.extend(equipes_emulti)
-
-            if not clausula_estab:
+            if not cnes_lista:
                 continue
 
-            condicao_estab = " OR ".join(clausula_estab)
+            placeholders_cnes = ",".join("?" * len(cnes_lista))
+            condicao_estab = f"ltrim(s.cod_cnes, '0') IN ({placeholders_cnes})"
+            params_estab = list(cnes_lista)
 
             query_at02 = f"""
                 SELECT s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento,
@@ -894,9 +1002,11 @@ def _garantir_emulti_at02(db, periodo_norm):
                   AND ({condicao_estab})
                   AND s.cod_cbo_sus IN ({placeholders_cbos_at02})
                   AND s.cod_procedimento IN ({placeholders_procs})
+                  AND lower(s.nome_estabelecimento) NOT LIKE 'pai %'
                   AND lower(s.nome_estabelecimento) NOT LIKE '%caps%'
                   AND lower(s.nome_estabelecimento) NOT LIKE '%cnr%'
                   AND lower(s.nome_estabelecimento) NOT LIKE '%cecco%'
+                  AND lower(s.nome_estabelecimento) NOT LIKE '%teleassistencia%'
                 GROUP BY s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento
             """
             params_at02 = [periodo_norm, *params_estab, *cbos_at02_alvo, *procs_validos]
@@ -949,6 +1059,68 @@ def _garantir_emulti_at02(db, periodo_norm):
     return total_vinculadas
 
 
+def _garantir_linhas_dinamicas(db, periodo_norm):
+    """
+    Garante que o painel seja 100% dinâmico:
+    Toda meta contratual ativa no Termo Aditivo vigente para o período (valor_meta > 0)
+    que ainda não possua registro em fato_apuracao para a tupla (estabelecimento, indicador, subgrupo, cbo)
+    ganha uma linha base em fato_apuracao com quantidade=0 e tipo_registro='apurado'.
+    Isso assegura que nenhuma meta contratada fique invisível no painel por ausência de produção prévia.
+    """
+    if not periodo_norm:
+        return 0
+
+    p_norm = _normalizar_periodo(periodo_norm)
+    ta_rows = db.execute(
+        """SELECT id FROM termos_aditivos
+           WHERE periodo_inicio <= date(substr(?,1,4) || '-' || substr(?,5,2) || '-01', '+1 month', '-1 day')
+             AND periodo_fim   >= date(substr(?,1,4) || '-' || substr(?,5,2) || '-01')
+           ORDER BY periodo_inicio DESC, id DESC""",
+        (p_norm, p_norm, p_norm, p_norm),
+    ).fetchall()
+    ta_ids = [r["id"] for r in ta_rows] if ta_rows else [1]
+
+    placeholders = ",".join("?" for _ in ta_ids)
+    metas = db.execute(
+        f"""SELECT DISTINCT m.estabelecimento_id, m.indicador_id, m.subgrupo_id, m.cbo_codigo, i.fonte_id
+           FROM metas m
+           JOIN indicadores i ON i.id = m.indicador_id
+           WHERE m.ta_id IN ({placeholders}) AND m.valor_meta > 0""",
+        ta_ids,
+    ).fetchall()
+
+    inseridas = 0
+    for m in metas:
+        eid = m["estabelecimento_id"]
+        iid = m["indicador_id"]
+        sub = m["subgrupo_id"]
+        cbo = m["cbo_codigo"]
+        fid = m["fonte_id"] or 1
+
+        existe = db.execute(
+            """SELECT 1 FROM fato_apuracao
+               WHERE periodo = ? AND estabelecimento_id = ? AND indicador_id = ?
+                 AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+                 AND ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?)
+               LIMIT 1""",
+            (p_norm, eid, iid, sub, sub, cbo, cbo),
+        ).fetchone()
+
+        if not existe:
+            imp_id = _obter_importacao_sistema_id(db, p_norm)
+            db.execute(
+                """INSERT INTO fato_apuracao (
+                       fonte_id, importacao_id, estabelecimento_id, profissional_id,
+                       cbo_codigo, procedimento_codigo, indicador_id, periodo,
+                       quantidade, tipo_registro, subgrupo_id
+                   ) VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, 0, 'apurado', ?)""",
+                (fid, imp_id, eid, cbo, iid, p_norm, sub),
+            )
+            inseridas += 1
+
+    return inseridas
+
+
 def calcular_at02(db, periodo, importacao_id=None):
     """Gera fato_apuracao (tipo_registro='apurado') a partir de staging_at02."""
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome='AT02'").fetchone()["id"]
@@ -991,6 +1163,14 @@ def calcular_at02(db, periodo, importacao_id=None):
            FROM profissionais WHERE ativo = 1"""
     ).fetchall()
 
+    ids_esf_odonto = {
+        r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo IN ('P07', 'P08', 'M29')").fetchall()
+    } | {7, 8}
+    ids_trad_odonto = {
+        r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo IN ('P17', 'P18', 'M30')").fetchall()
+    } | {17, 18}
+    ids_m13 = {r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo = 'M13'").fetchall()}
+
     est_rt_p07_p08 = {
         r[0] for r in db.execute(
             "SELECT DISTINCT estabelecimento_id FROM metas WHERE (indicador_id IN (7, 8) AND rt = 'SIM') OR cbo_codigo = '223293_RT'"
@@ -999,6 +1179,11 @@ def calcular_at02(db, periodo, importacao_id=None):
     est_rt_p17_p18 = {
         r[0] for r in db.execute(
             "SELECT DISTINCT estabelecimento_id FROM metas WHERE (indicador_id IN (17, 18) AND rt = 'SIM') OR cbo_codigo = '223208_RT'"
+        ).fetchall()
+    }
+    est_pmmb_p13 = {
+        r[0] for r in db.execute(
+            "SELECT DISTINCT estabelecimento_id FROM metas WHERE indicador_id = 13 AND (pmmb = 'SIM' OR cbo_codigo = '225170_PMMB')"
         ).fetchall()
     }
     profs_preparados = []
@@ -1033,12 +1218,13 @@ def calcular_at02(db, periodo, importacao_id=None):
                     return p
             return exatos[0]
 
-        # 2. Match por inclusão / subconjunto de palavras (mínimo 3 palavras)
+        # 2. Match por inclusão / subconjunto de palavras (mínimo 3 palavras, ou 2 quando na mesma unidade)
         candidatos_prof = []
         for p in profs_preparados:
             inter = p["words"].intersection(stg_words)
-            if (p["words"].issubset(stg_words) or stg_words.issubset(p["words"])) and len(inter) >= 3:
-                candidatos_prof.append(p)
+            if p["words"].issubset(stg_words) or stg_words.issubset(p["words"]):
+                if len(inter) >= 3 or (len(inter) >= 2 and min(len(p["words"]), len(stg_words)) == 2 and p["estabelecimento_id"] == est_id):
+                    candidatos_prof.append(p)
 
         if candidatos_prof:
             for p in candidatos_prof:
@@ -1078,6 +1264,8 @@ def calcular_at02(db, periodo, importacao_id=None):
         prof_id = prof_encontrado["id"] if prof_encontrado else None
         eh_pmmb = bool(prof_encontrado and prof_encontrado["pmmb"])
         eh_rt = bool(prof_encontrado and prof_encontrado["rt"])
+        if eh_rt and estabelecimento_id == 59 and "rodrigo antunes" in (linha["nome_profissional"] or "").lower() and periodo_norm < "202606":
+            eh_rt = False
 
         candidatos = _candidatos_indicador_subgrupo(
             db, procedimento_codigo, estabelecimento_id,
@@ -1091,21 +1279,20 @@ def calcular_at02(db, periodo, importacao_id=None):
         razoes_bloqueio = set()
         for indicador_id, subgrupo_id in candidatos:
             cbo_para_teste = cbo_codigo
-            if eh_pmmb:
-                if indicador_id in (1, 2):
-                    cbo_para_teste = "225142_PMMB"
-                elif indicador_id == 13:
-                    cbo_para_teste = "225170_PMMB"
-                else:
-                    cbo_para_teste = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+            if eh_pmmb and indicador_id in (1, 2) and cbo_codigo in ("225142", "225142_PMMB"):
+                cbo_para_teste = "225142_PMMB"
+            elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB") and (eh_pmmb or estabelecimento_id in est_pmmb_p13):
+                cbo_para_teste = "225170_PMMB"
+            elif eh_pmmb and indicador_id not in (1, 2, 13):
+                cbo_para_teste = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
             elif eh_rt:
-                if estabelecimento_id in est_rt_p07_p08 and (cbo_codigo in ("223293", "223208") or indicador_id in (7, 8)):
+                if estabelecimento_id in est_rt_p07_p08 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_esf_odonto):
                     cbo_para_teste = "223293_RT"
-                elif estabelecimento_id in est_rt_p17_p18 and (cbo_codigo in ("223293", "223208") or indicador_id in (17, 18)):
+                elif estabelecimento_id in est_rt_p17_p18 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_trad_odonto):
                     cbo_para_teste = "223208_RT"
-                elif indicador_id in (7, 8):
+                elif indicador_id in ids_esf_odonto:
                     cbo_para_teste = "223293_RT" if cbo_codigo == "223293" else f"{cbo_codigo}_RT"
-                elif indicador_id in (17, 18):
+                elif indicador_id in ids_trad_odonto:
                     cbo_para_teste = "223208_RT" if cbo_codigo == "223208" else f"{cbo_codigo}_RT"
                 elif indicador_id == 42 and (cbo_codigo == "223240" or subgrupo_id == 4):
                     cbo_para_teste = "223240_RT"
@@ -1123,6 +1310,9 @@ def calcular_at02(db, periodo, importacao_id=None):
                 continue
             if (indicador_id, subgrupo_id) not in aprovados:
                 aprovados.append((indicador_id, subgrupo_id))
+
+        if procedimento_codigo == "0211020036" and any(ind == 44 for ind, _ in aprovados):
+            aprovados = [(ind, sg) for ind, sg in aprovados if ind == 44]
 
         indicadores = []
         for indicador_id in dict.fromkeys(ind for ind, _ in aprovados):
@@ -1168,26 +1358,29 @@ def calcular_at02(db, periodo, importacao_id=None):
         for indicador_id, subgrupo_id in indicadores:
             sg_id_registro = subgrupo_id
             cbo_registro = cbo_codigo
-            if eh_pmmb:
-                if indicador_id in (1, 2):
-                    cbo_registro = "225142_PMMB"
-                elif indicador_id == 13:
-                    cbo_registro = "225170_PMMB"
-                else:
-                    cbo_registro = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+            if eh_pmmb and indicador_id in (1, 2) and cbo_codigo in ("225142", "225142_PMMB"):
+                cbo_registro = "225142_PMMB"
+            elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB") and (eh_pmmb or estabelecimento_id in est_pmmb_p13):
+                cbo_registro = "225170_PMMB"
+            elif eh_pmmb and indicador_id not in (1, 2, 13):
+                cbo_registro = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
             elif eh_rt:
-                if estabelecimento_id in est_rt_p07_p08 and (cbo_codigo in ("223293", "223208") or indicador_id in (7, 8)):
+                if estabelecimento_id in est_rt_p07_p08 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_esf_odonto):
                     cbo_registro = "223293_RT"
-                elif estabelecimento_id in est_rt_p17_p18 and (cbo_codigo in ("223293", "223208") or indicador_id in (17, 18)):
+                elif estabelecimento_id in est_rt_p17_p18 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_trad_odonto):
                     cbo_registro = "223208_RT"
-                elif indicador_id in (7, 8):
+                elif indicador_id in ids_esf_odonto:
                     cbo_registro = "223293_RT" if cbo_codigo == "223293" else f"{cbo_codigo}_RT"
-                elif indicador_id in (17, 18):
+                elif indicador_id in ids_trad_odonto:
                     cbo_registro = "223208_RT" if cbo_codigo == "223208" else f"{cbo_codigo}_RT"
                 elif indicador_id == 42 and (cbo_codigo == "223240" or subgrupo_id == 4):
                     cbo_registro = "223240_RT"
                 else:
                     cbo_registro = f"{cbo_codigo}_RT" if not str(cbo_codigo).endswith("_RT") else cbo_codigo
+
+            estab_id_registro = estabelecimento_id
+            if indicador_id in ids_m13 and estab_id_registro == 16:
+                estab_id_registro = 44
 
             # Regra P43: Neuro (225112) e Pneumo (225127) quando CMES != CNES é lançado como Infantil
             if indicador_id == 43 and cbo_codigo in ("225112", "225127"):
@@ -1211,7 +1404,7 @@ def calcular_at02(db, periodo, importacao_id=None):
                 (
                     fonte_id,
                     linha["importacao_id"],
-                    estabelecimento_id,
+                    estab_id_registro,
                     prof_id,
                     cbo_registro,
                     procedimento_codigo,
@@ -1286,6 +1479,7 @@ def calcular_webssas(db, periodo, importacao_id=None):
     metas_sincronizadas = 0
     unidades_nao_encontradas = Counter()
     producoes_nao_encontradas = Counter()
+    metas_por_cod_prod = {}
 
     for linha in linhas:
         total += 1
@@ -1293,14 +1487,9 @@ def calcular_webssas(db, periodo, importacao_id=None):
         if not nome_unidade:
             continue
 
-        estab = db.execute(
-            "SELECT estabelecimento_id FROM de_para_websaass_unidade WHERE lower(trim(nome_websass)) = lower(?)",
-            (nome_unidade,),
-        ).fetchone()
-        if not estab:
-            estab_id = _resolver_estabelecimento_por_nome(db, nome_unidade)
-        else:
-            estab_id = estab["estabelecimento_id"]
+        estab_id = _resolver_estabelecimento_websaass(db, nome_unidade)
+        if not estab_id and not nome_unidade and linha["cod_producao"]:
+            estab_id = _resolver_estabelecimento_websaass(db, linha["cod_producao"])
 
         if not estab_id:
             sem_estabelecimento += 1
@@ -1314,9 +1503,13 @@ def calcular_webssas(db, periodo, importacao_id=None):
         ind_info = db.execute(
             """SELECT indicador_id, codigo_indicador, cbo_codigo, subgrupo_id
                FROM de_para_websaass_indicador
-               WHERE lower(trim(cod_producao)) = lower(?) AND (servico IS NULL OR lower(trim(servico)) = lower(?))
+               WHERE lower(trim(cod_producao)) = lower(?)
+                 AND (servico IS NULL OR lower(trim(servico)) = lower(?)
+                      OR lower(?) LIKE '%' || lower(trim(servico)) || '%'
+                      OR lower(trim(servico)) LIKE '%' || lower(?) || '%')
+               ORDER BY CASE WHEN servico IS NOT NULL THEN 0 ELSE 1 END
                LIMIT 1""",
-            (cp, serv),
+            (cp, serv, serv, serv),
         ).fetchone()
         if not ind_info and cp:
             ind_info = db.execute(
@@ -1343,6 +1536,14 @@ def calcular_webssas(db, periodo, importacao_id=None):
         indicador_id = ind_info["indicador_id"]
         cbo_codigo = str(ind_info["cbo_codigo"]).split(".")[0].strip() if ind_info["cbo_codigo"] else None
         subgrupo_id = ind_info["subgrupo_id"] if ind_info and "subgrupo_id" in ind_info.keys() else None
+
+        if (ind_info["codigo_indicador"] == "M33" or "CONSULT" in (serv or "").upper()) and estab_id == 21:
+            estab_id = 20
+
+        if cp == "36.08.08" and estab_id in (6, 53):
+            indicador_id = 44
+            subgrupo_id = 12
+            cbo_codigo = None
 
         if not cbo_codigo:
             cbos_ind = db.execute(
@@ -1418,6 +1619,10 @@ def calcular_webssas(db, periodo, importacao_id=None):
         vinculadas += 1
 
         if qtde_prevista is not None and qtde_prevista > 0 and ta_id:
+            chave_cp = (estab_id, indicador_id, subgrupo_id, cbo_codigo, cp)
+            valor_meta_alvo = metas_por_cod_prod.get(chave_cp, 0.0) + float(qtde_prevista)
+            metas_por_cod_prod[chave_cp] = valor_meta_alvo
+
             meta_existente = db.execute(
                 """SELECT id, valor_meta FROM metas
                    WHERE ta_id = ? AND estabelecimento_id = ? AND indicador_id = ?
@@ -1433,8 +1638,8 @@ def calcular_webssas(db, periodo, importacao_id=None):
                 (ta_id, estab_id, indicador_id, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, cbo_codigo, subgrupo_id, subgrupo_id, cbo_codigo),
             ).fetchone()
             if meta_existente:
-                if meta_existente["valor_meta"] != float(qtde_prevista):
-                    db.execute("UPDATE metas SET valor_meta = ? WHERE id = ?", (float(qtde_prevista), meta_existente["id"]))
+                if meta_existente["valor_meta"] != valor_meta_alvo:
+                    db.execute("UPDATE metas SET valor_meta = ? WHERE id = ?", (valor_meta_alvo, meta_existente["id"]))
                     metas_sincronizadas += 1
             else:
                 pmmb_val = "SIM" if (cbo_codigo and str(cbo_codigo).endswith("_PMMB")) else None
@@ -1442,7 +1647,7 @@ def calcular_webssas(db, periodo, importacao_id=None):
                 db.execute(
                     """INSERT INTO metas (ta_id, estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, pmmb, rt, valor_meta)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (ta_id, estab_id, indicador_id, subgrupo_id, cbo_codigo, pmmb_val, rt_val, float(qtde_prevista)),
+                    (ta_id, estab_id, indicador_id, subgrupo_id, cbo_codigo, pmmb_val, rt_val, valor_meta_alvo),
                 )
                 metas_sincronizadas += 1
 
@@ -1764,11 +1969,12 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
         elif fat == "AT40":
             # Garante que os CBOs com metas do P38 estejam vinculados na tabela indicador_cbo
             cbos_p38 = [
-                "223605", "223810", "251510", "223905", "239425", "251605", "223505",
-                "225160", "225265", "225275"
+                "223605", "223810", "251510", "223905", "239425", "251605", "223505", "MEDICO"
             ]
             ind = db.execute("SELECT id FROM indicadores WHERE codigo IN ('P38', 'P038') LIMIT 1").fetchone()
             if ind:
+                db.execute("INSERT OR IGNORE INTO cbo (codigo, nome_categoria) VALUES ('MEDICO', 'Médico (CER)')")
+                db.execute("DELETE FROM indicador_cbo WHERE indicador_id = ? AND cbo_codigo IN ('225160', '225265', '225275')", (ind["id"],))
                 for c in cbos_p38:
                     db.execute("INSERT OR IGNORE INTO indicador_cbo (indicador_id, cbo_codigo, curinga) VALUES (?, ?, 0)", (ind["id"], c))
 
@@ -1800,12 +2006,8 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                         return True, "251605"
                     if "enfermeiro" in norm:
                         return True, "223505"
-                    if "fisiatra" in norm:
-                        return True, "225160"
-                    if "oftalmologista" in norm or "oftalmo" in norm:
-                        return True, "225265"
-                    if "otorrinolaringologista" in norm or "otorrino" in norm:
-                        return True, "225275"
+                    if "medico" in norm or "fisiatra" in norm or "oftalmologista" in norm or "oftalmo" in norm or "otorrinolaringologista" in norm or "otorrino" in norm:
+                        return True, "MEDICO"
                     return False, None
 
                 for r in linhas:
@@ -2462,11 +2664,7 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
                 (origem_id, cbo_cod),
             ).fetchone())
 
-        deve_transferir = (cbo_cod in cbos_transferem) or any(cbo_cod.startswith(c) for c in cbos_transferem)
-        if deve_transferir and not tem_meta_origem:
-            destino_id = redirecionamentos.get(origem_id, origem_id)
-        else:
-            destino_id = origem_id
+        destino_id = origem_id
 
         chave = (destino_id, cbo_cod)
         if chave not in producao_agrupada:
@@ -2484,9 +2682,11 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
         if not max_imp_geral and dados["imp_id"]:
             max_imp_geral = dados["imp_id"]
 
-        # Determinar se vai para P12 ou P22
+        # Determinar se vai para P12 ou P22 (somente unidades com meta contratada para o CBO)
         tem_meta_cbo_12 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 12 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone()
         tem_meta_cbo_22 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = 22 AND cbo_codigo = ?", (destino_id, cbo_cod)).fetchone()
+        if not tem_meta_cbo_12 and not tem_meta_cbo_22:
+            continue
 
         e_mista_row = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (destino_id,)).fetchone()
         dest_m = (e_mista_row["destinacao_mista"] or "TRAD").upper() if e_mista_row else "TRAD"
@@ -2535,7 +2735,7 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
                        fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
                        periodo, quantidade, tipo_registro
                    ) VALUES (?, ?, ?, ?, ?, ?, 0, 'apurado')""",
-                (fonte_id, max_imp_geral or 1, m["estabelecimento_id"], m["cbo_codigo"], m["indicador_id"], periodo_norm),
+                (fonte_id, max_imp_geral or _obter_importacao_sistema_id(db, periodo_norm), m["estabelecimento_id"], m["cbo_codigo"], m["indicador_id"], periodo_norm),
             )
 
     db.commit()
@@ -2625,7 +2825,7 @@ def calcular_dtic_rel130(db, periodo, importacao_id=None):
                 """INSERT INTO fato_apuracao (
                        fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'apurado')""",
-                (fonte_id, r["imp_id"] or max_imp_id or 1, estab_id, cbo_cod, indicador_id, periodo_norm, qty),
+                (fonte_id, r["imp_id"] or max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, cbo_cod, indicador_id, periodo_norm, qty),
             )
             vinculadas += qty
 
@@ -2652,7 +2852,7 @@ def calcular_dtic_rel130(db, periodo, importacao_id=None):
                            fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
                            periodo, quantidade, tipo_registro
                        ) VALUES (?, ?, ?, ?, ?, ?, 0, 'apurado')""",
-                    (fonte_id, max_imp_id or 1, m["estabelecimento_id"], m["cbo_codigo"], m["indicador_id"], periodo_norm),
+                    (fonte_id, max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), m["estabelecimento_id"], m["cbo_codigo"], m["indicador_id"], periodo_norm),
                 )
 
     db.commit()
@@ -2772,7 +2972,7 @@ def calcular_sisad(db, periodo, importacao_id=None):
                        fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
                        periodo, quantidade, tipo_registro
                    ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
-                (fonte_id, max_imp_id or 1, estab_id, ind_p31["id"], periodo_norm, qtd_ativos),
+                (fonte_id, max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, ind_p31["id"], periodo_norm, qtd_ativos),
             )
             vinculadas += qtd_ativos
 
@@ -2783,7 +2983,7 @@ def calcular_sisad(db, periodo, importacao_id=None):
                        fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
                        periodo, quantidade, tipo_registro
                    ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
-                (fonte_id, max_imp_id or 1, estab_id, ind_p32["id"], periodo_norm, qtd_desosp),
+                (fonte_id, max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, ind_p32["id"], periodo_norm, qtd_desosp),
             )
             vinculadas += qtd_desosp
 
@@ -2794,7 +2994,7 @@ def calcular_sisad(db, periodo, importacao_id=None):
                    fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
                    periodo, quantidade, tipo_registro
                ) VALUES (?, ?, ?, NULL, ?, ?, ?, 'apurado')""",
-            (fonte_id, max_imp_id or 1, estab_emap_id, ind_p34["id"], periodo_norm, total_ativos_emad_soma),
+            (fonte_id, max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_emap_id, ind_p34["id"], periodo_norm, total_ativos_emad_soma),
         )
         vinculadas += total_ativos_emad_soma
 
@@ -2821,7 +3021,7 @@ def calcular_sisad(db, periodo, importacao_id=None):
                            fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id,
                            periodo, quantidade, tipo_registro
                        ) VALUES (?, ?, ?, NULL, ?, ?, 0, 'apurado')""",
-                    (fonte_id, max_imp_id or 1, m["estabelecimento_id"], m["indicador_id"], periodo_norm),
+                    (fonte_id, max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), m["estabelecimento_id"], m["indicador_id"], periodo_norm),
                 )
 
     db.commit()
@@ -2934,7 +3134,7 @@ def calcular_dtic_rel164(db, periodo, importacao_id=None):
                    fonte_id, importacao_id, estabelecimento_id, cbo_codigo,
                    procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
                ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'apurado')""",
-            (fonte_id, r["imp_id"] or max_imp_id or 1, estab_id, cod_raw or None, target_ind, periodo_norm, qtd),
+            (fonte_id, r["imp_id"] or max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, cod_raw or None, target_ind, periodo_norm, qtd),
         )
         vinculadas += qtd
         indicadores_com_producao.add(target_ind)
@@ -2956,7 +3156,7 @@ def calcular_dtic_rel164(db, periodo, importacao_id=None):
                            fonte_id, importacao_id, estabelecimento_id, cbo_codigo,
                            procedimento_codigo, indicador_id, periodo, quantidade, tipo_registro
                        ) VALUES (?, ?, ?, NULL, NULL, ?, ?, 0, 'apurado')""",
-                    (fonte_id, max_imp_id or 1, estab_id, ind["id"], periodo_norm),
+                    (fonte_id, max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, ind["id"], periodo_norm),
                 )
 
     db.commit()
@@ -2986,7 +3186,7 @@ def recalcular_periodo(db, periodo, fonte_nome):
         return calcular_webssas(db, periodo_norm)
     elif fn == "VISITA_DOMICILIAR":
         return calcular_visita_domiciliar(db, periodo_norm)
-    elif fn in ("AT08", "AT11", "AT39", "AT40", "AT48", "AT49", "AT57", "AT61", "BI_SIGA"):
+    elif fn in ("AT08", "AT11", "AT32", "AT39", "AT40", "AT48", "AT49", "AT51", "AT57", "AT61", "BI_SIGA"):
         fat = None if fn == "BI_SIGA" else fn
         return calcular_bi_siga(db, periodo_norm, fonte_at=fat)
     elif fn == "DTIC_REL134":
@@ -3030,7 +3230,10 @@ def sincronizar_apuracao_dinamica(db, periodo=None):
                 pass
         try:
             _garantir_linhas_subgrupos(db, p)
+            _garantir_linhas_pmmb(db, p)
+            _garantir_linhas_rt(db, p)
             _garantir_emulti_at02(db, p)
+            _garantir_linhas_dinamicas(db, p)
             db.commit()
         except Exception:
             pass

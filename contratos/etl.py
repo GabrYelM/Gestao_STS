@@ -24,6 +24,11 @@ from contextlib import contextmanager
 
 import openpyxl
 
+try:
+    csv.field_size_limit(10 * 1024 * 1024)
+except Exception:
+    pass
+
 # ==============================================================================
 # 1. UTILITÁRIOS DE ARQUIVO E ZIP TRANSPARENTE
 # ==============================================================================
@@ -39,6 +44,11 @@ def abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="utf-8-sig", extensao_p
     Caso contrário:
       - Abre o arquivo diretamente do disco com open().
     """
+    if isinstance(caminho_arquivo, str) and caminho_arquivo.lower().endswith((".xlsx", ".xlsm", ".xls")):
+        raise ValueError(
+            "Formato Excel (.xlsx/.xls) não suportado para esta fonte textual — envie o arquivo .csv ou .zip original."
+        )
+
     if isinstance(caminho_arquivo, str) and (
         caminho_arquivo.lower().endswith(".zip")
         or (not caminho_arquivo.lower().endswith((".csv", ".txt", ".xml", ".tsv", ".json"))
@@ -349,7 +359,95 @@ COLUNAS_WEBSSAS = [
 ]
 
 
+def _parse_linhas_webssas_xlsx(stream_or_path):
+    wb = openpyxl.load_workbook(stream_or_path, read_only=True, data_only=True)
+    aba_escolhida = None
+    preferencia = [
+        "2º trimestre (corrigido)",
+        "1º trimestre (corrigido)",
+        "3º trimestre (corrigido)",
+        "4º trimestre (corrigido)",
+        "Silverlight Export",
+        "2º trimestre",
+        "1º trimestre",
+        "3º trimestre",
+        "4º trimestre",
+    ]
+    nomes_lower = {s.strip().lower(): s for s in wb.sheetnames}
+    for pref in preferencia:
+        if pref.lower() in nomes_lower:
+            aba_escolhida = wb[nomes_lower[pref.lower()]]
+            break
+    if aba_escolhida is None:
+        for s in wb.sheetnames:
+            if "corrigido" in s.lower():
+                aba_escolhida = wb[s]
+                break
+    if aba_escolhida is None:
+        for s in wb.sheetnames:
+            cand = wb[s]
+            first_row = next(cand.iter_rows(values_only=True, max_row=1), None)
+            if first_row:
+                cab = [str(c).strip().upper() if c is not None else "" for c in first_row]
+                if "COD_CONTRATO" in cab and "COD_PRODUCAO" in cab:
+                    aba_escolhida = cand
+                    break
+    if aba_escolhida is None:
+        aba_escolhida = wb[wb.sheetnames[0]]
+
+    rows_iter = aba_escolhida.iter_rows(values_only=True)
+    first_row = next(rows_iter, None)
+    if not first_row:
+        return []
+
+    cab = [str(c).strip().upper() if c is not None else "" for c in first_row]
+    mapa_cols = {
+        "cod_contrato": "COD_CONTRATO",
+        "contrato": "CONTRATO",
+        "contratada": "CONTRATADA",
+        "unidade": "UNIDADE",
+        "periodo": "PERIODO",
+        "servico": "SERVICO",
+        "cod_producao": "COD_PRODUCAO",
+        "producao": "PRODUCAO",
+        "qtde_realizada": "QTDE_REALIZADA",
+        "qtde_prevista": "QTDE_PREVISTA",
+    }
+    indices = {k: cab.index(v) for k, v in mapa_cols.items() if v in cab}
+
+    linhas = [COLUNAS_WEBSSAS[:]]
+    for row in rows_iter:
+        if not row or all(v is None for v in row):
+            continue
+        if indices:
+            row_data = []
+            for k in COLUNAS_WEBSSAS:
+                idx = indices.get(k)
+                val = row[idx] if idx is not None and idx < len(row) else None
+                if val is None:
+                    row_data.append("")
+                elif hasattr(val, "strftime"):
+                    row_data.append(val.strftime("%Y-%m-%d"))
+                elif isinstance(val, str):
+                    row_data.append(" ".join(val.split()))
+                else:
+                    row_data.append(str(val))
+        else:
+            row_data = [
+                val.strftime("%Y-%m-%d") if hasattr(val, "strftime")
+                else (" ".join(val.split()) if isinstance(val, str) else (str(val) if val is not None else ""))
+                for val in row[:10]
+            ]
+        if not row_data[3] and not row_data[6]:
+            continue
+        linhas.append(row_data)
+    return linhas
+
+
 def _parse_linhas_webssas(xml_path):
+    if isinstance(xml_path, str) and xml_path.lower().endswith((".xlsx", ".xlsm")):
+        return _parse_linhas_webssas_xlsx(xml_path)
+
     if isinstance(xml_path, str) and (xml_path.lower().endswith(".zip") or (os.path.exists(xml_path) and zipfile.is_zipfile(xml_path))):
         with zipfile.ZipFile(xml_path) as z:
             for name in z.namelist():
@@ -358,7 +456,10 @@ def _parse_linhas_webssas(xml_path):
                         tree = ET.parse(xf)
                         break
             else:
-                raise ValueError("Nenhum arquivo XML encontrado dentro do ZIP do Webssas.")
+                for name in z.namelist():
+                    if name.lower().endswith((".xlsx", ".xlsm")) and not name.startswith("__MACOSX"):
+                        return _parse_linhas_webssas_xlsx(io.BytesIO(z.read(name)))
+                raise ValueError("Nenhum arquivo XML ou XLSX encontrado dentro do ZIP do Webssas.")
     else:
         tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -387,7 +488,7 @@ def _parse_linhas_webssas(xml_path):
 def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None, mes_filtro=None):
     linhas = _parse_linhas_webssas(caminho_arquivo)
     if not linhas:
-        raise ValueError("XML do Webssas vazio ou em formato inesperado.")
+        raise ValueError("Arquivo do Webssas vazio ou em formato inesperado.")
 
     dados = linhas[1:]
 
@@ -406,7 +507,7 @@ def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None,
     importacao_id = cursor.lastrowid
 
     # Filtro de período: filtra estritamente o mês correspondente à competência informada
-    # (ex: '202601' aceita '202601' e 'JAN 2026')
+    # (ex: '202601' aceita '202601', 'JAN 2026' e '2026-01-01')
     filtro_esperado = {p_norm.upper(), p_web.upper()}
     if mes_filtro:
         filtro_esperado.add(str(mes_filtro).strip().upper())
@@ -428,7 +529,7 @@ def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None,
         def num(campo):
             v = valores.get(campo)
             try:
-                return int(v) if v not in (None, "") else None
+                return int(float(v)) if v not in (None, "") else None
             except (TypeError, ValueError):
                 return None
 
@@ -438,7 +539,7 @@ def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None,
             valores.get("contrato"),
             valores.get("contratada"),
             valores.get("unidade"),
-            valores.get("periodo"),
+            p_web,
             valores.get("servico"),
             valores.get("cod_producao"),
             valores.get("producao"),
@@ -638,6 +739,30 @@ CONFIGS_BI_SIGA = {
             "Contagem_Paciente": "quantidade_pacientes",
         },
     },
+    "AT32": {
+        "ancora": "Número_Ano_Mes__AAAAMM_",
+        "mapa": {
+            "Número_Ano_Mes__AAAAMM_": "ano_mes",
+            "Código_CNES1": "cod_cnes",
+            "H1___Nome_Estabelecimento1": "nome_estabelecimento",
+            "Nome_CBO1": "cbo_nome",
+            "Código_Procedimento": "procedimento_codigo",
+            "Nome_Procedimento1": "procedimento_nome",
+            "Quantidade_Procedimento1": "quantidade",
+        },
+    },
+    "AT51": {
+        "ancora": "Número_Ano_Mes__AAAAMM_",
+        "mapa": {
+            "Número_Ano_Mes__AAAAMM_": "ano_mes",
+            "Código_CNES1": "cod_cnes",
+            "H1___Nome_Estabelecimento1": "nome_estabelecimento",
+            "Nome_CBO1": "cbo_nome",
+            "Código_Procedimento": "procedimento_codigo",
+            "Nome_Procedimento1": "procedimento_nome",
+            "Quantidade_Procedimento1": "quantidade",
+        },
+    },
     "AT57": {
         "ancora": "Número_Ano_Mes__AAAAMM_",
         "mapa": {
@@ -815,10 +940,6 @@ def _campo_outras(linha, nome):
 
 
 def importar_dtic_rel134(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
-    with abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="cp1252", extensao_preferida=".csv") as f:
-        leitor = csv.DictReader(f, delimiter=";")
-        linhas = list(leitor)
-
     fonte_id = db.execute("SELECT id FROM fontes_dados WHERE nome = 'DTIC_REL134'").fetchone()["id"]
 
     db.execute("DELETE FROM staging_dtic_rel134 WHERE periodo_referencia = ?", (periodo_referencia,))
@@ -830,6 +951,10 @@ def importar_dtic_rel134(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     )
     importacao_id = cursor.lastrowid
 
+    p_norm = "".join(filter(str.isdigit, str(periodo_referencia or "")))
+    ano_ref = p_norm[:4] if len(p_norm) >= 4 else None
+    mes_ref = int(p_norm[4:6]) if len(p_norm) >= 6 and p_norm[4:6].isdigit() else None
+
     insert_sql = """INSERT INTO staging_dtic_rel134 (
                        importacao_id, periodo_referencia, coordenadoria, supervisao, oss, tipo_atividade,
                        cnes, nome_unidade, cns_prof, nome_profissional, cbo_prof, cbo,
@@ -839,32 +964,47 @@ def importar_dtic_rel134(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
 
     batch = []
     total = 0
-    for linha in linhas:
-        batch.append((
-            importacao_id,
-            periodo_referencia,
-            _campo_outras(linha, "coordenadoria"),
-            _campo_outras(linha, "supervisao"),
-            _campo_outras(linha, "oss"),
-            _campo_outras(linha, "tipo_atividade"),
-            _campo_outras(linha, "cnes"),
-            _campo_outras(linha, "nome_unidade") or _campo_outras(linha, "unidade"),
-            _campo_outras(linha, "cns_prof") or _campo_outras(linha, "cns_profissional"),
-            _campo_outras(linha, "nome_profissional"),
-            _campo_outras(linha, "cbo_prof") or _campo_outras(linha, "cod_cbo"),
-            _campo_outras(linha, "cbo"),
-            _campo_outras(linha, "data_atividade") or _campo_outras(linha, "data"),
-            _campo_outras(linha, "ano"),
-            _campo_outras(linha, "mes"),
-            _campo_outras(linha, "num_participantes") or _campo_outras(linha, "numero_participantes"),
-            _campo_outras(linha, "cod_proced_sigtap") or _campo_outras(linha, "cod_procedimento"),
-            _campo_outras(linha, "procedimento_sigtap") or _campo_outras(linha, "procedimento"),
-            _campo_outras(linha, "emulti"),
-        ))
-        total += 1
-        if len(batch) >= 10000:
-            db.executemany(insert_sql, batch)
-            batch = []
+    with abrir_texto_arquivo_ou_zip(caminho_arquivo, encoding="cp1252", extensao_preferida=".csv") as f:
+        leitor = csv.DictReader(f, delimiter=";")
+        for linha in leitor:
+            sup = (_campo_outras(linha, "supervisao") or _campo_outras(linha, "SUPERVISAO") or "").strip()
+            if "penha" not in sup.lower():
+                continue
+
+            l_ano = str(_campo_outras(linha, "ano") or _campo_outras(linha, "ANO") or "").strip()
+            l_mes_raw = str(_campo_outras(linha, "mes") or _campo_outras(linha, "MES") or "").strip()
+            if ano_ref and mes_ref is not None and l_ano and l_mes_raw:
+                try:
+                    if l_ano != ano_ref or int(l_mes_raw) != mes_ref:
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+            batch.append((
+                importacao_id,
+                periodo_referencia,
+                _campo_outras(linha, "coordenadoria"),
+                sup,
+                _campo_outras(linha, "oss"),
+                _campo_outras(linha, "tipo_atividade"),
+                _campo_outras(linha, "cnes"),
+                _campo_outras(linha, "nome_unidade") or _campo_outras(linha, "unidade"),
+                _campo_outras(linha, "cns_prof") or _campo_outras(linha, "cns_profissional"),
+                _campo_outras(linha, "nome_profissional"),
+                _campo_outras(linha, "cbo_prof") or _campo_outras(linha, "cod_cbo"),
+                _campo_outras(linha, "cbo"),
+                _campo_outras(linha, "data_atividade") or _campo_outras(linha, "data"),
+                l_ano or None,
+                l_mes_raw or None,
+                _campo_outras(linha, "num_participantes") or _campo_outras(linha, "numero_participantes"),
+                _campo_outras(linha, "cod_proced_sigtap") or _campo_outras(linha, "cod_procedimento"),
+                _campo_outras(linha, "procedimento_sigtap") or _campo_outras(linha, "procedimento"),
+                _campo_outras(linha, "emulti"),
+            ))
+            total += 1
+            if len(batch) >= 10000:
+                db.executemany(insert_sql, batch)
+                batch = []
 
     if batch:
         db.executemany(insert_sql, batch)
@@ -1125,6 +1265,180 @@ def importar_dtic_rel164(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     _limpar_importacoes_antigas(db, fonte_id, periodo_referencia, importacao_id, "staging_dtic_rel164")
     db.commit()
     return importacao_id, total
+
+
+# ==============================================================================
+# 8. ETL SICAP (RELAÇÃO DE RESPONSÁVEIS TÉCNICOS - ODONTOLOGIA)
+# ==============================================================================
+
+def importar_sicap(caminho_arquivo, db, nome_arquivo=None):
+    """
+    Lê a planilha SICAP (Solicitação de Atualização de Cadastro RT/RV - Odonto)
+    em formato .xlsx, percorre todas as abas mensais e sincroniza os Responsáveis
+    Técnicos (RTs) na tabela `profissionais` com CNS, CBO, tipo de equipe e unidade.
+    """
+    from .funcoes import _normalizar_nome_prof, _resolver_estabelecimento_por_cnes, _resolver_estabelecimento_por_nome
+
+    criados = 0
+    atualizados = 0
+    total_registros = 0
+    abas_lidas = []
+    detalhes_rt = []
+
+    with abrir_binario_arquivo_ou_zip(caminho_arquivo, extensao_preferida=".xlsx") as f:
+        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
+        for sname in wb.sheetnames:
+            ws = wb[sname]
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                continue
+
+            idx_cab = None
+            col_unid = 0
+            col_cnes = 1
+            col_nome = 2
+            col_cns = 3
+            for i, r in enumerate(rows[:15]):
+                vals = [str(c).strip().upper() if c is not None else "" for c in r]
+                if any("CNES" in v for v in vals) and any("RT" in v or "NOME" in v for v in vals):
+                    idx_cab = i
+                    for j, v in enumerate(vals):
+                        if "UNIDADE" in v:
+                            col_unid = j
+                        elif "CNES" in v:
+                            col_cnes = j
+                        elif "RT" in v or "NOME" in v:
+                            col_nome = j
+                        elif "CNS" in v or "CART" in v:
+                            col_cns = j
+                    break
+
+            if idx_cab is None:
+                continue
+
+            abas_lidas.append(sname.strip())
+            for r in rows[idx_cab + 1:]:
+                if not r or len(r) <= max(col_unid, col_cnes, col_nome):
+                    continue
+                unid_raw = str(r[col_unid]).strip() if r[col_unid] is not None else ""
+                cnes_raw = str(r[col_cnes]).split(".")[0].strip() if r[col_cnes] is not None else ""
+                nome_raw = str(r[col_nome]).strip() if r[col_nome] is not None else ""
+                cns_raw = str(r[col_cns]).split(".")[0].strip() if col_cns < len(r) and r[col_cns] is not None else ""
+
+                if not cnes_raw.isdigit() or not nome_raw or "TOTAL" in unid_raw.upper():
+                    continue
+
+                total_registros += 1
+                nome_limpo = re.sub(
+                    r"\s*-\s*(?:EQUIPE\s*TIPO\s*(?:II|I)|CIRURGI[ÃA]O\s*BUCAL|CEO).*$",
+                    "",
+                    nome_raw,
+                    flags=re.IGNORECASE,
+                ).strip()
+                nome_upper = nome_raw.upper()
+                if "TIPO II" in nome_upper:
+                    tipo_eq = "ESB II"
+                elif "TIPO I" in nome_upper:
+                    tipo_eq = "ESB I"
+                elif "CIRURGI" in nome_upper:
+                    tipo_eq = "CB"
+                elif "CEO" in unid_raw.upper():
+                    tipo_eq = "CEO"
+                else:
+                    tipo_eq = "ESB I"
+
+                estab_id, _ = _resolver_estabelecimento_por_cnes(db, cnes_raw)
+                if not estab_id:
+                    estab_id = _resolver_estabelecimento_por_nome(db, unid_raw)
+                if not estab_id:
+                    continue
+
+                # Regra contratual WebSAASS: UBS Jardim Maringá (id 52) lança RT em ESB I (1.05.19/1.05.23/36.07.02)
+                if estab_id == 52 and "MONICA KEIKO" in _normalizar_nome_prof(nome_limpo):
+                    tipo_eq = "ESB I"
+
+                # Determina o CBO contratual da unidade para RT de Odontologia
+                if "CEO" in unid_raw.upper() or estab_id == 17:
+                    cbo_cod = "223240"
+                else:
+                    servs = {
+                        s[0].upper()
+                        for s in db.execute(
+                            "SELECT tipo_servico FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ?",
+                            (estab_id,),
+                        ).fetchall()
+                    }
+                    tem_meta_esf_rt = db.execute(
+                        "SELECT 1 FROM metas WHERE estabelecimento_id = ? AND cbo_codigo = '223293_RT' LIMIT 1",
+                        (estab_id,),
+                    ).fetchone()
+                    if tem_meta_esf_rt or ("UBS_ESF" in servs and "UBS_TRAD" not in servs):
+                        cbo_cod = "223293"
+                    else:
+                        cbo_cod = "223208"
+
+                nome_norm_alvo = _normalizar_nome_prof(nome_limpo)
+                existente = None
+                if cns_raw and cns_raw.isdigit():
+                    existente = db.execute(
+                        "SELECT * FROM profissionais WHERE cns = ? AND estabelecimento_id = ? LIMIT 1",
+                        (cns_raw, estab_id),
+                    ).fetchone()
+                if not existente:
+                    for p_row in db.execute(
+                        "SELECT * FROM profissionais WHERE estabelecimento_id = ?", (estab_id,)
+                    ).fetchall():
+                        if _normalizar_nome_prof(p_row["nome"]) == nome_norm_alvo:
+                            existente = p_row
+                            break
+
+                nome_titulo = " ".join(w.capitalize() for w in nome_limpo.split())
+                if existente:
+                    precisa_update = (
+                        not existente["rt"]
+                        or (cns_raw and existente["cns"] != cns_raw)
+                        or existente["tipo_equipe"] != tipo_eq
+                        or not existente["cbo_codigo"]
+                    )
+                    if precisa_update:
+                        db.execute(
+                            """UPDATE profissionais
+                               SET cns = COALESCE(?, cns),
+                                   cbo_codigo = COALESCE(cbo_codigo, ?),
+                                   rt = 1,
+                                   tipo_equipe = ?,
+                                   ativo = 1
+                               WHERE id = ?""",
+                            (cns_raw or None, cbo_cod, tipo_eq, existente["id"]),
+                        )
+                        atualizados += 1
+                else:
+                    db.execute(
+                        """INSERT INTO profissionais (nome, cns, cbo_codigo, estabelecimento_id, rt, tipo_equipe, pmmb, ativo)
+                           VALUES (?, ?, ?, ?, 1, ?, 0, 1)""",
+                        (nome_titulo, cns_raw or None, cbo_cod, estab_id, tipo_eq),
+                    )
+                    criados += 1
+
+                detalhes_rt.append({
+                    "aba": sname.strip(),
+                    "unidade": unid_raw,
+                    "cnes": cnes_raw,
+                    "estabelecimento_id": estab_id,
+                    "nome": nome_titulo,
+                    "cns": cns_raw,
+                    "cbo_codigo": cbo_cod,
+                    "tipo_equipe": tipo_eq,
+                })
+
+    db.commit()
+    return {
+        "abas_lidas": abas_lidas,
+        "total_registros": total_registros,
+        "criados": criados,
+        "atualizados": atualizados,
+        "detalhes": detalhes_rt,
+    }
 
 
 # ==============================================================================

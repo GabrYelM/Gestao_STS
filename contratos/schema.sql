@@ -668,7 +668,7 @@ CREATE INDEX idx_fato_subgrupo ON fato_apuracao(subgrupo_id);
 -- que é onde a meta GERAL casa; com CBO específico, cada CBO é uma meta independente.
 -- v16: a meta vale quando o intervalo do TA SE SOBREPÕE ao mês da competência; metas segmentadas entram
 -- somadas se não há meta geral. (mantida em sincronia com VIEW_RESULTADOS_INDICADOR em app/migrations_auto.py)
-CREATE VIEW resultados_indicador AS /* v17 */
+CREATE VIEW resultados_indicador AS /* v25 */
 WITH base AS (
     SELECT
         f.*,
@@ -705,7 +705,7 @@ agr AS (
         b.cbo_agrupado,
         SUM(CASE WHEN b.tipo_registro = 'apurado'   THEN b.quantidade ELSE 0 END) AS valor_apurado,
         SUM(CASE WHEN b.tipo_registro = 'declarado' THEN b.quantidade ELSE 0 END) AS valor_declarado,
-        -- Meta GERAL / PMMB do TA mais recente que COBRE a competência.
+        -- Meta GERAL / PMMB / RT do TA mais recente que COBRE a competência.
         CASE
             WHEN b.cbo_agrupado LIKE '%_PMMB' THEN
                 (SELECT mm.valor_meta
@@ -723,6 +723,22 @@ agr AS (
                     AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
                   ORDER BY ta.periodo_inicio DESC, ta.id DESC
                   LIMIT 1)
+            WHEN b.cbo_agrupado LIKE '%_RT' THEN
+                (SELECT mm.valor_meta
+                   FROM metas mm
+                   JOIN termos_aditivos ta ON ta.id = mm.ta_id
+                  WHERE mm.indicador_id = b.indicador_id
+                    AND mm.estabelecimento_id = b.estabelecimento_id
+                    AND mm.subgrupo_id IS b.subgrupo_id
+                    AND (
+                        mm.cbo_codigo = b.cbo_agrupado
+                        OR (mm.cbo_codigo = replace(b.cbo_agrupado, '_RT', '') AND mm.rt = 'SIM')
+                        OR (mm.cbo_codigo IS NULL AND mm.rt = 'SIM')
+                    )
+                    AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
+                    AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
+                  ORDER BY ta.periodo_inicio DESC, ta.id DESC
+                  LIMIT 1)
             ELSE
                 COALESCE(
                     (SELECT mm.valor_meta
@@ -732,8 +748,9 @@ agr AS (
                         AND mm.estabelecimento_id = b.estabelecimento_id
                         AND mm.subgrupo_id IS b.subgrupo_id
                         AND ((mm.cbo_codigo IS NULL AND b.cbo_agrupado IS NULL) OR mm.cbo_codigo = b.cbo_agrupado)
-                        AND mm.pmmb = 'NAO'
-                        AND mm.rt IS NULL AND mm.tipo_equipe IS NULL
+                        AND (mm.pmmb IS NULL OR mm.pmmb = 'NAO')
+                        AND (mm.rt IS NULL OR mm.rt = 'NAO')
+                        AND mm.tipo_equipe IS NULL
                         AND ta.periodo_inicio <= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01', '+1 month', '-1 day')
                         AND ta.periodo_fim   >= date(substr(b.comp,1,4) || '-' || substr(b.comp,5,2) || '-01')
                       ORDER BY ta.periodo_inicio DESC, ta.id DESC
@@ -793,7 +810,10 @@ SELECT
     e.nome                AS estabelecimento_nome,
     a.periodo,
     a.cbo_agrupado        AS cbo_codigo,
-    COALESCE(c.nome_categoria, c_base.nome_categoria || ' PMMB', 'Médico Generalista PMMB') AS cbo_nome,
+    COALESCE(c.nome_categoria,
+             c_base_pmmb.nome_categoria || ' PMMB',
+             c_base_rt.nome_categoria || ' RT',
+             'Responsável Técnico (RT)') AS cbo_nome,
     a.valor_apurado,
     a.valor_declarado,
     COALESCE(a.meta_geral, a.meta_segmentada) AS valor_meta,
@@ -808,7 +828,20 @@ JOIN indicadores i       ON i.id = a.indicador_id
 JOIN estabelecimentos e  ON e.id = a.estabelecimento_id
 LEFT JOIN indicador_subgrupo sg ON sg.id = a.subgrupo_id
 LEFT JOIN cbo c          ON c.codigo = a.cbo_agrupado
-LEFT JOIN cbo c_base     ON c_base.codigo = replace(a.cbo_agrupado, '_PMMB', '');
+LEFT JOIN cbo c_base_pmmb ON c_base_pmmb.codigo = replace(a.cbo_agrupado, '_PMMB', '')
+LEFT JOIN cbo c_base_rt   ON c_base_rt.codigo = replace(a.cbo_agrupado, '_RT', '')
+WHERE (
+    i.tipo != 'MONITORAMENTO'
+    OR EXISTS (
+        SELECT 1 FROM fato_apuracao f_ws
+        WHERE f_ws.tipo_registro = 'declarado'
+          AND f_ws.indicador_id = a.indicador_id
+          AND f_ws.estabelecimento_id = a.estabelecimento_id
+          AND f_ws.periodo = a.periodo
+          AND f_ws.subgrupo_id IS a.subgrupo_id
+          AND f_ws.cbo_codigo IS a.cbo_agrupado
+    )
+);
 
 -- ----------------------------------------------------------------------------
 -- 7. TABELAS DE DE-PARA WEBSAASS (v18)

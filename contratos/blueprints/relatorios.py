@@ -336,10 +336,11 @@ def metas_xlsx():
 def auditoria_websass_xlsx():
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill
-    from .painel import _resultados_com_status
+    from .painel import _resultados_com_status, _carregar_mapa_websaass, _resolver_vinculo_websaass
 
     db = get_db()
     linhas = _resultados_com_status(db)
+    mapa_ws = _carregar_mapa_websaass(db)
 
     wb = Workbook()
     ws_auditoria = wb.active
@@ -348,11 +349,15 @@ def auditoria_websass_xlsx():
     titulos = [
         "Unidade / Estabelecimento", "CNES", "Código Indicador", "Nome do Indicador",
         "Subgrupo", "Tipo", "Complexidade", "Serviço", "CBO", "Nome CBO",
-        "Período", "Apurado (STS)", "Declarado (Websaass)", "Divergência",
-        "Meta Contratual", "% Meta Atingida", "Status Meta", "Status Auditoria Websaass",
+        "Período", "Apurado (STS)", "Declarado (Websaass)",
+        "Cód. WebSaass", "Indicador WebSaass",
+        "Divergência", "Meta Contratual", "% Meta Atingida", "Status Meta", "Status Auditoria Websaass",
         "Observações",
     ]
     _cabecalho(ws_auditoria, titulos)
+
+    col_idx_status = titulos.index("Status Auditoria Websaass") + 1
+    col_idx_div = titulos.index("Divergência") + 1
 
     fill_ok = PatternFill("solid", fgColor="E2F0D9")      # Verde claro
     font_ok = Font(color="276A3C", bold=True)
@@ -373,6 +378,10 @@ def auditoria_websass_xlsx():
         pct = f"{r.get('percentual_meta')}%" if r.get("percentual_meta") is not None else "-"
         rot_aud = r.get("auditoria_rotulo") or ""
         unidade_nome = r.get("estabelecimento_nome") or ""
+
+        ws_cods, ws_prods = _resolver_vinculo_websaass(
+            mapa_ws, r["indicador_id"], r.get("subgrupo_id"), r.get("cbo_codigo")
+        )
 
         # Estatísticas por unidade
         if unidade_nome not in unidades_map:
@@ -407,6 +416,8 @@ def auditoria_websass_xlsx():
             r.get("periodo") or "",
             ap,
             dec,
+            ws_cods,
+            ws_prods,
             div,
             meta if meta is not None else "-",
             pct,
@@ -415,8 +426,8 @@ def auditoria_websass_xlsx():
             r.get("observacao") or "",
         ])
 
-        cell_status = ws_auditoria.cell(row=row_idx, column=18)
-        cell_div = ws_auditoria.cell(row=row_idx, column=14)
+        cell_status = ws_auditoria.cell(row=row_idx, column=col_idx_status)
+        cell_div = ws_auditoria.cell(row=row_idx, column=col_idx_div)
 
         if rot_aud == "Conforme (OK)":
             cell_status.fill = fill_ok
@@ -487,4 +498,214 @@ def auditoria_websass_xlsx():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Espelho do WebSaass com Produção Apurada (STS)
+# ---------------------------------------------------------------------------
+
+@bp.route("/espelho_websaass.xlsx")
+def espelho_websaass_xlsx():
+    """
+    Exporta a visão do WebSaass: traz cada linha oficial do WebSaass
+    (staging_webssas: Contrato, Unidade, Período, Serviço, Cód. Produção,
+    Produção, Meta Prevista, Declarado), acrescentando uma coluna com o
+    que o STS apurou/encontrou para cada item, além da divergência, status
+    e do indicador STS correspondente.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from ..funcoes import _normalizar_periodo, _periodo_para_webssas, _resolver_estabelecimento_websaass, consolidacao
+
+    db = get_db()
+    periodo_filtro = request.args.get("periodo") or None
+
+    # 1. Carregar mapeamento de estabelecimentos e consolidação CNES
+    estabs_map = {e["id"]: e["nome"] for e in db.execute("SELECT id, nome FROM estabelecimentos").fetchall()}
+    grupos = consolidacao.analisar(db)
+
+    # 2. Carregar de-para de indicadores (indexado por cod_producao e servico normalizado)
+    from ..funcoes import _normalizar_texto_chave
+    dp_ind = {}
+    for dp in db.execute("""
+        SELECT lower(trim(dp.cod_producao)) as cp,
+               dp.servico,
+               dp.indicador_id, dp.subgrupo_id, dp.cbo_codigo, dp.codigo_indicador,
+               i.nome as indicador_nome
+        FROM de_para_websaass_indicador dp
+        LEFT JOIN indicadores i ON i.id = dp.indicador_id
+        WHERE dp.cod_producao IS NOT NULL
+    """).fetchall():
+        cp = dp["cp"]
+        serv_norm = _normalizar_texto_chave(dp["servico"])
+        dp_dict = dict(dp)
+        if serv_norm:
+            dp_ind.setdefault((cp, serv_norm), []).append(dp_dict)
+        else:
+            dp_ind.setdefault((cp, ""), []).append(dp_dict)
+
+    # 3. Carregar fatos apurados (STS)
+    filtro_fatos = "WHERE tipo_registro = 'apurado'"
+    params_fatos = []
+    if periodo_filtro:
+        p_norm = _normalizar_periodo(periodo_filtro)
+        filtro_fatos += " AND periodo = ?"
+        params_fatos.append(p_norm)
+
+    mapa_fatos = {}
+    for f in db.execute(f"""
+        SELECT estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, periodo, sum(quantidade) as total
+        FROM fato_apuracao
+        {filtro_fatos}
+        GROUP BY estabelecimento_id, indicador_id, subgrupo_id, cbo_codigo, periodo
+    """, params_fatos).fetchall():
+        eid = f["estabelecimento_id"]
+        iid = f["indicador_id"]
+        sub = f["subgrupo_id"]
+        cbo = f["cbo_codigo"]
+        per = f["periodo"]
+        qty = f["total"] or 0
+        mapa_fatos[(eid, iid, sub, cbo, per)] = qty
+
+    # 4. Consultar linhas de staging_webssas
+    query_ws = "SELECT * FROM staging_webssas"
+    params_ws = []
+    if periodo_filtro:
+        p_norm = _normalizar_periodo(periodo_filtro)
+        p_ws = _periodo_para_webssas(p_norm)
+        query_ws += " WHERE periodo = ? OR periodo = ? OR periodo = ?"
+        params_ws = [periodo_filtro, p_norm, p_ws]
+    query_ws += " ORDER BY unidade, cod_producao, id"
+
+    linhas_ws = db.execute(query_ws, params_ws).fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Espelho WebSaass"
+
+    titulos = [
+        "Contrato",
+        "Unidade WebSaass",
+        "Estabelecimento STS",
+        "Período",
+        "Serviço WebSaass",
+        "Produção WebSaass",
+        "WebSaass",
+        "STS",
+        "Diferença",
+        "Indicador STS Vinculado",
+        "CBO / Regra STS",
+    ]
+
+    _cabecalho(ws, titulos)
+
+    fill_ok = PatternFill("solid", fgColor="E2F0D9")
+    font_ok = Font(color="276A3C", bold=True)
+    fill_warn = PatternFill("solid", fgColor="FFF2CC")
+    font_warn = Font(color="8A6100", bold=True)
+    fill_perigo = PatternFill("solid", fgColor="FCE4D6")
+    font_perigo = Font(color="C00000", bold=True)
+    font_cinza = Font(color="595959")
+
+    col_idx_div = titulos.index("Diferença") + 1
+
+    for row_idx, r in enumerate(linhas_ws, start=2):
+        unidade_ws = (r["unidade"] or "").strip()
+        estab_id = _resolver_estabelecimento_websaass(db, unidade_ws)
+        if not estab_id and not unidade_ws and r["cod_producao"]:
+            estab_id = _resolver_estabelecimento_websaass(db, r["cod_producao"])
+        estab_nome = estabs_map.get(estab_id, "") if estab_id else ""
+
+        cp = (r["cod_producao"] or "").strip().lower()
+        serv_norm = _normalizar_texto_chave(r["servico"])
+
+        regras = dp_ind.get((cp, serv_norm))
+        if not regras and serv_norm:
+            for (k_cp, k_serv), r_list in dp_ind.items():
+                if k_cp == cp and k_serv and (k_serv in serv_norm or serv_norm in k_serv):
+                    regras = r_list
+                    break
+        if not regras:
+            regras = dp_ind.get((cp, ""), [])
+
+        per_linha = _normalizar_periodo(r["periodo"])
+
+        # Consolidação por CNES / membros de estabelecimento
+        info_grp = grupos.get(estab_id)
+        eids_busca = info_grp["membros"] if (info_grp and info_grp.get("agrupado")) else [estab_id]
+
+        apurado_sts = 0
+        inds_set = set()
+        cbos_set = set()
+        chaves_somadas = set()
+        tem_vinculo = bool(regras)
+
+        if estab_id and regras:
+            for rg in regras:
+                iid = rg["indicador_id"]
+                sub = rg["subgrupo_id"]
+                cbo = rg["cbo_codigo"]
+                if rg["codigo_indicador"]:
+                    inds_set.add(rg["codigo_indicador"])
+                if cbo:
+                    cbos_set.add(cbo)
+                for m_eid in eids_busca:
+                    if cbo:
+                        k = (m_eid, iid, sub, cbo, per_linha)
+                        if k not in chaves_somadas:
+                            chaves_somadas.add(k)
+                            apurado_sts += mapa_fatos.get(k, 0)
+                    else:
+                        for (k_eid, k_iid, k_sub, k_cbo, k_per), k_qty in mapa_fatos.items():
+                            if k_eid == m_eid and k_iid == iid and (sub is None or k_sub == sub) and k_per == per_linha:
+                                k = (k_eid, k_iid, k_sub, k_cbo, k_per)
+                                if k not in chaves_somadas:
+                                    chaves_somadas.add(k)
+                                    apurado_sts += k_qty
+
+        dec_ws = r["qtde_realizada"] or 0
+        dif = apurado_sts - dec_ws
+
+        ws.append([
+            r["cod_contrato"] or "",
+            unidade_ws,
+            estab_nome,
+            r["periodo"] or "",
+            r["servico"] or "",
+            r["producao"] or "",
+            dec_ws,
+            apurado_sts,
+            dif,
+            ", ".join(sorted(inds_set)) if inds_set else ("Sem vínculo" if not tem_vinculo else "-"),
+            ", ".join(sorted(cbos_set)) if cbos_set else "Geral",
+        ])
+
+        c_div = ws.cell(row=row_idx, column=col_idx_div)
+
+        if not tem_vinculo or (apurado_sts == 0 and dec_ws == 0):
+            c_div.font = font_cinza
+        elif dif == 0:
+            c_div.fill = fill_ok
+            c_div.font = font_ok
+        elif dif < 0:
+            c_div.fill = fill_perigo
+            c_div.font = font_perigo
+        else:
+            c_div.fill = fill_warn
+            c_div.font = font_warn
+
+    _autofit(ws)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    sufixo_per = f"_{periodo_filtro}" if periodo_filtro else ""
+    nome_arquivo = f"espelho_websaass{sufixo_per}_{datetime.now():%Y%m%d_%H%M}.xlsx"
+    return Response(
+        buffer.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
+    )
+
 

@@ -43,4 +43,24 @@
   </select>
   <button type="submit" class="btn-secondary">⬇ Baixar relatório de metas (.xlsx)</button>
 </form>
+
+<form class="card" method="get" action="{{ url_for('relatorios.espelho_websaass_xlsx') }}">
+  <h2>Espelho do WebSaass com Apurado (STS)</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:8px">
+    Traz o arquivo original do WebSaass linha a linha (Contrato, Unidade, Período, Serviço, Produção, Meta Prevista, Declarado),
+    acrescentando a coluna com <strong>o que o STS encontrou (Apurado)</strong>, a divergência e o status da auditoria para cada item.
+  </p>
+  <label>Filtrar por Competência (opcional, ex: 202609)</label>
+  <input type="text" name="periodo" placeholder="AAAA MM ou AAAAMM (vazio para todos)" style="margin-bottom:12px; padding:6px 10px; border:1px solid #ccc; border-radius:4px; max-width:280px;">
+  <button type="submit" class="btn-primary">⬇ Baixar Espelho WebSaass com Apurado (.xlsx)</button>
+</form>
+
+<form class="card" method="get" action="{{ url_for('relatorios.auditoria_websass_xlsx') }}">
+  <h2>Relatório de Auditoria Contratual (Apurado STS vs Declarado)</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:8px">
+    Visão contratual por Unidade e Indicador do STS com Apurado, Declarado do WebSaass, código e indicador de origem no WebSaass,
+    meta contratual e conformidade.
+  </p>
+  <button type="submit" class="btn-secondary">⬇ Baixar Auditoria Contratual (.xlsx)</button>
+</form>
 {% endblock %}

@@ -58,7 +58,7 @@ def _view_existe(conn, nome):
 #     de metas casa. O CBO individual de cada profissional continua
 #     disponível no drill-down do painel (que lê fato_apuracao/staging).
 VIEW_RESULTADOS_INDICADOR = """
-CREATE VIEW resultados_indicador AS /* v24 */
+CREATE VIEW resultados_indicador AS /* v25 */
 WITH base AS (
     SELECT
         f.*,
@@ -220,6 +220,18 @@ LEFT JOIN indicador_subgrupo sg ON sg.id = a.subgrupo_id
 LEFT JOIN cbo c          ON c.codigo = a.cbo_agrupado
 LEFT JOIN cbo c_base_pmmb ON c_base_pmmb.codigo = replace(a.cbo_agrupado, '_PMMB', '')
 LEFT JOIN cbo c_base_rt   ON c_base_rt.codigo = replace(a.cbo_agrupado, '_RT', '')
+WHERE (
+    i.tipo != 'MONITORAMENTO'
+    OR EXISTS (
+        SELECT 1 FROM fato_apuracao f_ws
+        WHERE f_ws.tipo_registro = 'declarado'
+          AND f_ws.indicador_id = a.indicador_id
+          AND f_ws.estabelecimento_id = a.estabelecimento_id
+          AND f_ws.periodo = a.periodo
+          AND f_ws.subgrupo_id IS a.subgrupo_id
+          AND f_ws.cbo_codigo IS a.cbo_agrupado
+    )
+)
 """
 
 
@@ -311,7 +323,7 @@ def _migrar_v16(conn):
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='view' AND name='resultados_indicador'"
     ).fetchone()
-    if row is not None and "/* v16 */" in (row[0] or ""):
+    if row is not None and any(v in (row[0] or "") for v in ("/* v16 */", "/* v17 */", "/* v24 */", "/* v25 */")):
         return False
     conn.execute("DROP VIEW IF EXISTS resultados_indicador")
     conn.execute(VIEW_RESULTADOS_INDICADOR)
@@ -800,6 +812,8 @@ def aplicar_migracoes_pendentes(conn):
         aplicou_algo = True
     if _migrar_v24(conn):
         aplicou_algo = True
+    if _migrar_v25(conn):
+        aplicou_algo = True
 
     conn.commit()
     return aplicou_algo
@@ -1213,7 +1227,7 @@ def _migrar_v19(conn):
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='view' AND name='resultados_indicador'"
     ).fetchone()
-    if row is None or "/* v17 */" not in (row[0] or ""):
+    if row is None or not any(v in (row[0] or "") for v in ("/* v17 */", "/* v24 */", "/* v25 */")):
         conn.execute("DROP VIEW IF EXISTS resultados_indicador")
         conn.execute(VIEW_RESULTADOS_INDICADOR)
         aplicou = True
@@ -1596,17 +1610,38 @@ def _migrar_v24(conn):
             if not vinc:
                 conn.execute(
                     """INSERT INTO indicador_procedimento (indicador_id, subgrupo_id, procedimento_codigo, tipo_vinculo, nome_profissional)
-                       VALUES (?, ?, '0211020036', 'inclusao', 'Ronaldo Della Monica Silva')""",
+                       VALUES (?, ?, '0211020036', 'inclusao', 'Ronaldo Della Monica Silva; Marcelo Barreira Gauch')""",
                     (p44_id, sg_id)
                 )
                 aplicou = True
             else:
                 conn.execute(
                     """UPDATE indicador_procedimento
-                       SET nome_profissional = 'Ronaldo Della Monica Silva'
-                       WHERE indicador_id = ? AND subgrupo_id = ? AND procedimento_codigo = '0211020036' AND (nome_profissional IS NULL OR nome_profissional = '')""",
+                       SET nome_profissional = 'Ronaldo Della Monica Silva; Marcelo Barreira Gauch'
+                       WHERE indicador_id = ? AND subgrupo_id = ? AND procedimento_codigo = '0211020036'""",
                     (p44_id, sg_id)
                 )
+
+            # Remover 0205020151 do subgrupo 12 (Ultrassonografia Geral) do P44 pois pertence ao subgrupo 16 (USG Doppler de Fluxo Obstétrico)
+            conn.execute(
+                "DELETE FROM indicador_procedimento WHERE indicador_id = ? AND subgrupo_id = 12 AND procedimento_codigo = '0205020151'",
+                (p44_id,),
+            )
+
+        # Garantir 0301010048 vinculado ao P18 (Consultas/Atendimentos Odontológicos - UBS Tradicional)
+        p18_r = conn.execute("SELECT id FROM indicadores WHERE codigo = 'P18' LIMIT 1").fetchone()
+        if p18_r:
+            p18_id = p18_r[0] if isinstance(p18_r, (tuple, list)) else p18_r["id"]
+            ex_p18 = conn.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id = ? AND procedimento_codigo = '0301010048'",
+                (p18_id,),
+            ).fetchone()
+            if not ex_p18:
+                conn.execute(
+                    "INSERT INTO indicador_procedimento (indicador_id, subgrupo_id, procedimento_codigo, tipo_vinculo) VALUES (?, NULL, '0301010048', 'inclusao')",
+                    (p18_id,),
+                )
+                aplicou = True
 
     # 4.6 Garantir tabela painel_observacoes para armazenar anotações das linhas do painel
     if not _tabela_existe(conn, "painel_observacoes"):
@@ -1624,20 +1659,27 @@ def _migrar_v24(conn):
         """)
         aplicou = True
 
-    # 4.7 Limpar metas espúrias de Farmácia e Assistente Social em P11 e P12 em estabelecimentos com destinacao_mista = 'TRAD'
+    # 4.7 Limpar metas espúrias em P11 e P12 em estabelecimentos com destinacao_mista = 'TRAD' e meta PMMB espúria na Vila Sílvia (id 6)
     if _tabela_existe(conn, "metas"):
         conn.execute("""
             DELETE FROM metas
             WHERE estabelecimento_id IN (SELECT id FROM estabelecimentos WHERE destinacao_mista = 'TRAD')
               AND indicador_id IN (11, 12)
-              AND cbo_codigo IN ('223405', '251605')
         """)
+        conn.execute("""
+            DELETE FROM metas
+            WHERE estabelecimento_id = 6 AND indicador_id = 13 AND (cbo_codigo = '225170_PMMB' OR pmmb = 'SIM')
+        """)
+
+
+    # 4.8 Garantir Indicadores de Monitoramento (M - Anexo III RAST) e sincronização SICAP / PMMB
+    _garantir_indicadores_monitoramento_e_sicap(conn)
 
     # 5. Recriação da view resultados_indicador (v24)
     row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='view' AND name='resultados_indicador'"
     ).fetchone()
-    if row is None or "/* v24 */" not in (row[0] or ""):
+    if row is None or not any(v in (row[0] or "") for v in ("/* v24 */", "/* v25 */")):
         conn.execute("DROP VIEW IF EXISTS resultados_indicador")
         conn.execute(VIEW_RESULTADOS_INDICADOR)
         aplicou = True
@@ -1645,6 +1687,452 @@ def _migrar_v24(conn):
     return aplicou
 
 
+def _migrar_v25(conn):
+    """
+    v25: Oculta linhas de Indicadores de Monitoramento (M) não declaradas no WebSAASS.
+    Garante que indicadores do tipo 'MONITORAMENTO' somente apareçam no painel e
+    relatórios quando houver registro correspondente declarado no WebSAASS (tipo_registro = 'declarado').
+    """
+    aplicou = False
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='view' AND name='resultados_indicador'"
+    ).fetchone()
+    if row is None or "/* v25 */" not in (row[0] or ""):
+        conn.execute("DROP VIEW IF EXISTS resultados_indicador")
+        conn.execute(VIEW_RESULTADOS_INDICADOR)
+        aplicou = True
+
+    return aplicou
 
 
+def _garantir_indicadores_monitoramento_e_sicap(conn):
+    """
+    Cadastra e vincula os Indicadores de Monitoramento (M) com base no
+    Anexo III - Indicadores de Monitoramento (RAST / Portaria 943/2025),
+    atualiza o de_para_websaass_indicador para a série 36.xx.xx e garante
+    os profissionais RT (SICAP) e PMMB da STS Penha.
+    """
+    if not _tabela_existe(conn, "indicadores"):
+        return
+
+    # 1. Fontes de dados adicionais (AT32 e AT51)
+    if _tabela_existe(conn, "fontes_dados"):
+        for fnome, fdesc in [
+            ("AT32", "SIGA (AT-32 - Produção Consultório na Rua)"),
+            ("AT51", "SIGA (AT-51 - Telessaúde)"),
+        ]:
+            conn.execute(
+                """INSERT INTO fontes_dados (nome, descricao, granularidade, ativo)
+                   SELECT ?, ?, 'procedimento', 1
+                   WHERE NOT EXISTS (SELECT 1 FROM fontes_dados WHERE nome = ?)""",
+                (fnome, fdesc, fnome),
+            )
+
+    # 2. CBOs necessários para Indicadores M (Estomaterapeuta 223580 e CBOs RT de Odonto)
+    if _tabela_existe(conn, "cbo"):
+        for c_cod, c_nome in [
+            ("223580", "Enfermeiro Estomaterapeuta"),
+            ("223293_RT", "Cirurgião-Dentista da ESF RT"),
+            ("223208_RT", "Cirurgião Dentista - Clínico Geral RT"),
+            ("223240_RT", "Cirurgião Dentista - Ortopedista E Ortodontista RT"),
+            ("225142_PMMB", "Médico da Estratégia de Saúde da Família PMMB"),
+            ("225170_PMMB", "Médico Generalista PMMB"),
+        ]:
+            conn.execute(
+                "INSERT OR IGNORE INTO cbo (codigo, nome_categoria) VALUES (?, ?)",
+                (c_cod, c_nome),
+            )
+
+    # 3. Cadastro dos Indicadores M (Anexo III - RAST)
+    port_row = conn.execute("SELECT id FROM portarias ORDER BY id LIMIT 1").fetchone()
+    portaria_id = (port_row[0] if isinstance(port_row, (tuple, list)) else port_row["id"]) if port_row else 1
+    at02_row = conn.execute("SELECT id FROM fontes_dados WHERE nome = 'AT02' LIMIT 1").fetchone()
+    at02_id = (at02_row[0] if isinstance(at02_row, (tuple, list)) else at02_row["id"]) if at02_row else 1
+
+    indicadores_m = [
+        ("M13", "HD, AE, AMA-E - Telessaúde (Médicos)", "MONITORAMENTO", "ATENCAO_ESPECIALIZADA", "HOSPITAL_DIA", "SIGA (AT-02 / AT-51)", at02_id, 1, 0),
+        ("M27", "CCO - Procedimentos Realizados por Especialidades", "MONITORAMENTO", "ATENCAO_ESPECIALIZADA", "CEO", "SIGA (AT-02)", at02_id, 0, 0),
+        ("M29", "UBS com ESF - Tratamentos Iniciados (Protético) pela Equipe de Saúde Bucal", "MONITORAMENTO", "ATENCAO_BASICA", "UBS_ESF", "SIGA (AT-02)", at02_id, 0, 1),
+        ("M30", "UBS Tradicional - Tratamento Iniciado (Protético) pela Equipe de Saúde Bucal", "MONITORAMENTO", "ATENCAO_BASICA", "UBS_TRAD", "SIGA (AT-02)", at02_id, 0, 1),
+        ("M33", "Consultório na Rua - Procedimentos Realizados (Equipe Médica da eCR)", "MONITORAMENTO", "ATENCAO_BASICA", "CNR", "SIGA (AT-02 / AT-32)", at02_id, 1, 0),
+        ("M38", "SADT - Exames Diagnósticos sob Livre Demanda", "MONITORAMENTO", "APOIO_DIAGNOSTICO", "SADT", "SIGA (AT-02)", at02_id, 1, 0),
+        ("M39", "Polos de Curativos - Primeira Consulta de Enfermeiro Especialista", "MONITORAMENTO", "ATENCAO_ESPECIALIZADA", "HOSPITAL_DIA", "SIGA (AT-02)", at02_id, 1, 0),
+        ("M40", "Polos de Curativos - Procedimento Realizado por Enfermeiro Especialista", "MONITORAMENTO", "ATENCAO_ESPECIALIZADA", "HOSPITAL_DIA", "SIGA (AT-02)", at02_id, 1, 0),
+        ("M42", "CAPS - Matriciamento de Equipes da Atenção Básica", "MONITORAMENTO", "SAUDE_MENTAL", "CAPS", "SIGA (AT-02)", at02_id, 0, 0),
+        ("M43", "CAPS - Matriciamento de Equipes dos Pontos de Urgência e Emergência e Serviços Hospitalares", "MONITORAMENTO", "SAUDE_MENTAL", "CAPS", "SIGA (AT-02)", at02_id, 0, 0),
+        ("M45", "PMAE/OCI - Percentual de Alcance da Meta de Produção por OCI", "MONITORAMENTO", "ATENCAO_ESPECIALIZADA", "HOSPITAL_DIA", "SIGA (AT-02)", at02_id, 1, 0),
+    ]
+
+    ind_ids = {}
+    for cod, nome, tipo, comp, serv, fdados, fid, cons_cnes, seg_rt in indicadores_m:
+        row = conn.execute("SELECT id FROM indicadores WHERE codigo = ? LIMIT 1", (cod,)).fetchone()
+        if row:
+            iid = row[0] if isinstance(row, (tuple, list)) else row["id"]
+            conn.execute(
+                """UPDATE indicadores
+                   SET nome = ?, tipo = ?, complexidade = ?, servico = ?, fonte_dados = ?,
+                       fonte_id = ?, consolida_cnes = ?, segmenta_metas_rt = ?
+                   WHERE id = ?""",
+                (nome, tipo, comp, serv, fdados, fid, cons_cnes, seg_rt, iid),
+            )
+        else:
+            cur = conn.execute(
+                """INSERT INTO indicadores (
+                       portaria_id, codigo, nome, tipo, complexidade, servico,
+                       fonte_dados, fonte_id, consolida_cnes, segmenta_metas_rt
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (portaria_id, cod, nome, tipo, comp, serv, fdados, fid, cons_cnes, seg_rt),
+            )
+            iid = cur.lastrowid
+        ind_ids[cod] = iid
+
+    def _garantir_subgrupo(iid, nome_sg, ordem=1):
+        r = conn.execute(
+            "SELECT id FROM indicador_subgrupo WHERE indicador_id = ? AND lower(trim(nome)) = lower(trim(?)) LIMIT 1",
+            (iid, nome_sg),
+        ).fetchone()
+        if r:
+            return r[0] if isinstance(r, (tuple, list)) else r["id"]
+        cur = conn.execute(
+            "INSERT INTO indicador_subgrupo (indicador_id, nome, ordem) VALUES (?, ?, ?)",
+            (iid, nome_sg, ordem),
+        )
+        return cur.lastrowid
+
+    def _garantir_cbo(iid, cbo_cod=None, curinga=0, sg_id=None):
+        if sg_id is None:
+            r = conn.execute(
+                """SELECT 1 FROM indicador_cbo
+                   WHERE indicador_id = ? AND subgrupo_id IS NULL
+                     AND ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?) AND curinga = ?""",
+                (iid, cbo_cod, cbo_cod, curinga),
+            ).fetchone()
+        else:
+            r = conn.execute(
+                """SELECT 1 FROM indicador_cbo
+                   WHERE indicador_id = ? AND subgrupo_id = ?
+                     AND ((cbo_codigo IS NULL AND ? IS NULL) OR cbo_codigo = ?) AND curinga = ?""",
+                (iid, sg_id, cbo_cod, cbo_cod, curinga),
+            ).fetchone()
+        if not r:
+            conn.execute(
+                "INSERT INTO indicador_cbo (indicador_id, cbo_codigo, curinga, subgrupo_id) VALUES (?, ?, ?, ?)",
+                (iid, cbo_cod, curinga, sg_id),
+            )
+
+    def _garantir_proc(iid, proc_cod, proc_nome=None, sg_id=None):
+        conn.execute(
+            "INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)",
+            (proc_cod, proc_nome or proc_cod),
+        )
+        if sg_id is None:
+            r = conn.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id = ? AND subgrupo_id IS NULL AND procedimento_codigo = ?",
+                (iid, proc_cod),
+            ).fetchone()
+        else:
+            r = conn.execute(
+                "SELECT 1 FROM indicador_procedimento WHERE indicador_id = ? AND subgrupo_id = ? AND procedimento_codigo = ?",
+                (iid, sg_id, proc_cod),
+            ).fetchone()
+        if not r:
+            conn.execute(
+                "INSERT INTO indicador_procedimento (indicador_id, subgrupo_id, procedimento_codigo, tipo_vinculo) VALUES (?, ?, ?, 'inclusao')",
+                (iid, sg_id, proc_cod),
+            )
+
+    # 3.1 M13 - Telessaúde (Médicos)
+    m13_id = ind_ids["M13"]
+    _garantir_cbo(m13_id, None, 1, None)
+    conn.execute(
+        "INSERT OR IGNORE INTO indicador_cbo_excecao (indicador_id, cbo_codigo) VALUES (?, '223505')",
+        (m13_id,),
+    )
+    for p_cod, p_nome in [
+        ("0301010307", "Teleconsulta na Atenção Especializada"),
+        ("0804010064", "Teleinterconsulta na Atenção Especializada"),
+        ("0404010021", "Telediagnóstico na Atenção Especializada"),
+        ("0804010048", "Telemonitoramento na Atenção Especializada"),
+    ]:
+        _garantir_proc(m13_id, p_cod, p_nome, None)
+
+    # 3.2 M27 - CCO (CEO) Procedimentos Realizados por Especialidades
+    m27_id = ind_ids["M27"]
+    _garantir_cbo(m27_id, None, 1, None)
+    sg_m27_cir = _garantir_subgrupo(m27_id, "Cirurgia Oral Menor", 1)
+    sg_m27_pro = _garantir_subgrupo(m27_id, "Prótese", 2)
+    sg_m27_end = _garantir_subgrupo(m27_id, "Endodontia", 3)
+    sg_m27_dor = _garantir_subgrupo(m27_id, "Dor Orofacial", 4)
+    for sg_x in (sg_m27_cir, sg_m27_pro, sg_m27_end, sg_m27_dor):
+        _garantir_cbo(m27_id, None, 1, sg_x)
+
+    procs_m27_cir = [
+        "0414020138", "0414020359", "0414020020", "0414020038", "0414020070",
+        "0414020421", "0414010019", "0414020089", "0414020097", "0414020154",
+        "0414020162", "0414020170", "0414020200", "0414020219", "0414020243",
+        "0414020278", "0414020367", "0414020383", "0404020097", "0414010388",
+        "0414010370", "0404020674", "0404030033", "0401010031", "0401020029",
+        "0401020070", "0404020372", "0201010232", "0201010526", "0201010542",
+        "0201010321",
+    ]
+    for p_cod in procs_m27_cir:
+        _garantir_proc(m27_id, p_cod, None, sg_m27_cir)
+    for p_cod, p_nome in [
+        ("0307049086", "Tratamento Inicial TI_Prótese"),
+        ("0307049060", "Tratamento Concluído TC_Prótese"),
+    ]:
+        _garantir_proc(m27_id, p_cod, p_nome, sg_m27_pro)
+    for p_cod in [
+        "0307020053", "0307020045", "0307020061", "0307020037",
+        "0307020096", "0307020088", "0307020100", "0307020118",
+    ]:
+        _garantir_proc(m27_id, p_cod, None, sg_m27_end)
+    _garantir_proc(m27_id, "0301019614", "Tratamento Concluído em Dor Orofacial", sg_m27_dor)
+
+    # 3.3 M29 - UBS com ESF - Tratamentos Iniciados (Protético)
+    m29_id = ind_ids["M29"]
+    _garantir_cbo(m29_id, "223293", 0, None)
+    _garantir_cbo(m29_id, "223293_RT", 0, None)
+    _garantir_proc(m29_id, "0307049086", "Tratamento Inicial TI_Prótese", None)
+
+    # 3.4 M30 - UBS Tradicional - Tratamento Iniciado (Protético)
+    m30_id = ind_ids["M30"]
+    _garantir_cbo(m30_id, "223208", 0, None)
+    _garantir_cbo(m30_id, "223208_RT", 0, None)
+    _garantir_proc(m30_id, "0307049086", "Tratamento Inicial TI_Prótese", None)
+
+    # 3.5 M33 - Consultório na Rua - Equipe Médica da eCR
+    m33_id = ind_ids["M33"]
+    _garantir_cbo(m33_id, "225170", 0, None)
+    _garantir_cbo(m33_id, "225125", 0, None)
+    _garantir_cbo(m33_id, "225142", 0, None)
+    _garantir_proc(m33_id, "0301010064", "Consulta Médica em Atenção Primária", None)
+    conn.execute(
+        "DELETE FROM indicador_procedimento WHERE indicador_id = ? AND procedimento_codigo IN ('0802029116', '0802029124')",
+        (m33_id,),
+    )
+
+    # 3.6 M38 - SADT - Exames Diagnósticos sob Livre Demanda
+    m38_id = ind_ids["M38"]
+    _garantir_cbo(m38_id, None, 1, None)
+    conn.execute(
+        "DELETE FROM indicador_cbo_excecao WHERE indicador_id = ? AND cbo_codigo = '225120'",
+        (m38_id,),
+    )
+    if _tabela_existe(conn, "estabelecimento_tipo_servico"):
+        for eid_sadt in (6, 53):
+            ex_sadt = conn.execute(
+                "SELECT 1 FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ? AND tipo_servico = 'SADT'",
+                (eid_sadt,),
+            ).fetchone()
+            if not ex_sadt:
+                conn.execute(
+                    "INSERT INTO estabelecimento_tipo_servico (estabelecimento_id, tipo_servico) VALUES (?, 'SADT')",
+                    (eid_sadt,),
+                )
+    if _tabela_existe(conn, "indicador_estabelecimento_excecao"):
+        for eid_exc in (6, 53):
+            conn.execute(
+                "INSERT OR IGNORE INTO indicador_estabelecimento_excecao (indicador_id, estabelecimento_id) VALUES (?, ?)",
+                (m38_id, eid_exc),
+            )
+    if _tabela_existe(conn, "metas"):
+        conn.execute(
+            "DELETE FROM metas WHERE estabelecimento_id IN (6, 53) AND (indicador_id = ? OR (indicador_id = 44 AND subgrupo_id IS NULL))",
+            (m38_id,),
+        )
+    sg_m38_card = _garantir_subgrupo(m38_id, "Monitoramento Cardíaco", 1)
+    sg_m38_rad = _garantir_subgrupo(m38_id, "Exames Radiológicos", 2)
+    _garantir_cbo(m38_id, None, 1, sg_m38_card)
+    _garantir_cbo(m38_id, None, 1, sg_m38_rad)
+    _garantir_proc(m38_id, "0211020036", "Eletrocardiograma", sg_m38_card)
+
+    # Vincula todos os códigos de radiologia dos subgrupos 020401 a 020406 (exceto Mamografia 0204030030/0204030188 e Densitometria 0204060028 do P44)
+    cods_rad = {
+        r[0] for r in conn.execute(
+            """SELECT codigo FROM procedimentos
+               WHERE (codigo LIKE '020401%' OR codigo LIKE '020402%' OR codigo LIKE '020403%'
+                      OR codigo LIKE '020404%' OR codigo LIKE '020405%' OR codigo LIKE '020406%')
+                 AND codigo NOT IN ('0204030030', '0204030188', '0204060028')"""
+        ).fetchall()
+    }
+    if _tabela_existe(conn, "staging_at02"):
+        cods_rad |= {
+            r[0] for r in conn.execute(
+                """SELECT DISTINCT cod_procedimento FROM staging_at02
+                   WHERE (cod_procedimento LIKE '020401%' OR cod_procedimento LIKE '020402%' OR cod_procedimento LIKE '020403%'
+                          OR cod_procedimento LIKE '020404%' OR cod_procedimento LIKE '020405%' OR cod_procedimento LIKE '020406%')
+                     AND cod_procedimento NOT IN ('0204030030', '0204030188', '0204060028')"""
+            ).fetchall() if r[0]
+        }
+    for p_cod in sorted(cods_rad):
+        _garantir_proc(m38_id, p_cod, None, sg_m38_rad)
+
+    # 3.7 M39 - Polos de Curativos - Primeira Consulta de Enfermeiro Especialista
+    m39_id = ind_ids["M39"]
+    _garantir_cbo(m39_id, "223580", 0, None)
+    _garantir_proc(m39_id, "0301010048", "Consulta de Profissionais de Nível Superior na Atenção Especializada (Exceto Médico)", None)
+
+    # 3.8 M40 - Polos de Curativos - Procedimento Realizado por Enfermeiro Especialista
+    m40_id = ind_ids["M40"]
+    _garantir_cbo(m40_id, "223580", 0, None)
+    for p_cod, p_nome in [
+        ("0401010015", "Curativo Grau II C/ ou S/ Debridamento"),
+        ("0301100276", "Curativo Simples"),
+        ("0415040043", "Debridamento de Úlcera / de Tecidos Desvitalizados"),
+    ]:
+        _garantir_proc(m40_id, p_cod, p_nome, None)
+
+    # 3.9 M42 - CAPS - Matriciamento de Equipes da Atenção Básica
+    m42_id = ind_ids["M42"]
+    _garantir_cbo(m42_id, None, 1, None)
+    for p_cod, p_nome in [
+        ("0301080305", "Matriciamento de Equipes da Atenção Básica"),
+        ("0301089019", "Matriciamento de Equipes da Atenção Básica (Municipal)"),
+    ]:
+        _garantir_proc(m42_id, p_cod, p_nome, None)
+
+    # 3.10 M43 - CAPS - Matriciamento de Equipes dos Pontos de Urgência e Emergência
+    m43_id = ind_ids["M43"]
+    _garantir_cbo(m43_id, None, 1, None)
+    for p_cod, p_nome in [
+        ("0301080399", "Matriciamento de Equipes dos Pontos de Atenção de Urgência e Emergência e dos Serviços Hospitalares de Referência"),
+        ("0301089000", "Matriciamento de Equipes dos Pontos de Urgência e Emergência (Municipal)"),
+    ]:
+        _garantir_proc(m43_id, p_cod, p_nome, None)
+
+    # 3.11 M45 - PMAE/OCI
+    m45_id = ind_ids["M45"]
+    _garantir_cbo(m45_id, None, 1, None)
+    cods_oci = {
+        r[0] for r in conn.execute(
+            """SELECT codigo FROM procedimentos
+               WHERE codigo LIKE '090101%' OR codigo LIKE '090201%' OR codigo LIKE '090301%'
+                  OR codigo LIKE '090401%' OR codigo LIKE '090501%' OR codigo LIKE '090601%'"""
+        ).fetchall()
+    }
+    if _tabela_existe(conn, "staging_at02"):
+        cods_oci |= {
+            r[0] for r in conn.execute(
+                """SELECT DISTINCT cod_procedimento FROM staging_at02
+                   WHERE cod_procedimento LIKE '090101%' OR cod_procedimento LIKE '090201%' OR cod_procedimento LIKE '090301%'
+                      OR cod_procedimento LIKE '090401%' OR cod_procedimento LIKE '090501%' OR cod_procedimento LIKE '090601%'"""
+            ).fetchall() if r[0]
+        }
+    for p_cod in sorted(cods_oci):
+        _garantir_proc(m45_id, p_cod, None, None)
+
+    # 4. Atualizar de_para_websaass_indicador para todos os códigos 36.xx.xx e códigos faltantes (30.01.101, 6.01.22)
+    if _tabela_existe(conn, "de_para_websaass_indicador"):
+        # Remapeia 36.01.16, 36.08.07 e 36.08.08 (que estavam apontando para P44) para M38
+        conn.execute(
+            """UPDATE de_para_websaass_indicador
+               SET indicador_id = ?, codigo_indicador = 'M38', subgrupo_id = ?, cbo_codigo = NULL
+               WHERE cod_producao IN ('36.01.16', '36.08.07')""",
+            (m38_id, sg_m38_card),
+        )
+        conn.execute(
+            """UPDATE de_para_websaass_indicador
+               SET indicador_id = ?, codigo_indicador = 'M38', subgrupo_id = ?, cbo_codigo = NULL
+               WHERE cod_producao = '36.08.08'""",
+            (m38_id, sg_m38_rad),
+        )
+        # Remove metas antigas em P44 nos subgrupos 22 (para unidades 6 e 53 onde o ECG é livre demanda M38)
+        conn.execute(
+            "DELETE FROM metas WHERE indicador_id = 44 AND subgrupo_id = 22 AND estabelecimento_id IN (6, 53)"
+        )
+
+        mapeamentos_ws = [
+            ("36.03.01", "M13 - HD, AE, AMAE - TELESSAÚDE - MÉDICOS *", "HD BLOCO CLÍNICO", "M13", None, m13_id, None),
+            ("36.06.01", "M27 - CCO - PROCEDIMENTOS REALIZADOS - CIRURGIA ORAL MENOR *", "ESPECIALIDADES ODONTOLÓGICAS", "M27", None, m27_id, sg_m27_cir),
+            ("36.06.02", "M27 - CCO - PROCEDIMENTOS REALIZADOS - PRÓTESE *", "ESPECIALIDADES ODONTOLÓGICAS", "M27", None, m27_id, sg_m27_pro),
+            ("36.06.03", "M27 - CCO - PROCEDIMENTOS REALIZADOS - ENDODONTIA *", "ESPECIALIDADES ODONTOLÓGICAS", "M27", None, m27_id, sg_m27_end),
+            ("36.06.04", "M27 - CCO - PROCEDIMENTOS REALIZADOS - DOR OROFACIAL *", "ESPECIALIDADES ODONTOLÓGICAS", "M27", None, m27_id, sg_m27_dor),
+            ("36.07.01", "M29 - UBS_ESF - TRATAMENTOS INICIADOS (PROTÉTICO) - ESB MODALIDADE I *", "ESF - ESTRATÉGIA DE SAÚDE DA FAMÍLIA", "M29", "223293", m29_id, None),
+            ("36.07.02", "M29 - UBS_ESF - TRATAMENTOS INICIADOS (PROTÉTICO) - ESB MODALIDADE I - RT *", "ESF - ESTRATÉGIA DE SAÚDE DA FAMÍLIA", "M29", "223293_RT", m29_id, None),
+            ("36.07.03", "M29 - UBS_ESF - TRATAMENTOS INICIADOS (PROTÉTICO) - ESB MODALIDADE II *", "ESF - ESTRATÉGIA DE SAÚDE DA FAMÍLIA", "M29", "223293", m29_id, None),
+            ("36.07.04", "M29 - UBS_ESF - TRATAMENTOS INICIADOS (PROTÉTICO) - ESB MODALIDADE II - RT *", "ESF - ESTRATÉGIA DE SAÚDE DA FAMÍLIA", "M29", "223293_RT", m29_id, None),
+            ("36.07.05", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) - ESB MODALIDADE I *", "UBS - UNIDADE BÁSICA DE SAÚDE", "M30", "223208", m30_id, None),
+            ("36.07.06", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) - ESB MODALIDADE I - RT *", "UBS - UNIDADE BÁSICA DE SAÚDE", "M30", "223208_RT", m30_id, None),
+            ("36.07.07", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) - ESB MODALIDADE II *", "UBS - UNIDADE BÁSICA DE SAÚDE", "M30", "223208", m30_id, None),
+            ("36.07.08", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) - ESB MODALIDADE II - RT *", "UBS - UNIDADE BÁSICA DE SAÚDE", "M30", "223208_RT", m30_id, None),
+            ("36.07.09", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) - CD SEM AUXILIAR DE SAÚDE BUCAL *", "UBS - UNIDADE BÁSICA DE SAÚDE", "M30", "223208", m30_id, None),
+            ("36.07.10", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) - CD SEM AUXILIAR DE SAÚDE BUCAL - RT *", "UBS - UNIDADE BÁSICA DE SAÚDE", "M30", "223208_RT", m30_id, None),
+            ("36.01.10", "M30 - UBS - TRATAMENTO INICIADO (PROTÉTICO) PELA EQUIPE DE SAÚDE BUCAL *", "UBS MISTA", "M30", "223208", m30_id, None),
+            ("36.08.01", "M33 - CNR - PROCEDIMENTOS REALIZADOS - EQUIPE MÉDICA DA ECR *", "CONSULTÓRIO NA RUA", "M33", "225170", m33_id, None),
+            ("36.01.16", "M38 - SADT - EXAMES DIAGNÓSTICOS DE LIVRE DEMANDA (MONITORAMENTO CARDIACO) *", "APOIO DIAGNÓSTICO", "M38", None, m38_id, sg_m38_card),
+            ("36.08.07", "M38 - SADT - EXAMES DIAGNÓSTICOS DE LIVRE DEMANDA (MONITORAMENTO CARDIACO) *", "APOIO DIAGNÓSTICO", "M38", None, m38_id, sg_m38_card),
+            ("36.08.08", "M38 - SADT - EXAMES DIAGNÓSTICOS DE LIVRE DEMANDA (EXAMES RADIOLÓGICOS) *", "APOIO DIAGNÓSTICO", "M38", None, m38_id, sg_m38_rad),
+            ("36.01.17", "M39 - POLO DE CURATIVOS - PRIMEIRA CONSULTA DE ENFERMEIRO ESPECIALISTA *", "HD BLOCO CLÍNICO", "M39", "223580", m39_id, None),
+            ("36.01.18", "M40 - POLO DE CURATIVOS - PROCEDIMENTO REALIZADO POR ENFERMEIRO ESPECIALISTA NOS POLOS CURATIVO *", "HD BLOCO CLÍNICO", "M40", "223580", m40_id, None),
+            ("36.01.20", "M42 - CAPS - MATRICIAMENTO DE EQUIPES A ATENÇÃO BÁSICA *", "CAPS - CENTRO DE ATENÇÃO PSICOSSOCIAL", "M42", None, m42_id, None),
+            ("36.01.21", "M43 - CAPS - MATRICIAMENTO DE EQUIPES DOS PONTOS DE URGÊNCIAS E EMERGÊNCIAS E DOS SERVIÇOS HOSPITALARES DE REFERÊNCIA *", "CAPS - CENTRO DE ATENÇÃO PSICOSSOCIAL", "M43", None, m43_id, None),
+            ("36.01.22", "M45 - PMAE/OCI - PERCENTUAL DE ALCANCE DA META DE PRODUÇÃO POR OCI *", "HD BLOCO CLÍNICO", "M45", None, m45_id, None),
+            ("30.01.101", "Nº TRATAMENTO INICIAL TI CLÍNICO/RESTAURADOR CD SEM AUXILIAR DE SAÚDE BUCAL", "UBS MISTA", "P07", "223293", 7, None),
+            ("6.01.22", "DIAGNÓSTICO EM GINECOLOGIA-OBSTETRÍCIA", "APOIO DIAGNÓSTICO", "P44", None, 44, 32),
+        ]
+        for cp, prod, serv, cod_ind, cbo_cod, iid, sg_id in mapeamentos_ws:
+            ex = conn.execute(
+                "SELECT id FROM de_para_websaass_indicador WHERE cod_producao = ? LIMIT 1",
+                (cp,),
+            ).fetchone()
+            if ex:
+                ex_id = ex[0] if isinstance(ex, (tuple, list)) else ex["id"]
+                conn.execute(
+                    """UPDATE de_para_websaass_indicador
+                       SET producao = ?, servico = ?, codigo_indicador = ?, cbo_codigo = ?, indicador_id = ?, subgrupo_id = ?
+                       WHERE id = ?""",
+                    (prod, serv, cod_ind, cbo_cod, iid, sg_id, ex_id),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO de_para_websaass_indicador
+                       (cod_producao, producao, servico, codigo_indicador, cbo_codigo, indicador_id, subgrupo_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (cp, prod, serv, cod_ind, cbo_cod, iid, sg_id),
+                )
+
+    # 5. Sincronizar profissionais RT (SICAP) e PMMB (SCNES)
+    if _tabela_existe(conn, "profissionais"):
+        # Corrigir Rodrigo Antunes Valester na UBS Jardim São Nicolau (id 59) para ESB I
+        conn.execute(
+            "UPDATE profissionais SET tipo_equipe = 'ESB I', cbo_codigo = '223293', rt = 1 WHERE estabelecimento_id = 59 AND lower(nome) LIKE '%rodrigo antunes%'"
+        )
+        # Corrigir Monica Keiko na UBS Jardim Maringá (id 52) para ESB I (conforme lançamento WebSAASS)
+        conn.execute(
+            "UPDATE profissionais SET tipo_equipe = 'ESB I', cbo_codigo = '223293', rt = 1 WHERE estabelecimento_id = 52 AND lower(nome) LIKE '%monica keiko%'"
+        )
+        # Inserir profissionais RTs do SICAP (Melissa Hangai até Maio/2026 em São Nicolau, Fabricia Viana Costa a partir de Abril/2026 em Eng Trindade)
+        # e médicos PMMB Generalistas (225170) ativos nas UBSs Tradicionais
+        conn.execute(
+            "UPDATE profissionais SET nome = 'Melissa Hangai', rt = 1 WHERE estabelecimento_id = 59 AND lower(nome) LIKE 'melissa hangai%'"
+        )
+        novos_profs = [
+            ("Melissa Hangai", "705008866749155", "223293", 59, 1, "ESB I", 0),
+            ("Fabricia Viana Costa", "703005807532979", "223293", 57, 1, "ESB I", 0),
+            ("Julia De Oliveira Abrao", "700602925882166", "225170", 54, 0, None, 1),
+            ("Renata Fernandes Lepinski", "702804155320562", "225170", 54, 0, None, 1),
+            ("Bruna Kaori Yuasa", "706704543269316", "225170", 62, 0, None, 1),
+            ("Thamires Da Silva Santos", "701007898685399", "225170", 62, 0, None, 1),
+            ("Ruben Alfonso Cortes Oduardo", "700508922668156", "225170", 65, 0, None, 1),
+        ]
+        for p_nome, p_cns, p_cbo, p_est, p_rt, p_eq, p_pmmb in novos_profs:
+            ex_p = conn.execute(
+                "SELECT id FROM profissionais WHERE estabelecimento_id = ? AND (cns = ? OR lower(nome) = lower(?)) LIMIT 1",
+                (p_est, p_cns, p_nome),
+            ).fetchone()
+            if ex_p:
+                pid = ex_p[0] if isinstance(ex_p, (tuple, list)) else ex_p["id"]
+                conn.execute(
+                    """UPDATE profissionais
+                       SET cns = COALESCE(?, cns), cbo_codigo = ?, rt = ?, tipo_equipe = COALESCE(?, tipo_equipe), pmmb = ?, ativo = 1
+                       WHERE id = ?""",
+                    (p_cns, p_cbo, p_rt, p_eq, p_pmmb, pid),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO profissionais (nome, cns, cbo_codigo, estabelecimento_id, rt, tipo_equipe, pmmb, ativo)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+                    (p_nome, p_cns, p_cbo, p_est, p_rt, p_eq, p_pmmb),
+                )
 

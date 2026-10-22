@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Configuração de CIDs Definidos - Fila de Espera{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+
+<div class="container-fluid mt-3 px-4">
+    <!-- Cabeçalho -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div>
+            <h2 class="h4 fw-bold text-primary mb-1">
+                <i class="bi bi-gear-wide-connected me-2"></i>Configuração de CIDs Definidos
+            </h2>
+            <p class="text-muted small mb-0">
+                Regras oficiais de conformidade de CID por <strong>Especialidade</strong> para auditoria das filas de espera (SIGA) e regulação (FR-03/FR-04).
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-2 mt-md-0">
+            <a href="{{ url_for('fila_espera.index') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 shadow-sm">
+                <i class="bi bi-arrow-left me-1"></i> Voltar para a Fila
+            </a>
+            <form action="{{ url_for('fila_espera.restaurar_cids') }}" method="POST" class="d-inline" onsubmit="return confirm('Tem certeza de que deseja restaurar as regras oficiais padrão da portaria e variantes clínicas? Qualquer alteração manual será substituída.');">
+                <button type="submit" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3 shadow-sm">
+                    <i class="bi bi-arrow-counterclockwise me-1"></i> Restaurar Padrão Oficial
+                </button>
+            </form>
+            <button type="button" class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm" id="btnNovaRegra">
+                <i class="bi bi-plus-circle me-1"></i> Adicionar Nova Regra
+            </button>
+        </div>
+    </div>
+
+    <!-- Tabela de Regras -->
+    <div class="card shadow-sm border-0 rounded-3 mb-4">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="fw-bold text-primary mb-0"><i class="bi bi-card-checklist me-2"></i>Lista de CIDs e Especialidades Cadastradas</h5>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 fw-semibold">{{ regras|length }} regra(s) ativa(s)</span>
+            </div>
+            <span class="text-muted small"><i class="bi bi-info-circle me-1"></i>Ao adicionar, editar ou excluir regras, as 55.000+ linhas das filas são recalculadas automaticamente.</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive p-3">
+                <table id="tabela-cids-config" class="table table-hover table-striped table-bordered align-middle small w-100">
+                    <thead class="table-primary text-nowrap">
+                        <tr>
+                            <th style="width: 50px;" class="text-center">ID</th>
+                            <th>Especialidade</th>
+                            <th>CBO (Código / Nome)</th>
+                            <th class="text-center" style="width: 100px;">CID</th>
+                            <th>Descrição do CID</th>
+                            <th>Procedimento</th>
+                            <th>Observações</th>
+                            <th class="text-center" style="width: 130px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in regras %}
+                        <tr>
+                            <td class="text-center font-monospace text-muted">{{ r.id }}</td>
+                            <td class="fw-semibold text-primary">{{ r.especialidade }}</td>
+                            <td>
+                                {% if r.cbo_codigo %}
+                                <span class="badge bg-light text-dark border font-monospace me-1">{{ r.cbo_codigo }}</span>
+                                <span class="text-secondary small">{{ r.cbo_nome or '' }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 font-monospace fs-6 fw-bold">
+                                    {{ r.cid }}
+                                </span>
+                            </td>
+                            <td>{{ r.cid_descricao or '-' }}</td>
+                            <td class="small text-muted">{{ r.procedimento_nome or r.procedimento_codigo or '-' }}</td>
+                            <td class="small text-secondary">{{ r.observacoes or '-' }}</td>
+                            <td class="text-center text-nowrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 rounded-pill me-1 btn-editar-regra"
+                                    data-id="{{ r.id }}"
+                                    data-especialidade="{{ r.especialidade }}"
+                                    data-cbo-codigo="{{ r.cbo_codigo or '' }}"
+                                    data-cbo-nome="{{ r.cbo_nome or '' }}"
+                                    data-procedimento-codigo="{{ r.procedimento_codigo or '' }}"
+                                    data-procedimento-nome="{{ r.procedimento_nome or '' }}"
+                                    data-cid="{{ r.cid }}"
+                                    data-cid-descricao="{{ r.cid_descricao or '' }}"
+                                    data-observacoes="{{ r.observacoes or '' }}"
+                                    title="Editar Regra">
+                                    <i class="bi bi-pencil me-1"></i>Editar
+                                </button>
+                                <form action="{{ url_for('fila_espera.excluir_cid', id=r.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Tem certeza de que deseja excluir a regra para o CID {{ r.cid }}?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger py-1 px-2 rounded-pill" title="Excluir Regra">
+                                        <i class="bi bi-trash me-1"></i>Excluir
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Adicionar / Editar Regra de CID -->
+<div class="modal fade" id="modalRegraCid" tabindex="-1" aria-labelledby="modalRegraCidLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow rounded-4">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="modalRegraCidLabel">
+                    <i class="bi bi-plus-circle me-2"></i>Nova Regra de CID Definido
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <form action="{{ url_for('fila_espera.salvar_cid') }}" method="POST">
+                <input type="hidden" name="id" id="regraId">
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Especialidade <span class="text-danger">*</span></label>
+                            <input type="text" name="especialidade" id="regraEspecialidade" list="listaEspecialidades" class="form-control" placeholder="Selecione ou digite a Especialidade" required autocomplete="off">
+                            <datalist id="listaEspecialidades">
+                                {% for esp in especialidades_conhecidas %}
+                                <option value="{{ esp }}"></option>
+                                {% endfor %}
+                            </datalist>
+                            <div class="form-text small">Ex: Odontologia - Endodontia, Odontologia - Cirurgia Oral Menor</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Código CBO</label>
+                            <input type="text" name="cbo_codigo" id="regraCboCodigo" class="form-control font-monospace" placeholder="Ex: 223212">
+                            <div class="form-text small">Opcional / Informativo</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Código CID <span class="text-danger">*</span></label>
+                            <input type="text" name="cid" id="regraCid" class="form-control font-monospace fw-bold text-uppercase" placeholder="Ex: K049 ou K041" required>
+                            <div class="form-text small">Ex: K049 ou múltiplos: K041, K042</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Nome / Categoria do CBO</label>
+                            <input type="text" name="cbo_nome" id="regraCboNome" class="form-control" placeholder="Ex: Cirurgião Dentista - Endodontista">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Código Procedimento</label>
+                            <input type="text" name="procedimento_codigo" id="regraProcedimentoCodigo" class="form-control font-monospace" placeholder="Ex: 0301010048">
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">Nome do Procedimento</label>
+                            <input type="text" name="procedimento_nome" id="regraProcedimentoNome" class="form-control" placeholder="Ex: Consulta De Profissionais De Nivel Superior Na Atenção Especializada...">
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">Descrição do CID</label>
+                            <input type="text" name="cid_descricao" id="regraCidDescricao" class="form-control" placeholder="Ex: Outras doenças da polpa e dos tecidos periapicais...">
+                        </div>
+
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold">Observações / Critérios de Regulação</label>
+                            <textarea name="observacoes" id="regraObservacoes" class="form-control" rows="2" placeholder="Critérios clínicos, restrições de acesso ou orientações para a unidade..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light rounded-bottom-4">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">
+                        <i class="bi bi-check-circle me-1"></i> Salvar e Recalcular
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#tabela-cids-config').DataTable({
+        language: {
+            "sEmptyTable": "Nenhuma regra cadastrada",
+            "sInfo": "Mostrando de _START_ até _END_ de _TOTAL_ regras",
+            "sInfoEmpty": "Mostrando 0 até 0 de 0 regras",
+            "sInfoFiltered": "(Filtradas de _MAX_ regras)",
+            "sLengthMenu": "_MENU_ regras por página",
+            "sSearch": "Buscar regra:",
+            "oPaginate": {
+                "sNext": "Próximo",
+                "sPrevious": "Anterior"
+            }
+        },
+        pageLength: 25,
+        order: [[1, 'asc']]
+    });
+
+    // Abrir modal de Nova Regra
+    $('#btnNovaRegra').on('click', function() {
+        $('#modalRegraCidLabel').html('<i class="bi bi-plus-circle me-2"></i>Nova Regra de CID Definido');
+        $('#regraId').val('');
+        $('#regraEspecialidade').val('');
+        $('#regraCboCodigo').val('');
+        $('#regraCboNome').val('');
+        $('#regraProcedimentoCodigo').val('0301010048');
+        $('#regraProcedimentoNome').val('Consulta De Profissionais De Nivel Superior Na Atenção Especializada (Exceto Médico)');
+        $('#regraCid').val('');
+        $('#regraCidDescricao').val('');
+        $('#regraObservacoes').val('');
+        const modalEl = document.getElementById('modalRegraCid');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    });
+
+    // Abrir modal de Edição via delegação de eventos
+    $(document).on('click', '.btn-editar-regra', function() {
+        const btn = $(this);
+        $('#modalRegraCidLabel').html('<i class="bi bi-pencil-square me-2"></i>Editar Regra de CID: ' + (btn.data('cid') || ''));
+        $('#regraId').val(btn.data('id') || '');
+        $('#regraEspecialidade').val(btn.data('especialidade') || '');
+        $('#regraCboCodigo').val(btn.data('cbo-codigo') || '');
+        $('#regraCboNome').val(btn.data('cbo-nome') || '');
+        $('#regraProcedimentoCodigo').val(btn.data('procedimento-codigo') || '');
+        $('#regraProcedimentoNome').val(btn.data('procedimento-nome') || '');
+        $('#regraCid').val(btn.data('cid') || '');
+        $('#regraCidDescricao').val(btn.data('cid-descricao') || '');
+        $('#regraObservacoes').val(btn.data('observacoes') || '');
+        const modalEl = document.getElementById('modalRegraCid');
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+    });
+});
+</script>
+{% endblock %}

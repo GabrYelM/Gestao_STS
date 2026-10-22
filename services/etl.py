@@ -1,4 +1,8 @@
 # transforma os arquivos em tabelas no db
+import os
+import io
+import re
+import unicodedata
 import pandas as pd
 from datetime import datetime
 from app import app
@@ -6,10 +10,6 @@ from database import db
 from sqlalchemy import text
 import models
 from services.competencias import registrar_competencia, registrar_competencias_lote
-
-import io
-import re
-import unicodedata
 
 def _normalizar_str(s):
     if not s:

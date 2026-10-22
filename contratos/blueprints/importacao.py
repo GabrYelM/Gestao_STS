@@ -12,6 +12,7 @@ from ..etl import (
     importar_dtic_rel130,
     importar_dtic_rel134,
     importar_dtic_rel164,
+    importar_sicap,
     importar_sisad,
     importar_visita_domiciliar,
     importar_webssas,
@@ -169,6 +170,8 @@ DETECCAO_POR_NOME_ARQUIVO = [
     ("at08", "AT08"),
     ("at-11", "AT11"),
     ("at11", "AT11"),
+    ("at-32", "AT32"),
+    ("at32", "AT32"),
     ("at-39", "AT39"),
     ("at39", "AT39"),
     ("at-40", "AT40"),
@@ -177,6 +180,8 @@ DETECCAO_POR_NOME_ARQUIVO = [
     ("at48", "AT48"),
     ("at-49", "AT49"),
     ("at49", "AT49"),
+    ("at-51", "AT51"),
+    ("at51", "AT51"),
     ("at-57", "AT57"),
     ("at57", "AT57"),
     ("at-61", "AT61"),
@@ -200,17 +205,31 @@ DETECCAO_POR_NOME_ARQUIVO = [
     ("rel136", "DTIC_REL164"),
     ("demonstrativo de apontamentos", "WEBSSAS"),
     ("webssas", "WEBSSAS"),
+    ("sicap", "SICAP"),
+    ("solicitacao_atualizacao_cadastro_rt", "SICAP"),
 ]
+
+FONTES_SOMENTE_CSV_OU_ZIP = {
+    "AT02", "AT08", "AT11", "AT32", "AT39", "AT40", "AT48", "AT49", "AT51", "AT57", "AT61",
+    "VISITA_DOMICILIAR", "DTIC_REL134", "DTIC_REL130", "DTIC_REL164",
+}
 
 
 def _detectar_fonte_por_nome(nome_arquivo, caminho_disco=None):
     nome = (nome_arquivo or "").lower()
+    eh_planilha_excel = nome.endswith((".xlsx", ".xlsm", ".xls", ".ods"))
     for pedaco, fonte in DETECCAO_POR_NOME_ARQUIVO:
         if pedaco in nome:
+            if eh_planilha_excel and fonte in FONTES_SOMENTE_CSV_OU_ZIP:
+                return "IGNORAR"
             return fonte
 
     # Se for um ZIP e o nome externo não casou, inspeciona os nomes internos do arquivo
-    if caminho_disco and (nome.endswith(".zip") or (os.path.exists(caminho_disco) and zipfile.is_zipfile(caminho_disco))):
+    if (
+        not eh_planilha_excel
+        and caminho_disco
+        and (nome.endswith(".zip") or (os.path.exists(caminho_disco) and zipfile.is_zipfile(caminho_disco)))
+    ):
         try:
             with zipfile.ZipFile(caminho_disco) as z:
                 for interno in z.namelist():
@@ -323,6 +342,13 @@ def upload_multiplo():
                 linhas_resultado.append(
                     f"✅ {arquivo.filename} (DTIC REL_164 / 136 - Hospital Dia): {n} linhas importadas, "
                     f"{resumo.get('linhas_vinculadas', 0)} vinculadas ao painel (P45, P46, P47)."
+                )
+            elif fonte == "SICAP":
+                res_sicap = importar_sicap(caminho_arquivo, db, nome_salvo)
+                recalcular_periodo(db, periodo, "AT02")
+                linhas_resultado.append(
+                    f"✅ {arquivo.filename} (SICAP Odonto RT): {res_sicap['total_registros']} linhas lidas, "
+                    f"{res_sicap['criados']} criado(s), {res_sicap['atualizados']} atualizado(s)."
                 )
         except Exception as exc:  # noqa: BLE001
             houve_erro = True

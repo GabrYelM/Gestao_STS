@@ -106,4 +106,16 @@ def init_app(app):
     app.register_blueprint(cadastros.bp)
     app.register_blueprint(relatorios.bp)
     app.register_blueprint(backup.bp)
+
+    # Controle de Acesso: Apenas Administradores podem acessar páginas e rotas de contratos
+    @app.before_request
+    def verificar_acesso_modulo_contratos():
+        from flask import request, session, redirect, url_for, flash, jsonify
+        if request.path.startswith("/contratos"):
+            if not session.get("usuario_id") or not session.get("is_admin"):
+                if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"erro": "Acesso restrito a administradores.", "sucesso": False}), 403
+                flash("Acesso restrito. Faça login como administrador para acessar o Módulo de Contratos de Gestão.", "warning")
+                return redirect(url_for("login", next=request.path))
+
     print("[contratos] Módulo Contrato de Gestão registrado com sucesso!")

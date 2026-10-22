@@ -2677,18 +2677,19 @@ def gera_relatorio_16(periodo=None):
             pivot_ativo = pivot_ativo.reset_index()
             pivot_ativo = pivot_ativo.rename(columns={'estabelecimento': 'ESTABELECIMENTO'})
             
-            for col in ['GESTACIONAL', 'TIPO I', 'TIPO II']:
+            # Garantir os tipos padrão e incorporar quaisquer novos tipos de diabetes dinamicamente
+            tipos_padrao = ['GESTACIONAL', 'TIPO I', 'TIPO II']
+            tipos_existentes = [c for c in pivot_ativo.columns if c != 'ESTABELECIMENTO']
+            todos_tipos = list(dict.fromkeys(tipos_padrao + sorted([t for t in tipos_existentes if t and t not in tipos_padrao])))
+            
+            for col in todos_tipos:
                 if col not in pivot_ativo.columns:
                     pivot_ativo[col] = 0
+                pivot_ativo[col] = pd.to_numeric(pivot_ativo[col], errors='coerce').fillna(0).astype(int)
                     
-            cols_order_a = ['ESTABELECIMENTO', 'GESTACIONAL', 'TIPO I', 'TIPO II']
+            cols_order_a = ['ESTABELECIMENTO'] + todos_tipos
             pivot_ativo = pivot_ativo[cols_order_a]
-            
-            num_cols_a = ['GESTACIONAL', 'TIPO I', 'TIPO II']
-            for c in num_cols_a:
-                pivot_ativo[c] = pd.to_numeric(pivot_ativo[c], errors='coerce').fillna(0).astype(int)
-                
-            pivot_ativo['Total Geral'] = pivot_ativo[num_cols_a].sum(axis=1)
+            pivot_ativo['Total Geral'] = pivot_ativo[todos_tipos].sum(axis=1)
             pivot_ativo = pivot_ativo.sort_values(by='ESTABELECIMENTO').reset_index(drop=True)
         else:
             pivot_ativo = pd.DataFrame(columns=['ESTABELECIMENTO', 'GESTACIONAL', 'TIPO I', 'TIPO II', 'Total Geral'])
@@ -2708,22 +2709,23 @@ def gera_relatorio_16(periodo=None):
             pivot_inativo = pivot_inativo.reset_index()
             pivot_inativo = pivot_inativo.rename(columns={'estabelecimento': 'ESTABELECIMENTO'})
             
-            motivos_esperados = [
+            # Garantir os motivos padrão esperados e incorporar dinamicamente qualquer novo motivo presente nos dados
+            motivos_padrao = [
                 'ABANDONO', 'CADASTRO EQUIVOCADO', 'GESTANTE', 'INATIVADO POR DECURSO DE TEMPO',
                 'MUDANÇA DE MUNICÍPIO', 'OUTROS MOTIVOS', 'SUSPENSÃO DA PRESCRIÇÃO DE INSULINA',
                 'TRANSFERÊNCIA DE UNIDADE', 'ÓBITO'
             ]
-            for m in motivos_esperados:
+            motivos_existentes = [c for c in pivot_inativo.columns if c != 'ESTABELECIMENTO']
+            todos_motivos = list(dict.fromkeys(motivos_padrao + sorted([m for m in motivos_existentes if m and m not in motivos_padrao])))
+
+            for m in todos_motivos:
                 if m not in pivot_inativo.columns:
                     pivot_inativo[m] = 0
+                pivot_inativo[m] = pd.to_numeric(pivot_inativo[m], errors='coerce').fillna(0).astype(int)
                     
-            cols_order_i = ['ESTABELECIMENTO'] + motivos_esperados
+            cols_order_i = ['ESTABELECIMENTO'] + todos_motivos
             pivot_inativo = pivot_inativo[cols_order_i]
-            
-            for c in motivos_esperados:
-                pivot_inativo[c] = pd.to_numeric(pivot_inativo[c], errors='coerce').fillna(0).astype(int)
-                
-            pivot_inativo['Total Geral'] = pivot_inativo[motivos_esperados].sum(axis=1)
+            pivot_inativo['Total Geral'] = pivot_inativo[todos_motivos].sum(axis=1)
             pivot_inativo = pivot_inativo.sort_values(by='ESTABELECIMENTO').reset_index(drop=True)
         else:
             pivot_inativo = pd.DataFrame(columns=['ESTABELECIMENTO', 'ABANDONO', 'CADASTRO EQUIVOCADO', 'GESTANTE', 'INATIVADO POR DECURSO DE TEMPO', 'MUDANÇA DE MUNICÍPIO', 'OUTROS MOTIVOS', 'SUSPENSÃO DA PRESCRIÇÃO DE INSULINA', 'TRANSFERÊNCIA DE UNIDADE', 'ÓBITO', 'Total Geral'])

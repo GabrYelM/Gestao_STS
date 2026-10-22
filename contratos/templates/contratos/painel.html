@@ -578,6 +578,9 @@ async function abrirDetalheAlerta(tipo, titulo) {
     <i class="bi bi-info-circle me-1"></i> Consolidação por CNES: {{ qtd_indicadores_cnes }} indicador(es)
   </span>
   <div class="ms-auto d-flex align-items-center gap-2">
+    <a class="btn btn-outline-primary btn-sm fw-semibold" href="{{ url_for('relatorios.espelho_websaass_xlsx') }}" title="Planilha na estrutura original do WebSaass com o que o STS encontrou para cada linha">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i> Espelho WebSaass c/ Apurado
+    </a>
     <a class="btn btn-outline-success btn-sm fw-semibold" href="{{ url_for('relatorios.auditoria_websass_xlsx') }}" title="Planilha completa comparando Apurado STS vs Declarado Websaass" onclick="return prepararExportacaoObs(this, event)">
       <i class="bi bi-file-earmark-excel me-1"></i> Exportar Auditoria (Websaass)
     </a>
@@ -3432,7 +3435,12 @@ async function salvarModalRegraProfissional(evt) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    const res = await resp.json();
+    let res;
+    try {
+      res = await resp.json();
+    } catch (_) {
+      res = { ok: false, erro: 'Falha na resposta do servidor (HTTP ' + resp.status + ').' };
+    }
 
     if (res.ok) {
       mostrarToast(res.mensagem || 'Profissional atualizado com sucesso!', 'sucesso');

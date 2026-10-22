@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+
+{% block title %}Fila de Espera e Regulação - Gestão STS{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3 px-4">
+    <!-- Cabeçalho e Botões de Ação -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div>
+            <h2 class="h4 fw-bold text-primary mb-1">
+                <i class="bi bi-hourglass-split me-2"></i>Fila de Espera e Fila do Regulador
+            </h2>
+            <p class="text-muted small mb-0">
+                Acompanhamento nominal de pacientes ativos, regulação com motivo e conferência dos CIDs definidos.
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-2 mt-md-0">
+            {% if session.get("is_admin") %}
+            <form action="{{ url_for('fila_espera.importar_pasta') }}" method="POST" class="d-inline" onsubmit="return confirm('Deseja processar os arquivos SIGA e FR da pasta ARQUIVOS ORIGINAIS/Fila de espera?');">
+                <button type="submit" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm" title="Carrega automaticamente os arquivos SIGA e FR presentes na pasta local">
+                    <i class="bi bi-folder-check me-1"></i> Ingerir Arquivos da Pasta
+                </button>
+            </form>
+            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalUploadArquivos">
+                <i class="bi bi-cloud-arrow-up me-1"></i> Upload Manual
+            </button>
+            <a href="{{ url_for('fila_espera.gerenciar_cids') }}" class="btn btn-outline-dark btn-sm rounded-pill px-3 shadow-sm">
+                <i class="bi bi-gear-wide-connected me-1"></i> Configurar CIDs
+            </a>
+            {% endif %}
+            <a href="{{ url_for('fila_espera.exportar_excel') }}" class="btn btn-success btn-sm rounded-pill px-3 shadow-sm">
+                <i class="bi bi-file-earmark-excel me-1"></i> Exportar Planilha (.xlsx)
+            </a>
+        </div>
+    </div>
+
+    <!-- Cards de Métricas Principais -->
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm border-0 border-start border-primary border-4 rounded-3 h-100 bg-white">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <span class="text-muted small fw-semibold">Fila de Espera (Ativos)</span>
+                            <h3 class="fw-bold text-primary mt-1 mb-0">{{ "{:,}".format(metricas.total_fe).replace(',', '.') }}</h3>
+                            <span class="text-muted" style="font-size: 0.75rem;">Fonte SIGAPEP Nominal</span>
+                        </div>
+                        <div class="fs-1 text-primary-subtle"><i class="bi bi-people-fill"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm border-0 border-start border-info border-4 rounded-3 h-100 bg-white">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <span class="text-muted small fw-semibold">Fila do Regulador</span>
+                            <h3 class="fw-bold text-info mt-1 mb-0">{{ "{:,}".format(metricas.total_fr).replace(',', '.') }}</h3>
+                            <span class="text-muted" style="font-size: 0.75rem;">BISIGA (FR-03 + FR-04)</span>
+                        </div>
+                        <div class="fs-1 text-info-subtle"><i class="bi bi-person-lines-fill"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm border-0 border-start border-success border-4 rounded-3 h-100 bg-white">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <span class="text-muted small fw-semibold">CIDs Auditados (Odonto)</span>
+                            <h3 class="fw-bold text-success mt-1 mb-0">{{ "{:,}".format(metricas.fe_odonto + metricas.fr_odonto).replace(',', '.') }}</h3>
+                            <span class="text-success" style="font-size: 0.75rem;"><i class="bi bi-check-all me-1"></i>{{ "{:,}".format(metricas.fe_corretos + metricas.fr_corretos).replace(',', '.') }} Conformes</span>
+                        </div>
+                        <div class="fs-1 text-success-subtle"><i class="bi bi-shield-check"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+            <div class="card shadow-sm border-0 border-start border-danger border-4 rounded-3 h-100 bg-white">
+                <div class="card-body p-3">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div>
+                            <span class="text-muted small fw-semibold">CIDs Incorretos</span>
+                            <h3 class="fw-bold text-danger mt-1 mb-0">{{ "{:,}".format(metricas.total_incorretos).replace(',', '.') }}</h3>
+                            <span class="text-danger small" style="font-size: 0.75rem;">
+                                {% if metricas.total_incorretos > 0 %}
+                                <a href="?status_cid=INCORRETO" class="text-danger text-decoration-underline">Filtrar Incorretos</a>
+                                {% else %}
+                                Todos em conformidade
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="fs-1 text-danger-subtle"><i class="bi bi-exclamation-triangle-fill"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de Filtros -->
+    <div class="card shadow-sm border-0 rounded-3 mb-4 bg-light">
+        <div class="card-body p-3">
+            <form method="GET" action="{{ url_for('fila_espera.index') }}" class="row g-2 align-items-end">
+                <input type="hidden" name="aba" id="filtroAbaAtiva" value="{{ aba_ativa }}">
+
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-secondary mb-1">Estabelecimento Solicitante</label>
+                    <select class="form-select form-select-sm" name="estabelecimento" id="selectEstabelecimento">
+                        <option value="">Todos os Estabelecimentos</option>
+                        {% for est in estabelecimentos %}
+                        <option value="{{ est }}" {% if est == estab_selecionado %}selected{% endif %}>{{ est }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-secondary mb-1">Especialidade</label>
+                    <select class="form-select form-select-sm" name="especialidade" id="selectEspecialidade">
+                        <option value="">Todas as Especialidades</option>
+                        {% for esp in especialidades %}
+                        <option value="{{ esp }}" {% if esp == espec_selecionada %}selected{% endif %}>{{ esp }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-secondary mb-1">Conferência do CID</label>
+                    <select class="form-select form-select-sm" name="status_cid" id="selectStatusCid">
+                        <option value="" {% if not status_cid_selecionado %}selected{% endif %}>Todos os Status</option>
+                        <option value="INCORRETO" {% if status_cid_selecionado == 'INCORRETO' %}selected{% endif %}>❌ Apenas CIDs Incorretos</option>
+                        <option value="CORRETO" {% if status_cid_selecionado == 'CORRETO' %}selected{% endif %}>✅ Apenas CIDs Corretos</option>
+                        <option value="N/A" {% if status_cid_selecionado == 'N/A' %}selected{% endif %}>➖ Não se Aplica (Outras Especialidades)</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2 d-flex gap-1">
+                    <button type="submit" class="btn btn-primary btn-sm rounded-pill w-100 fw-semibold">
+                        <i class="bi bi-funnel me-1"></i> Filtrar
+                    </button>
+                    <a href="{{ url_for('fila_espera.index') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Limpar Filtros">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Navegação por Abas (4 Tabelas) -->
+    <ul class="nav nav-pills nav-fill mb-3 bg-white p-2 rounded-3 shadow-sm border" id="pills-tab-fila" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if aba_ativa == 'resumo_fe' %}active{% endif %} fw-semibold py-2" id="tab-resumo-fe" data-bs-toggle="pill" data-bs-target="#pane-resumo-fe" type="button" role="tab" onclick="mudarAba('resumo_fe')">
+                <i class="bi bi-table me-2"></i>1. Resumo Fila de Espera (RESUMO_FE)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if aba_ativa == 'nominal_fe' %}active{% endif %} fw-semibold py-2" id="tab-nominal-fe" data-bs-toggle="pill" data-bs-target="#pane-nominal-fe" type="button" role="tab" onclick="mudarAba('nominal_fe')">
+                <i class="bi bi-card-list me-2"></i>2. Fila de Espera Nominal (SIGA)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if aba_ativa == 'resumo_fr' %}active{% endif %} fw-semibold py-2" id="tab-resumo-fr" data-bs-toggle="pill" data-bs-target="#pane-resumo-fr" type="button" role="tab" onclick="mudarAba('resumo_fr')">
+                <i class="bi bi-table me-2"></i>3. Resumo Fila do Regulador (RESUMO_FR)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link {% if aba_ativa == 'nominal_fr' %}active{% endif %} fw-semibold py-2" id="tab-nominal-fr" data-bs-toggle="pill" data-bs-target="#pane-nominal-fr" type="button" role="tab" onclick="mudarAba('nominal_fr')">
+                <i class="bi bi-card-list me-2"></i>4. Fila do Regulador Nominal (FR-03/04)
+            </button>
+        </li>
+    </ul>
+
+    <!-- Conteúdo das 4 Abas -->
+    <div class="tab-content" id="pills-tabContentFila">
+
+        <!-- ================= ABA 1: RESUMO FILA DE ESPERA (RESUMO_FE) ================= -->
+        <div class="tab-pane fade {% if aba_ativa == 'resumo_fe' %}show active{% endif %}" id="pane-resumo-fe" role="tabpanel">
+            <div class="card shadow-sm border-0 rounded-3 mb-4">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold text-primary mb-0"><i class="bi bi-pie-chart-fill me-2"></i>Resumo da Fila de Espera por Unidade e Especialidade</h5>
+                        <span class="text-muted small">Agrupamento consolidado com contagem de Primeira Vez, Retorno, Reserva Técnica e Conferência de CID.</span>
+                    </div>
+                    <span class="badge bg-light text-dark border px-3 py-2 fw-semibold">{{ resumo_fe|length }} agrupamentos</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive p-3">
+                        <table id="tabela-resumo-fe" class="table table-hover table-striped table-bordered align-middle small w-100">
+                            <thead class="table-primary text-nowrap">
+                                <tr>
+                                    <th>Estabelecimento Solicitante</th>
+                                    <th>Especialidade</th>
+                                    <th>CBO</th>
+                                    <th>Procedimento</th>
+                                    <th class="text-center">Primeira Vez</th>
+                                    <th class="text-center">Retorno</th>
+                                    <th class="text-center">Reserva Técnica</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center">Conferência CID</th>
+                                    <th class="text-center text-success">CIDs Corretos</th>
+                                    <th class="text-center text-danger">CIDs Incorretos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in resumo_fe %}
+                                <tr>
+                                    <td class="fw-semibold">{{ r.estabelecimento }}</td>
+                                    <td>{{ r.especialidade }}</td>
+                                    <td>
+                                        {% if r.cbo_codigo %}
+                                        <span class="badge bg-light text-dark border font-monospace">{{ r.cbo_codigo }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-truncate" style="max-width: 250px;" title="{{ r.procedimento }}">{{ r.procedimento }}</td>
+                                    <td class="text-center fw-semibold">{{ r.primeira_vez if r.primeira_vez > 0 else '-' }}</td>
+                                    <td class="text-center fw-semibold">{{ r.retorno if r.retorno > 0 else '-' }}</td>
+                                    <td class="text-center fw-semibold">{{ r.reserva_tecnica if r.reserva_tecnica > 0 else '-' }}</td>
+                                    <td class="text-center fw-bold text-primary fs-6">{{ r.total }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-{{ r.badge_cid }}-subtle text-{{ r.badge_cid }} border border-{{ r.badge_cid }}-subtle px-2 py-1">
+                                            {{ r.status_cid }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center text-success fw-semibold">{{ r.cids_corretos if r.cids_corretos > 0 else '-' }}</td>
+                                    <td class="text-center text-danger fw-bold">{{ r.cids_incorretos if r.cids_incorretos > 0 else '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ABA 2: FILA DE ESPERA NOMINAL (SIGA) ================= -->
+        <div class="tab-pane fade {% if aba_ativa == 'nominal_fe' %}show active{% endif %}" id="pane-nominal-fe" role="tabpanel">
+            <div class="card shadow-sm border-0 rounded-3 mb-4">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold text-primary mb-0"><i class="bi bi-people-fill me-2"></i>Lista Nominal de Pacientes Ativos na Fila de Espera (SIGA)</h5>
+                        <span class="text-muted small">Todos os pacientes ativos com verificação de conformidade do código de CID.</span>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive p-3">
+                        <table id="tabela-nominal-fe" class="table table-hover table-striped table-bordered align-middle small w-100">
+                            <thead class="table-primary text-nowrap">
+                                <tr>
+                                    <th>Data Inclusão</th>
+                                    <th>Estabelecimento</th>
+                                    <th>Especialidade</th>
+                                    <th>CBO</th>
+                                    <th>Procedimento</th>
+                                    <th>Atendimento</th>
+                                    <th>Protocolo</th>
+                                    <th>Nome Paciente</th>
+                                    <th>CNS Paciente</th>
+                                    <th>Prioridade</th>
+                                    <th>CID</th>
+                                    <th>Verificação CID</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Carregamento Server-Side via AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ABA 3: RESUMO FILA DO REGULADOR (RESUMO_FR) ================= -->
+        <div class="tab-pane fade {% if aba_ativa == 'resumo_fr' %}show active{% endif %}" id="pane-resumo-fr" role="tabpanel">
+            <div class="card shadow-sm border-0 rounded-3 mb-4">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold text-success mb-0"><i class="bi bi-pie-chart-fill me-2"></i>Resumo da Fila do Regulador por Prioridade</h5>
+                        <span class="text-muted small">Agrupamento consolidado com contagem de Alta, Média, Baixa prioridade e Conferência de CID.</span>
+                    </div>
+                    <span class="badge bg-light text-dark border px-3 py-2 fw-semibold">{{ resumo_fr|length }} agrupamentos</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive p-3">
+                        <table id="tabela-resumo-fr" class="table table-hover table-striped table-bordered align-middle small w-100">
+                            <thead class="table-success text-nowrap">
+                                <tr>
+                                    <th>Estabelecimento Solicitante</th>
+                                    <th>Especialidade</th>
+                                    <th>CBO</th>
+                                    <th>Procedimento</th>
+                                    <th class="text-center text-danger">Alta</th>
+                                    <th class="text-center text-warning">Média</th>
+                                    <th class="text-center text-info">Baixa</th>
+                                    <th class="text-center">Total</th>
+                                    <th class="text-center">Conferência CID</th>
+                                    <th class="text-center text-success">CIDs Corretos</th>
+                                    <th class="text-center text-danger">CIDs Incorretos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for r in resumo_fr %}
+                                <tr>
+                                    <td class="fw-semibold">{{ r.estabelecimento }}</td>
+                                    <td>{{ r.especialidade }}</td>
+                                    <td>
+                                        {% if r.cbo_codigo %}
+                                        <span class="badge bg-light text-dark border font-monospace">{{ r.cbo_codigo }}</span>
+                                        {% else %}
+                                        <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-truncate" style="max-width: 250px;" title="{{ r.procedimento }}">{{ r.procedimento }}</td>
+                                    <td class="text-center fw-bold text-danger">{{ r.alta if r.alta > 0 else '-' }}</td>
+                                    <td class="text-center fw-semibold text-warning">{{ r.media if r.media > 0 else '-' }}</td>
+                                    <td class="text-center fw-semibold text-info">{{ r.baixa if r.baixa > 0 else '-' }}</td>
+                                    <td class="text-center fw-bold text-success fs-6">{{ r.total }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-{{ r.badge_cid }}-subtle text-{{ r.badge_cid }} border border-{{ r.badge_cid }}-subtle px-2 py-1">
+                                            {{ r.status_cid }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center text-success fw-semibold">{{ r.cids_corretos if r.cids_corretos > 0 else '-' }}</td>
+                                    <td class="text-center text-danger fw-bold">{{ r.cids_incorretos if r.cids_incorretos > 0 else '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ABA 4: FILA DO REGULADOR NOMINAL (FR-03/04) ================= -->
+        <div class="tab-pane fade {% if aba_ativa == 'nominal_fr' %}show active{% endif %}" id="pane-nominal-fr" role="tabpanel">
+            <div class="card shadow-sm border-0 rounded-3 mb-4">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold text-success mb-0"><i class="bi bi-person-lines-fill me-2"></i>Lista Nominal da Fila do Regulador (FR-03 + FR-04)</h5>
+                        <span class="text-muted small">Pacientes em regulação com motivo de encaminhamento e situação obtida do FR-04.</span>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive p-3">
+                        <table id="tabela-nominal-fr" class="table table-hover table-striped table-bordered align-middle small w-100">
+                            <thead class="table-success text-nowrap">
+                                <tr>
+                                    <th>Data Entrada</th>
+                                    <th>Estabelecimento</th>
+                                    <th>Especialidade</th>
+                                    <th>CBO</th>
+                                    <th>Procedimento</th>
+                                    <th>Prioridade</th>
+                                    <th>Nº Solicitação</th>
+                                    <th>Nome Paciente</th>
+                                    <th>Código CID</th>
+                                    <th>Verificação CID</th>
+                                    <th>Situação Regulador</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Carregamento Server-Side via AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Modal para Upload Manual dos 3 Arquivos -->
+<div class="modal fade" id="modalUploadArquivos" tabindex="-1" aria-labelledby="modalUploadArquivosLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="modalUploadArquivosLabel">
+                    <i class="bi bi-cloud-arrow-up me-2"></i>Ingestão dos Arquivos da Fila de Espera
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <form action="{{ url_for('fila_espera.importar_arquivos') }}" method="POST" enctype="multipart/form-data">
+                <div class="modal-body p-4">
+                    <p class="text-muted small mb-4">
+                        Selecione os 3 arquivos de entrada para consolidação das tabelas nominais e resumos:
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">1. Arquivo SIGA (Fila de Espera - Pacientes Ativos)</label>
+                        <input type="file" name="arquivo_siga" class="form-control" accept=".csv,.txt" required>
+                        <div class="form-text">Ex: <code>SIGA_-_Fila_de_Espera_-_Relatorio_Operacional_...csv</code></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">2. Arquivo FR-03 (Lista Nominal com Motivo)</label>
+                        <input type="file" name="arquivo_fr03" class="form-control" accept=".csv,.txt" required>
+                        <div class="form-text">Ex: <code>FR-03 Lista Nominal de Pacientes na Fila da Regulação com Motivo.csv</code></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">3. Arquivo FR-04 (Pacientes Devolvidos e Reinseridos)</label>
+                        <input type="file" name="arquivo_fr04" class="form-control" accept=".csv,.txt" required>
+                        <div class="form-text">Ex: <code>FR-04 Lista Nominal de Pacientes Devolvidos e Reinseridos...csv</code> (utilizado para cruzar a Situação da Regulação).</div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">
+                        <i class="bi bi-upload me-1"></i> Iniciar Processamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts DataTables e Inicialização -->
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+function mudarAba(nomeAba) {
+    document.getElementById('filtroAbaAtiva').value = nomeAba;
+}
+
+$(document).ready(function() {
+    // Configuração em português do DataTables
+    const dtIdioma = {
+        "sEmptyTable": "Nenhum registro encontrado",
+        "sInfo": "Mostrando de _START_ até _END_ de _TOTAL_ registros",
+        "sInfoEmpty": "Mostrando 0 até 0 de 0 registros",
+        "sInfoFiltered": "(Filtrados de _MAX_ registros)",
+        "sInfoThousands": ".",
+        "sLengthMenu": "_MENU_ por página",
+        "sLoadingRecords": "Carregando...",
+        "sProcessing": "Processando...",
+        "sZeroRecords": "Nenhum registro encontrado",
+        "sSearch": "Buscar:",
+        "oPaginate": {
+            "sNext": "Próximo",
+            "sPrevious": "Anterior",
+            "sFirst": "Primeiro",
+            "sLast": "Último"
+        }
+    };
+
+    // 1. Tabela RESUMO_FE (Client-side)
+    $('#tabela-resumo-fe').DataTable({
+        language: dtIdioma,
+        pageLength: 25,
+        order: [[7, 'desc']] // Ordena pelo Total desc
+    });
+
+    // 2. Tabela RESUMO_FR (Client-side)
+    $('#tabela-resumo-fr').DataTable({
+        language: dtIdioma,
+        pageLength: 25,
+        order: [[7, 'desc']] // Ordena pelo Total desc
+    });
+
+    // Parâmetros de filtro para passar nas chamadas server-side
+    const filtrosParams = function(d) {
+        d.estabelecimento = "{{ estab_selecionado }}";
+        d.especialidade = "{{ espec_selecionada }}";
+        d.status_cid = "{{ status_cid_selecionado }}";
+    };
+
+    // 3. Tabela Nominal FE (Server-Side)
+    let feIniciada = false;
+    function iniciarNominalFE() {
+        if (feIniciada) return;
+        feIniciada = true;
+        $('#tabela-nominal-fe').DataTable({
+            language: dtIdioma,
+            serverSide: true,
+            processing: true,
+            pageLength: 25,
+            ajax: {
+                url: "{{ url_for('fila_espera.dados_nominal_fe') }}",
+                data: filtrosParams
+            },
+            order: [[0, 'desc']]
+        });
+    }
+
+    // 4. Tabela Nominal FR (Server-Side)
+    let frIniciada = false;
+    function iniciarNominalFR() {
+        if (frIniciada) return;
+        frIniciada = true;
+        $('#tabela-nominal-fr').DataTable({
+            language: dtIdioma,
+            serverSide: true,
+            processing: true,
+            pageLength: 25,
+            ajax: {
+                url: "{{ url_for('fila_espera.dados_nominal_fr') }}",
+                data: filtrosParams
+            },
+            order: [[0, 'desc']]
+        });
+    }
+
+    // Inicialização sob demanda ao trocar de aba (evita requisições pesadas desnecessárias)
+    {% if aba_ativa == 'nominal_fe' %}
+        iniciarNominalFE();
+    {% elif aba_ativa == 'nominal_fr' %}
+        iniciarNominalFR();
+    {% endif %}
+
+    $('button[data-bs-toggle="pill"]').on('shown.bs.tab', function(e) {
+        const targetId = $(e.target).attr('id');
+        if (targetId === 'tab-nominal-fe') {
+            iniciarNominalFE();
+        } else if (targetId === 'tab-nominal-fr') {
+            iniciarNominalFR();
+        }
+    });
+});
+</script>
+{% endblock %}

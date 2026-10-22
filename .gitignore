@@ -3,6 +3,7 @@
 env/
 venv/
 node_modules/
+.browsers/
 
 # Caches do Python
 __pycache__/

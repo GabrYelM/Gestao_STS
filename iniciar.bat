@@ -42,6 +42,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :5000 ^| findstr LISTENING') 
 )
 
 echo [2/3] Iniciando o servidor em segundo plano...
+set "PLAYWRIGHT_BROWSERS_PATH=%~dp0.browsers"
 set "RUNNER=%~dp0.venv\Scripts\pythonw.exe"
 if not exist "%RUNNER%" set "RUNNER=%~dp0.venv\Scripts\python.exe"
 start "" /d "%~dp0" "%RUNNER%" "%~dp0app.py"

@@ -57,6 +57,22 @@ def _resultados_filtrados(db):
                     _garantir_emulti_at02(db, p_row["ano_mes"])
                 db.commit()
 
+        # Garante linhas 100% dinâmicas no painel para todas as metas e produções ativas
+        from ..funcoes import _garantir_linhas_dinamicas
+        periodos_presentes = [
+            r["p"] for r in db.execute(
+                """SELECT DISTINCT periodo AS p FROM fato_apuracao WHERE periodo IS NOT NULL
+                   UNION
+                   SELECT DISTINCT ano_mes AS p FROM staging_at02 WHERE ano_mes IS NOT NULL"""
+            ).fetchall() if r["p"]
+        ]
+        alterou_dinamicas = False
+        for p_pres in periodos_presentes:
+            if _garantir_linhas_dinamicas(db, p_pres):
+                alterou_dinamicas = True
+        if alterou_dinamicas:
+            db.commit()
+
     linhas = [
         dict(r) for r in db.execute(
             "SELECT * FROM resultados_indicador"
@@ -1130,6 +1146,8 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
         if cbo_codigo:
             sql_fato += " AND cbo_codigo = ?"
             params_fato.append(cbo_codigo)
+        else:
+            sql_fato += " AND cbo_codigo IS NULL"
 
         row = db.execute(sql_fato, params_fato).fetchone()
         tot = row["tot"] if row and row["tot"] is not None else 0
@@ -1734,6 +1752,24 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
 
     # 8. Outros consolidados (P25, P29, P36, P38, P41, P27)
     if ind_cod in ("P25", "P29", "P36", "P38", "P41", "P27"):
+        if ind_cod == "P38" and cbo_codigo == "MEDICO":
+            marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
+            nomes_estabs = [r[0] for r in db.execute(f"SELECT nome FROM estabelecimentos WHERE id IN ({marc_estabs})", estabelecimento_ids).fetchall()]
+            marc_nomes = ",".join("?" * len(nomes_estabs)) if nomes_estabs else "''"
+            rows_stg = db.execute(
+                f"""SELECT cbo_nome AS nome, 'MED' AS codigo, SUM(quantidade) AS apurado
+                   FROM staging_bi_siga
+                   WHERE fonte_at = 'AT40' AND (ano_mes = ? OR ano_mes LIKE ?)
+                     AND nome_estabelecimento IN ({marc_nomes})
+                     AND (LOWER(cbo_nome) LIKE '%medico%' OR LOWER(cbo_nome) LIKE '%fisiatra%'
+                          OR LOWER(cbo_nome) LIKE '%oftalmo%' OR LOWER(cbo_nome) LIKE '%otorrino%')
+                   GROUP BY cbo_nome
+                   ORDER BY apurado DESC""",
+                [str(periodo or ""), f"%{str(periodo or '')}%", *nomes_estabs],
+            ).fetchall()
+            if rows_stg:
+                return [{**dict(r), "considerado": True} for r in rows_stg]
+
         marc_estabs = ",".join("?" * len(estabelecimento_ids)) if estabelecimento_ids else "''"
         sql_fato = f"""SELECT SUM(quantidade) AS tot FROM fato_apuracao
                        WHERE indicador_id = ? AND estabelecimento_id IN ({marc_estabs}) AND periodo = ? AND tipo_registro = 'apurado'"""
@@ -1741,6 +1777,8 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
         if cbo_codigo:
             sql_fato += " AND cbo_codigo = ?"
             params_fato.append(cbo_codigo)
+        else:
+            sql_fato += " AND cbo_codigo IS NULL"
         row = db.execute(sql_fato, params_fato).fetchone()
         tot = int(row["tot"]) if row and row["tot"] is not None else 0
         return [{"codigo": ind_cod, "nome": ind_nome, "apurado": tot, "considerado": True}]
@@ -3117,62 +3155,69 @@ def api_salvar_regra_profissional():
     novo_profissional = (dados.get("nome_profissional") or "").strip()
     periodo = _normalizar_periodo(dados.get("periodo") or "")
 
-    if vinculo_id:
-        db.execute(
-            "UPDATE indicador_procedimento SET nome_profissional = ? WHERE id = ?",
-            (novo_profissional or None, vinculo_id)
-        )
-    elif indicador_id and procedimento_codigo:
-        db.execute(
-            """UPDATE indicador_procedimento
-               SET nome_profissional = ?
-               WHERE indicador_id = ? AND (subgrupo_id IS ? OR subgrupo_id IS NULL)
-                 AND procedimento_codigo = ?""",
-            (novo_profissional or None, indicador_id, subgrupo_id, procedimento_codigo)
-        )
-    else:
-        return jsonify({"ok": False, "erro": "Parâmetros insuficientes para atualizar a regra de profissional."}), 400
+    try:
+        if vinculo_id:
+            db.execute(
+                "UPDATE indicador_procedimento SET nome_profissional = ? WHERE id = ?",
+                (novo_profissional or None, vinculo_id)
+            )
+        elif indicador_id and procedimento_codigo:
+            db.execute(
+                """UPDATE indicador_procedimento
+                   SET nome_profissional = ?
+                   WHERE indicador_id = ? AND (subgrupo_id IS ? OR subgrupo_id IS NULL)
+                     AND procedimento_codigo = ?""",
+                (novo_profissional or None, indicador_id, subgrupo_id, procedimento_codigo)
+            )
+        else:
+            return jsonify({"ok": False, "erro": "Parâmetros insuficientes para atualizar a regra de profissional."}), 400
 
-    db.commit()
+        db.commit()
 
-    from ..funcoes import calcular_at02
-    periodos_afetados = [periodo] if periodo else [
-        r[0] for r in db.execute("SELECT DISTINCT ano_mes FROM staging_at02 WHERE ano_mes IS NOT NULL").fetchall()
-    ]
-    for p in periodos_afetados:
-        if p:
-            calcular_at02(db, p)
+        from ..funcoes import calcular_at02
+        periodos_afetados = [periodo] if periodo else [
+            r[0] for r in db.execute("SELECT DISTINCT ano_mes FROM staging_at02 WHERE ano_mes IS NOT NULL").fetchall()
+        ]
+        for p in periodos_afetados:
+            if p:
+                calcular_at02(db, p)
 
-    linhas_res = _resultados_com_status(db)
-    linhas_atualizadas = [
-        {
-            "indicador_id": r["indicador_id"],
-            "estabelecimento_id": r["estabelecimento_id"],
-            "subgrupo_id": r.get("subgrupo_id"),
-            "cbo_codigo": r.get("cbo_codigo"),
-            "periodo": r.get("periodo"),
-            "valor_apurado": r.get("valor_apurado"),
-            "valor_declarado": r.get("valor_declarado"),
-            "divergencia": r.get("divergencia"),
-            "valor_meta": r.get("valor_meta"),
-            "percentual_meta": r.get("percentual_meta"),
-            "status_rotulo": r.get("status_rotulo"),
-            "status_classe": r.get("status_classe"),
-            "auditoria_rotulo": r.get("auditoria_rotulo"),
-            "auditoria_classe": r.get("auditoria_classe"),
-        }
-        for r in linhas_res
-        if r["indicador_id"] == int(indicador_id or 0)
-    ]
+        linhas_res = _resultados_com_status(db)
+        linhas_atualizadas = [
+            {
+                "indicador_id": r["indicador_id"],
+                "estabelecimento_id": r["estabelecimento_id"],
+                "subgrupo_id": r.get("subgrupo_id"),
+                "cbo_codigo": r.get("cbo_codigo"),
+                "periodo": r.get("periodo"),
+                "valor_apurado": r.get("valor_apurado"),
+                "valor_declarado": r.get("valor_declarado"),
+                "divergencia": r.get("divergencia"),
+                "valor_meta": r.get("valor_meta"),
+                "percentual_meta": r.get("percentual_meta"),
+                "status_rotulo": r.get("status_rotulo"),
+                "status_classe": r.get("status_classe"),
+                "auditoria_rotulo": r.get("auditoria_rotulo"),
+                "auditoria_classe": r.get("auditoria_classe"),
+            }
+            for r in linhas_res
+            if r["indicador_id"] == int(indicador_id or 0)
+        ]
 
-    alertas = _contadores_alerta(db)
+        alertas = _contadores_alerta(db)
 
-    return jsonify({
-        "ok": True,
-        "mensagem": f"Regra atualizada com sucesso! Procedimento {procedimento_codigo or ''} atribuído ao profissional '{novo_profissional or 'Todos (sem restrição)'}'.",
-        "novo_profissional": novo_profissional,
-        "linhas_atualizadas": linhas_atualizadas,
-        "alertas": alertas,
-    })
+        return jsonify({
+            "ok": True,
+            "mensagem": f"Regra atualizada com sucesso! Procedimento {procedimento_codigo or ''} atribuído ao profissional '{novo_profissional or 'Todos (sem restrição)'}'.",
+            "novo_profissional": novo_profissional,
+            "linhas_atualizadas": linhas_atualizadas,
+            "alertas": alertas,
+        })
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return jsonify({"ok": False, "erro": f"Erro ao processar regra do profissional: {str(e)}"}), 500
 
 

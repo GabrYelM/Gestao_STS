@@ -1278,7 +1278,12 @@ async function salvarRegraProfCadastros(evt) {
         nome_profissional: nomeProf,
       }),
     });
-    const res = await resp.json();
+    let res;
+    try {
+      res = await resp.json();
+    } catch (_) {
+      res = { ok: false, erro: 'Falha na resposta do servidor (HTTP ' + resp.status + ').' };
+    }
     if (res.ok) {
       window.location.hash = '#tab-subgrupos';
       window.location.reload();
@@ -1286,7 +1291,7 @@ async function salvarRegraProfCadastros(evt) {
       alert(res.erro || 'Erro ao salvar profissional.');
     }
   } catch (e) {
-    alert('Erro de comunicação com o servidor.');
+    alert('Erro de comunicação com o servidor: ' + e);
   }
 }
 </script>

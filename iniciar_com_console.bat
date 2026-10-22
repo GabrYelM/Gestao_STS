@@ -31,5 +31,6 @@ echo.
 :: Abre o navegador em segundo plano apos aguardar
 start "" cmd /c "ping 127.0.0.1 -n 3 >nul & start http://localhost:5000"
 
+set "PLAYWRIGHT_BROWSERS_PATH=%~dp0.browsers"
 "%~dp0.venv\Scripts\python.exe" "%~dp0app.py"
 pause

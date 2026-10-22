@@ -1443,6 +1443,33 @@ def exportar_profissionais_csv():
     return _csv_response(cabecalho, linhas, "profissionais.csv")
 
 
+@bp.route("/profissionais/importar_sicap", methods=["POST"])
+def importar_profissionais_sicap():
+    arquivo = request.files.get("arquivo")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione a planilha SICAP (.xlsx) para importar.", "erro")
+        return redirect(url_for("cadastros.administracao", aba="profissionais"))
+
+    from ..etl import importar_sicap
+    from .importacao import _salvar_upload
+
+    db = get_db()
+    try:
+        caminho, nome_original = _salvar_upload(arquivo)
+        res = importar_sicap(caminho, db, nome_original)
+        sincronizar_apuracao_dinamica(db)
+        flash(
+            f"SICAP importado com sucesso ({', '.join(res['abas_lidas'])}): "
+            f"{res['total_registros']} registro(s) analisados, {res['criados']} profissional(is) criado(s) "
+            f"e {res['atualizados']} atualizado(s) como RT.",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao importar planilha SICAP: {exc}", "erro")
+
+    return redirect(url_for("cadastros.administracao", aba="profissionais"))
+
+
 # ---------------------------------------------------------------------------
 # PROCEDIMENTOS
 # ---------------------------------------------------------------------------

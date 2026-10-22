@@ -21,12 +21,25 @@
 </style>
 
 <div class="toolbar">
+  <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-sicap')">🦷 Importar SICAP (RT Odonto .xlsx)</button>
   <button type="button" class="btn-secondary" onclick="alternarPainel('painel-importar-prof')">📤 Importar CSV em lote</button>
   <button type="button" class="btn-secondary" onclick="alternarPainel('painel-novo-prof')">＋ Incluir novo</button>
   <a class="btn btn-secondary" href="{{ url_for('cadastros.exportar_profissionais_csv') }}">⬇ Exportar</a>
   <span class="espaco"></span>
   <span class="toolbar-texto" data-autofiltro-contador="tabela-profissionais"></span>
   <button type="button" class="btn btn-outline-secondary btn-sm" data-autofiltro-limpar="tabela-profissionais"><i class="bi bi-arrow-counterclockwise me-1"></i> Limpar filtros</button>
+</div>
+
+<div id="painel-importar-sicap" class="painel-acao">
+  <form class="card card-tint-blue" method="post" action="{{ url_for('cadastros.importar_profissionais_sicap') }}" enctype="multipart/form-data">
+    <h2>Importar Planilha SICAP (Solicitação de Atualização de Cadastro RT/RV - Odonto)</h2>
+    <p class="subtitulo-pagina" style="margin-bottom:8px">
+      Selecione o arquivo Excel (<code>.xlsx</code>) do SICAP contendo as abas mensais de Responsáveis Técnicos (RT) das unidades do território.
+      O sistema atualizará automaticamente o vínculo de RT, CNS, CBO e modalidade da equipe (ESB I, ESB II, CB, CEO).
+    </p>
+    <input type="file" name="arquivo" accept=".xlsx,.xlsm,.zip" required>
+    <button type="submit" class="btn-secondary">Importar SICAP</button>
+  </form>
 </div>
 
 <div id="painel-importar-prof" class="painel-acao">

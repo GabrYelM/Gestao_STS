@@ -33,6 +33,13 @@ load_dotenv()
 app.secret_key = os.getenv("SECRET_KEY")
 
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+# Configuração de redundância do Playwright para compartilhamento entre múltiplos usuários do Windows
+if not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+    proj_browsers = os.path.join(basedir, ".browsers")
+    if os.path.exists(proj_browsers):
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = proj_browsers
+
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'database.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -45,6 +52,14 @@ try:
     contratos.init_app(app)
 except Exception as e:
     print(f"[app] Aviso ao inicializar módulo de contratos: {e}")
+
+# Inicialização do Módulo de Fila de Espera e Regulação
+try:
+    from blueprints.fila_espera import bp as fila_espera_bp
+    app.register_blueprint(fila_espera_bp)
+    print("[app] Módulo Fila de Espera registrado com sucesso!")
+except Exception as e:
+    print(f"[app] Aviso ao inicializar módulo de Fila de Espera: {e}")
 
 import models
 
@@ -218,8 +233,12 @@ evento_cancelar_extracao = threading.Event()
 def executar_bot(funcao_busca, mes, ano, usuario, senha):
     if evento_cancelar_extracao.is_set():
         return None, "Interrompido por cancelamento"
-    p, context, page = su.bot_setup_page(usuario, senha, default_timeout=60000)
+    
+    p = None
+    browser = None
+    page = None
     try:
+        p, browser, page = su.bot_setup_page(usuario, senha, default_timeout=60000)
         if evento_cancelar_extracao.is_set():
             return None, "Interrompido por cancelamento"
         caminho = funcao_busca(mes, ano, page, 60000, 100)
@@ -228,18 +247,23 @@ def executar_bot(funcao_busca, mes, ano, usuario, senha):
         if evento_cancelar_extracao.is_set():
             return None, "Interrompido por cancelamento"
         nome_f = getattr(funcao_busca, '__name__', 'Bot')
-        msg_erro = f"{nome_f} ({mes}/{ano}): {str(e)}"
+        msg_str = str(e)
+        if any(term in msg_str for term in ["Executable doesn't exist", "playwright install", "Looks like Playwright was just installed", "não foi encontrado"]):
+            msg_str = "Navegador de automação (Chromium) ausente. Execute o arquivo 'instalar.bat' para configurar o navegador."
+        msg_erro = f"{nome_f} ({mes}/{ano}): {msg_str}"
         print(f"Erro no bot: {msg_erro}")
         return None, msg_erro
     finally:
-        try:
-            context.close()
-        except Exception:
-            pass
-        try:
-            p.stop()
-        except Exception:
-            pass
+        if browser:
+            try:
+                browser.close()
+            except Exception:
+                pass
+        if p:
+            try:
+                p.stop()
+            except Exception:
+                pass
 
 status_extracao = {
     "em_andamento": False,
@@ -585,11 +609,14 @@ def executar_extracao_pm_sync(usuario, senha, relatorio_escolhido="TODOS"):
             
     except Exception as e:
         print(f"Erro na extração do Painel de Monitoramento: {e}")
+        msg_pm = str(e)
+        if any(term in msg_pm for term in ["Executable doesn't exist", "playwright install", "Looks like Playwright was just installed", "não foi encontrado"]):
+            msg_pm = "O navegador de automação (Chromium) não foi encontrado no sistema. Execute o arquivo 'instalar.bat' na pasta do projeto para regularizar o ambiente."
         erros_pm.append({
             "codigo": "PM_GERAL",
             "relatorio": "Painel de Monitoramento",
             "competencia": "Geral",
-            "motivo": str(e)
+            "motivo": msg_pm
         })
     return sucessos_pm, erros_pm
 
@@ -898,7 +925,7 @@ def gerar_relatorios():
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p_test:
-                browser_test = p_test.chromium.launch(headless=True)
+                browser_test = su.launch_chromium_seguro(p_test, headless=True, timeout=15000)
                 context_test = browser_test.new_context(http_credentials={'username': usuario_bi, 'password': senha_bi})
                 page_test = context_test.new_page()
                 url_teste = 'https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx'
@@ -907,6 +934,8 @@ def gerar_relatorios():
                     return jsonify({"erro": "Usuário ou senha do BI incorretos!"}), 401
         except Exception as e:
             print(f"Erro no teste prévio de credenciais BI: {e}")
+            if any(term in str(e) for term in ["Executable doesn't exist", "playwright install", "não foi encontrado"]):
+                return jsonify({"erro": "Navegador de automação (Chromium) não configurado. Execute o arquivo 'instalar.bat' na pasta do sistema."}), 500
 
         gerenciador_tarefas.submit(processo_background, mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario_bi, senha_bi, usuario_pm, senha_pm)
         return jsonify({"mensagem": "Autenticado! Carga completa (BI e PM) iniciada!"})
@@ -918,7 +947,7 @@ def gerar_relatorios():
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p_test:
-            browser_test = p_test.chromium.launch(headless=True)
+            browser_test = su.launch_chromium_seguro(p_test, headless=True, timeout=15000)
             context_test = browser_test.new_context(http_credentials={'username': usuario_bi, 'password': senha_bi})
             page_test = context_test.new_page()
             url_teste = 'https://biprodam.saude.prefeitura.sp.gov.br/sites/siga/Paginas/Inicial.aspx'
@@ -927,6 +956,8 @@ def gerar_relatorios():
                 return jsonify({"erro": "Usuário ou senha do BI incorretos!"}), 401
     except Exception as e:
         print(f"Erro no teste prévio de credenciais BI: {e}")
+        if any(term in str(e) for term in ["Executable doesn't exist", "playwright install", "não foi encontrado"]):
+            return jsonify({"erro": "Navegador de automação (Chromium) não configurado. Execute o arquivo 'instalar.bat' na pasta do sistema."}), 500
 
     gerenciador_tarefas.submit(processo_background, mes_inicio, ano_inicio, mes_fim, ano_fim, relatorio_escolhido, usuario_bi, senha_bi)
     nome_desc = MAPA_NOMES_RELATORIOS.get(relatorio_escolhido, relatorio_escolhido)
@@ -1526,32 +1557,42 @@ def _processar_arquivo_tabular(fonte_stream_ou_bytes, nome_original, tipo_chave,
         read_clean_tabular, read_clean_csv
     )
     
+    import re
+    import shutil
+
     pasta_destino = os.path.join(os.getcwd(), "ARQUIVOS ORIGINAIS")
     os.makedirs(pasta_destino, exist_ok=True)
-    nome_seguro = f"tmp_{tipo_chave}_{os.path.basename(nome_original)}"
+
+    # Extrai o nome do arquivo físico caso seja membro interno de um ZIP ('arquivo.zip -> membro.csv')
+    nome_base_arquivo = nome_original.split("->")[-1].strip() if "->" in nome_original else nome_original
+    nome_base_arquivo = os.path.basename(nome_base_arquivo)
+    # Remove caracteres inválidos para nomes de arquivos no Windows/Linux (\ / : * ? " < > |)
+    nome_limpo = re.sub(r'[\\/*?:"<>|]', '_', nome_base_arquivo).strip()
+    if ext and not nome_limpo.lower().endswith(ext.lower()):
+        nome_limpo += ext
+    nome_seguro = f"tmp_{tipo_chave}_{nome_limpo}"
     caminho_final = os.path.join(pasta_destino, nome_seguro)
     
     filtro_coluna = None
-    filtro_valor = None
     if tipo_chave == 'rel114':
         filtro_coluna = "SUPERVISAO"
-        filtro_valor = "SUDESTE - STS PENHA"
     elif tipo_chave == 'rel134':
         filtro_coluna = "supervisao"
-        filtro_valor = "SUDESTE - PENHA"
     elif tipo_chave == 'rel16':
         filtro_coluna = "SUPERVISAO"
-        filtro_valor = "SUDESTE - STS PENHA"
 
     try:
         # Salva o arquivo em disco com segurança
         if hasattr(fonte_stream_ou_bytes, 'save'):
             fonte_stream_ou_bytes.save(caminho_final)
         elif hasattr(fonte_stream_ou_bytes, 'read'):
-            with open(caminho_final, "wb") as destino:
-                if hasattr(fonte_stream_ou_bytes, 'seek'):
+            if hasattr(fonte_stream_ou_bytes, 'seek'):
+                try:
                     fonte_stream_ou_bytes.seek(0)
-                destino.write(fonte_stream_ou_bytes.read())
+                except Exception:
+                    pass
+            with open(caminho_final, "wb") as destino:
+                shutil.copyfileobj(fonte_stream_ou_bytes, destino, length=64 * 1024)
         elif isinstance(fonte_stream_ou_bytes, (bytes, bytearray)):
             with open(caminho_final, "wb") as destino:
                 destino.write(fonte_stream_ou_bytes)
@@ -1560,9 +1601,15 @@ def _processar_arquivo_tabular(fonte_stream_ou_bytes, nome_original, tipo_chave,
         if ext.lower() in ['.csv', '.txt'] and filtro_coluna:
             try:
                 df_temp = read_clean_csv(caminho_final, termo_cabecalho=filtro_coluna.lower())
-                if filtro_coluna in df_temp.columns:
-                    df_temp = df_temp[df_temp[filtro_coluna] == filtro_valor]
-                df_temp.to_csv(caminho_final, index=False, sep=';', encoding='latin1')
+                col_encontrada = None
+                for c in df_temp.columns:
+                    if str(c).strip().lower() == filtro_coluna.lower():
+                        col_encontrada = c
+                        break
+                if col_encontrada:
+                    df_filtrado = df_temp[df_temp[col_encontrada].astype(str).str.upper().str.contains('PENHA', na=False)]
+                    if not df_filtrado.empty:
+                        df_filtrado.to_csv(caminho_final, index=False, sep=';', encoding='latin1')
             except Exception:
                 pass
     except Exception as e:

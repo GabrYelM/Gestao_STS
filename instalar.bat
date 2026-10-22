@@ -130,6 +130,7 @@ echo      Dependencias instaladas com sucesso.
 REM 7. Instala os navegadores necessarios para os robos (Playwright)
 echo.
 echo [4/5] Configurando navegador para automacoes [Chromium]...
+set "PLAYWRIGHT_BROWSERS_PATH=%~dp0.browsers"
 "%~dp0.venv\Scripts\python.exe" -m playwright install chromium
 if errorlevel 1 (
     echo [AVISO] Ocorreu um aviso na instalacao do Chromium do Playwright.
