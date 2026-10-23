@@ -1,0 +1,506 @@
+{% extends "base.html" %}
+
+{% block title %}Extração BI e Ingestão de Fila de Espera - Gestão STS{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3 px-4 mb-5">
+    <!-- Cabeçalho e Voltar -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div>
+            <h2 class="h4 fw-bold text-primary mb-1">
+                <i class="bi bi-cloud-arrow-down me-2"></i>Extração BI e Ingestão de Relatórios da Regulação
+            </h2>
+            <p class="text-muted small mb-0">
+                Coleta automatizada dos relatórios FR-03 e FR-04 via robô Playwright ou upload manual direto com substituição completa no banco de dados.
+            </p>
+        </div>
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+            <a href="{{ url_for('fila_espera.index') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 shadow-sm">
+                <i class="bi bi-arrow-left me-1"></i> Voltar para a Fila de Espera
+            </a>
+        </div>
+    </div>
+
+    <!-- Cards de Resumo Rápido -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-primary border-4 rounded-3 h-100 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted small fw-semibold">Fila de Espera Atual</span>
+                        <h4 class="fw-bold text-primary mt-1 mb-0" id="kpi-total-fe">{{ "{:,}".format(metricas.total_fe).replace(',', '.') }}</h4>
+                        <span class="text-muted" style="font-size: 0.75rem;">Pacientes Ativos</span>
+                    </div>
+                    <div class="fs-2 text-primary-subtle"><i class="bi bi-people-fill"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-success border-4 rounded-3 h-100 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted small fw-semibold">Fila do Regulador Atual</span>
+                        <h4 class="fw-bold text-success mt-1 mb-0" id="kpi-total-fr">{{ "{:,}".format(metricas.total_fr).replace(',', '.') }}</h4>
+                        <span class="text-muted" style="font-size: 0.75rem;">Regulação Pendente</span>
+                    </div>
+                    <div class="fs-2 text-success-subtle"><i class="bi bi-person-lines-fill"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-warning border-4 rounded-3 h-100 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted small fw-semibold">Regra de Substituição</span>
+                        <h6 class="fw-bold text-warning mt-1 mb-0">Substituição Completa</h6>
+                        <span class="text-muted" style="font-size: 0.75rem;">Expurgo de registros antigos sem acúmulo</span>
+                    </div>
+                    <div class="fs-2 text-warning-subtle"><i class="bi bi-arrow-repeat"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row justify-content-center g-4">
+        <!-- Coluna Esquerda: Robô de Extração do BI (SIGA Saúde) -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-header bg-primary text-white py-3 rounded-top-4 d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 fs-6 fw-bold">
+                        <i class="bi bi-robot me-2"></i>Robô de Extração Automática do BI (SIGA Saúde)
+                    </h5>
+                    <span class="badge bg-light text-primary fw-semibold">Playwright</span>
+                </div>
+                <div class="card-body p-4 bg-white">
+                    <p class="text-muted small mb-3">
+                        O robô autônomo conecta-se ao portal do <strong>SIGA Saúde / BI</strong>, aplica os filtros territoriais da <strong>STS Penha</strong> e exporta os relatórios de regulação, substituindo os dados existentes no sistema de forma transparente.
+                    </p>
+
+                    <!-- Seletor do Relatório -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">Relatório da Regulação a Coletar</label>
+                        <select id="relatorio-bi" class="form-select form-select-sm" required>
+                            <option value="FR_TODOS" selected>Carga Completa Regulação (FR-03 + FR-04)</option>
+                            <option value="FR_03">FR-03 - Lista Nominal de Pacientes na Fila da Regulação com Motivo</option>
+                            <option value="FR_04">FR-04 - Lista Nominal de Pacientes Devolvidos e Reinseridos na Fila do Regulador</option>
+                        </select>
+                        <small class="text-muted" style="font-size: 0.72rem;">A opção recomendada é a Carga Completa, que cruza o motivo do FR-03 com a situação do FR-04.</small>
+                    </div>
+
+                    <!-- Credenciais Corporativas -->
+                    <div class="p-3 border rounded-3 bg-light mb-3">
+                        <label class="form-label fw-bold small text-secondary mb-2">
+                            <i class="bi bi-person-badge text-primary me-1"></i>Credenciais de Acesso ao BI (SIGA Saúde / Prodam)
+                        </label>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label for="usuario-bi" class="form-label small text-muted mb-1">Usuário de Rede</label>
+                                <input type="text" id="usuario-bi" class="form-control form-control-sm" placeholder="ex: d123456" required autocomplete="username">
+                            </div>
+                            <div class="col-sm-6">
+                                <label for="senha-bi" class="form-label small text-muted mb-1">Senha de Rede</label>
+                                <input type="password" id="senha-bi" class="form-control form-control-sm" placeholder="Senha do portal" required autocomplete="current-password">
+                            </div>
+                        </div>
+                        <div class="mt-2 text-muted" style="font-size: 0.72rem;">
+                            <i class="bi bi-shield-check text-success me-1"></i>Credenciais transmitidas em sessão volátil ao robô e nunca salvas em disco.
+                        </div>
+                    </div>
+
+                    <!-- Botões de Ação do Robô -->
+                    <div class="d-grid gap-2 mb-3">
+                        <button type="button" class="btn btn-primary fw-semibold shadow-sm" id="btn-iniciar-robo">
+                            <span id="spinner-robo" class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            <span id="texto-botao-robo"><i class="bi bi-play-circle me-1"></i> Iniciar Extração do BI</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm fw-semibold d-none" id="btn-cancelar-robo">
+                            <i class="bi bi-stop-circle me-1"></i> Cancelar Extração
+                        </button>
+                    </div>
+
+                    <!-- Painel de Progresso e Logs em Tempo Real -->
+                    <div id="painel-status-robo" class="mt-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold text-secondary" id="label-progresso">Status da Execução</span>
+                            <span class="small fw-bold text-primary" id="pct-progresso">0%</span>
+                        </div>
+                        <div class="progress mb-3" style="height: 10px;">
+                            <div id="barra-progresso-robo" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;"></div>
+                        </div>
+
+                        <label class="form-label small fw-bold text-secondary mb-1">
+                            <i class="bi bi-terminal me-1"></i>Terminal de Logs em Tempo Real
+                        </label>
+                        <div id="terminal-logs" class="bg-dark text-light p-3 rounded-3 font-monospace small" style="height: 160px; overflow-y: auto; font-size: 0.74rem; line-height: 1.4;">
+                            <span class="text-muted">// Aguardando início da execução do robô...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna Direita: Informações e Regras de Extração -->
+        <div class="col-lg-6">
+            <!-- Card Extração BI -->
+            <div class="card shadow-sm mb-3 border-primary">
+                <div class="card-header bg-primary text-white fw-bold">
+                    <i class="bi bi-robot me-2"></i>Extração dos Arquivos da Regulação (BI SIGA)
+                </div>
+                <div class="card-body p-3">
+                    <p class="mb-2"><strong>Como funciona:</strong></p>
+                    <p class="text-muted small mb-0">
+                        O robô Playwright acessa de forma segura o portal corporativo de relatórios do <strong>BI SIGA Saúde (SSRS)</strong>, aplicando automaticamente os filtros da <strong>STS Penha</strong> e executando a extração dos relatórios da regulação (FR-03 e FR-04) direto para o banco de dados sem manipulação manual.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card Cruzamento Inteligente -->
+            <div class="card shadow-sm mb-3 border-success">
+                <div class="card-header bg-success text-white fw-bold">
+                    <i class="bi bi-arrow-left-right me-2"></i>Cruzamento Inteligente FR-03 & FR-04
+                </div>
+                <div class="card-body p-3">
+                    <p class="mb-2"><strong>Mapeamento Relacional:</strong></p>
+                    <p class="text-muted small mb-0">
+                        O sistema cruza o <strong>FR-03 (Lista Nominal com Motivo da Solicitação)</strong> com o <strong>FR-04 (Devolvidos e Reinseridos)</strong> através do <em>Número de Solicitação do Atendimento</em>, enriquecendo o registro com a real situação do regulador e auditando a conformidade dos CIDs das especialidades odontológicas.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Card Regras e Parâmetros SSRS -->
+            <div class="card shadow-sm border-secondary">
+                <div class="card-header bg-primary text-white fw-bold">
+                    <i class="bi bi-info-circle me-2"></i>Filtros e Regras Territoriais SSRS
+                </div>
+                <div class="card-body p-3">
+                    <h6 class="text-primary mb-2"><i class="bi bi-gear-fill me-2"></i>PARÂMETROS REGULATÓRIOS DO ROBÔ</h6>
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle small mb-2">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 45%;">Parâmetro SSRS no BI</th>
+                                    <th>Valor Aplicado Automaticamente</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="fw-bold">Hierarquia Solicitante</td>
+                                    <td><span class="badge bg-success">CRS Sudeste ➔ STS Penha</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Estabelecimentos & Especialidades</td>
+                                    <td><code>All</code> (Todas as UBS, AE e Especialidades)</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Regulador Solicitado</td>
+                                    <td>Central, Regional e OUTROS</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Destino no Banco SQLite</td>
+                                    <td>Substituição integral sem registros defasados</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="alert alert-warning py-2 px-3 small mb-0">
+                        <i class="bi bi-shield-check me-1"></i>
+                        <strong>Segurança:</strong> As credenciais corporativas solicitadas são mantidas apenas na memória volátil da sessão.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card de Upload Manual e Substituição Direta de Arquivo (Igual ao Bloco do BI) -->
+        <div class="col-12 mt-4">
+            <div class="card shadow-sm border-0 rounded-4 bg-light p-1">
+                <div class="card-header bg-dark text-white rounded-3 d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0"><i class="bi bi-file-earmark-arrow-up-fill me-2 text-warning"></i>Upload Manual e Substituição Direta de Arquivos da Fila de Espera</h5>
+                    <span class="badge bg-warning text-dark"><i class="bi bi-arrow-repeat me-1"></i>Substituição Direta no Banco</span>
+                </div>
+                <div class="card-body p-4 bg-white rounded-bottom-3">
+                    <p class="text-muted small mb-3">
+                        Utilize esta opção caso já possua os arquivos oficiais exportados do SIGA ou do BI (FR-03 / FR-04) e precise <strong>substituir integralmente os dados no banco de dados</strong> sem precisar rodar o robô novamente. Suporta arquivos compactados em <code>.ZIP</code>, <code>.CSV</code> e <code>.TXT</code>.
+                    </p>
+
+                    <form id="form-upload-fila-manual" enctype="multipart/form-data">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-4">
+                                <label for="upload-relatorio" class="form-label fw-bold small">Relatório a Substituir</label>
+                                <select id="upload-relatorio" name="relatorio" class="form-select form-select-sm" required>
+                                    <option value="TODOS" selected>Carga Completa / Pacote Automático (.ZIP com SIGA e/ou FR)</option>
+                                    <optgroup label="Fila de Espera (SIGA Saúde)">
+                                        <option value="SIGA">Fila de Espera - Pacientes Ativos (SIGA)</option>
+                                    </optgroup>
+                                    <optgroup label="Fila do Regulador (BI - FR)">
+                                        <option value="FR03">FR-03 - Lista Nominal de Pacientes na Regulação com Motivo</option>
+                                        <option value="FR04">FR-04 - Lista Nominal de Devolvidos e Reinseridos</option>
+                                    </optgroup>
+                                    <optgroup label="Upload Múltiplo">
+                                        <option value="MULTIPLO">Upload Individual de Múltiplos Arquivos (SIGA + FR-03 + FR-04)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="col-md-4" id="col-regra-info">
+                                <label class="form-label fw-bold small">Regra de Substituição</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-light text-warning"><i class="bi bi-arrow-repeat"></i></span>
+                                    <input type="text" class="form-control form-control-sm bg-light text-muted fw-semibold" value="Substituição Total no SQLite (Sem acúmulo)" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-4" id="col-arquivo-unico">
+                                <label for="upload-arquivo" class="form-label fw-bold small">Arquivo (.csv, .txt, .zip)</label>
+                                <input type="file" id="upload-arquivo" name="arquivo" class="form-control form-control-sm" accept=".csv,.txt,.zip" required>
+                            </div>
+                        </div>
+
+                        <!-- Painel exibido caso o usuário escolha a opção MULTIPLO -->
+                        <div id="container-arquivos-multiplos" class="row g-3 mt-2 d-none p-3 border rounded-3 bg-light">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-primary mb-1">
+                                    <i class="bi bi-file-earmark-spreadsheet me-1"></i>1. Arquivo SIGA (Pacientes Ativos)
+                                </label>
+                                <input type="file" id="arquivo_siga" name="arquivo_siga" class="form-control form-control-sm" accept=".csv,.txt,.zip">
+                                <small class="text-muted" style="font-size: 0.70rem;">Substitui a base nominal da Fila de Espera.</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-success mb-1">
+                                    <i class="bi bi-file-earmark-ruled me-1"></i>2. Arquivo FR-03 (Lista com Motivo)
+                                </label>
+                                <input type="file" id="arquivo_fr03" name="arquivo_fr03" class="form-control form-control-sm" accept=".csv,.txt,.zip">
+                                <small class="text-muted" style="font-size: 0.70rem;">Base nominal da regulação com motivos.</small>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-info mb-1">
+                                    <i class="bi bi-file-earmark-check me-1"></i>3. Arquivo FR-04 (Devolvidos/Reinseridos)
+                                </label>
+                                <input type="file" id="arquivo_fr04" name="arquivo_fr04" class="form-control form-control-sm" accept=".csv,.txt,.zip">
+                                <small class="text-muted" style="font-size: 0.70rem;">Cruzamento da situação na regulação.</small>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top flex-wrap gap-2">
+                            <div id="status-upload-manual" class="small text-muted">
+                                <i class="bi bi-info-circle me-1"></i> Os registros anteriores da fila selecionada serão expurgados e substituídos pelos dados do arquivo enviado.
+                            </div>
+                            <button type="submit" class="btn btn-warning fw-bold px-4 shadow-sm" id="btn-enviar-upload-manual">
+                                <span id="spinner-upload-manual" class="spinner-border spinner-border-sm d-none me-1" role="status" aria-hidden="true"></span>
+                                <i class="bi bi-arrow-repeat me-1"></i> Substituir Dados no Banco
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script>
+$(document).ready(function() {
+    let intervaloStatus = null;
+
+    function atualizarTerminal(msg) {
+        const terminal = document.getElementById('terminal-logs');
+        const novaLinha = document.createElement('div');
+        novaLinha.textContent = msg;
+        terminal.appendChild(novaLinha);
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function consultarStatus() {
+        $.getJSON("{{ url_for('fila_espera.status_extracao_route') }}", function(data) {
+            if (!data) return;
+
+            // Atualiza barra e porcentagem
+            const pct = data.porcentagem || (data.em_andamento ? 45 : 0);
+            $('#barra-progresso-robo').css('width', pct + '%');
+            $('#pct-progresso').text(pct + '%');
+            $('#label-progresso').text(data.progresso || 'Executando...');
+
+            // Atualiza logs no terminal
+            if (data.logs && data.logs.length > 0) {
+                const terminal = document.getElementById('terminal-logs');
+                terminal.innerHTML = '';
+                data.logs.forEach(function(l) {
+                    const linha = document.createElement('div');
+                    linha.textContent = l;
+                    terminal.appendChild(linha);
+                });
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+
+            // Conclusão com sucesso
+            if (data.concluido && !data.em_andamento) {
+                clearInterval(intervaloStatus);
+                intervaloStatus = null;
+
+                $('#btn-iniciar-robo').prop('disabled', false);
+                $('#spinner-robo').addClass('d-none');
+                $('#btn-cancelar-robo').addClass('d-none');
+                $('#barra-progresso-robo').removeClass('progress-bar-animated');
+
+                if (data.cancelado) {
+                    $('#barra-progresso-robo').addClass('bg-warning').removeClass('bg-primary bg-danger bg-success');
+                    atualizarTerminal("// Processo cancelado pelo usuário.");
+                } else if (data.erro) {
+                    $('#barra-progresso-robo').addClass('bg-danger').removeClass('bg-primary bg-warning bg-success');
+                    atualizarTerminal("// Erro na execução: " + data.erro);
+                    alert("A extração foi interrompida com erro: " + data.erro);
+                } else {
+                    $('#barra-progresso-robo').addClass('bg-success').removeClass('bg-primary bg-danger bg-warning');
+                    $('#pct-progresso').text('100%');
+                    atualizarTerminal("// Extração e substituição concluídas com sucesso!");
+                    
+                    if (confirm("Extração concluída com sucesso! Deseja visualizar as tabelas atualizadas agora?")) {
+                        window.location.href = "{{ url_for('fila_espera.index') }}";
+                    }
+                }
+            }
+        });
+    }
+
+    // Iniciar robô
+    $('#btn-iniciar-robo').on('click', function() {
+        const usuario = $('#usuario-bi').val().trim();
+        const senha = $('#senha-bi').val().trim();
+        const relatorio = $('#relatorio-bi').val();
+
+        if (!usuario || !senha) {
+            alert("Por favor, preencha o Usuário e a Senha corporativos do BI.");
+            return;
+        }
+
+        $('#btn-iniciar-robo').prop('disabled', true);
+        $('#spinner-robo').removeClass('d-none');
+        $('#btn-cancelar-robo').removeClass('d-none');
+        $('#barra-progresso-robo').removeClass('bg-danger bg-warning bg-success').addClass('bg-primary progress-bar-animated').css('width', '5%');
+        $('#pct-progresso').text('5%');
+        $('#label-progresso').text('Iniciando robô...');
+        $('#terminal-logs').html('<div class="text-info">// Disparando execução autônoma do robô Playwright...</div>');
+
+        $.ajax({
+            url: "{{ url_for('fila_espera.iniciar_extracao') }}",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({
+                usuario: usuario,
+                senha: senha,
+                relatorio: relatorio
+            }),
+            success: function(resp) {
+                atualizarTerminal("// Robô iniciado com sucesso em segundo plano.");
+                if (intervaloStatus) clearInterval(intervaloStatus);
+                intervaloStatus = setInterval(consultarStatus, 1500);
+            },
+            error: function(err) {
+                $('#btn-iniciar-robo').prop('disabled', false);
+                $('#spinner-robo').addClass('d-none');
+                $('#btn-cancelar-robo').addClass('d-none');
+                const msg = (err.responseJSON && err.responseJSON.erro) ? err.responseJSON.erro : "Falha ao iniciar robô.";
+                atualizarTerminal("// Erro ao iniciar: " + msg);
+                alert(msg);
+            }
+        });
+    });
+
+    // Cancelar robô
+    $('#btn-cancelar-robo').on('click', function() {
+        if (!confirm("Deseja realmente cancelar a extração em andamento?")) return;
+        $('#btn-cancelar-robo').prop('disabled', true).text("Cancelando...");
+
+        $.post("{{ url_for('fila_espera.cancelar_extracao_route') }}", function(resp) {
+            atualizarTerminal("// Cancelamento solicitado. Aguardando liberação do navegador...");
+        });
+    });
+
+    // Toggle de exibição para modo de múltiplos arquivos individuais
+    const selectRelatorioUpload = document.getElementById('upload-relatorio');
+    const colArquivoUnico = document.getElementById('col-arquivo-unico');
+    const inputArquivoUnico = document.getElementById('upload-arquivo');
+    const containerMultiplos = document.getElementById('container-arquivos-multiplos');
+
+    if (selectRelatorioUpload) {
+        $(selectRelatorioUpload).on('change', function() {
+            if (this.value === 'MULTIPLO') {
+                $(containerMultiplos).removeClass('d-none');
+                $(colArquivoUnico).addClass('d-none');
+                inputArquivoUnico.removeAttribute('required');
+            } else {
+                $(containerMultiplos).addClass('d-none');
+                $(colArquivoUnico).removeClass('d-none');
+                inputArquivoUnico.setAttribute('required', 'required');
+            }
+        });
+    }
+
+    // Handler para Upload Manual e Substituição Direta de Arquivos (idêntico ao do BI)
+    const formUploadManual = document.getElementById('form-upload-fila-manual');
+    const btnUploadManual = document.getElementById('btn-enviar-upload-manual');
+    const spinnerUploadManual = document.getElementById('spinner-upload-manual');
+    const statusUploadManual = document.getElementById('status-upload-manual');
+
+    if (formUploadManual) {
+        formUploadManual.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const modoMultiplo = selectRelatorioUpload && selectRelatorioUpload.value === 'MULTIPLO';
+            const arqUnico = inputArquivoUnico && inputArquivoUnico.files && inputArquivoUnico.files.length > 0;
+            const arqSiga = document.getElementById('arquivo_siga');
+            const arqFr03 = document.getElementById('arquivo_fr03');
+            const arqFr04 = document.getElementById('arquivo_fr04');
+
+            const temMultiplo = (arqSiga && arqSiga.files.length > 0) ||
+                                (arqFr03 && arqFr03.files.length > 0) ||
+                                (arqFr04 && arqFr04.files.length > 0);
+
+            if (!modoMultiplo && !arqUnico) {
+                alert('Por favor, selecione um arquivo (.csv, .txt ou .zip) para upload.');
+                return;
+            }
+
+            if (modoMultiplo && !temMultiplo) {
+                alert('Por favor, selecione pelo menos um dos arquivos (SIGA, FR-03 ou FR-04) para upload.');
+                return;
+            }
+
+            const formData = new FormData(formUploadManual);
+            btnUploadManual.disabled = true;
+            spinnerUploadManual.classList.remove('d-none');
+            statusUploadManual.innerHTML = '<span class="text-primary"><i class="bi bi-hourglass-split me-1"></i> Processando arquivo(s) e substituindo dados no banco...</span>';
+
+            fetch("{{ url_for('fila_espera.upload_manual') }}", {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(res => res.json().then(data => ({ status: res.status, ok: res.ok, data: data })))
+            .then(result => {
+                btnUploadManual.disabled = false;
+                spinnerUploadManual.classList.add('d-none');
+                if (result.ok && result.data.status === 'success') {
+                    statusUploadManual.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> ' + result.data.mensagem + '</span> <a href="{{ url_for("fila_espera.index") }}" class="btn btn-sm btn-outline-success ms-2"><i class="bi bi-table me-1"></i> Visualizar Tabelas</a>';
+                    if (result.data.total_fe !== undefined) {
+                        $('#kpi-total-fe').text(Number(result.data.total_fe).toLocaleString('pt-BR'));
+                    }
+                    if (result.data.total_fr !== undefined) {
+                        $('#kpi-total-fr').text(Number(result.data.total_fr).toLocaleString('pt-BR'));
+                    }
+                    formUploadManual.reset();
+                    $(selectRelatorioUpload).trigger('change');
+                } else {
+                    const msgErro = (result.data && result.data.mensagem) ? result.data.mensagem : 'Erro ao processar arquivo.';
+                    statusUploadManual.innerHTML = '<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> ' + msgErro + '</span>';
+                }
+            })
+            .catch(err => {
+                btnUploadManual.disabled = false;
+                spinnerUploadManual.classList.add('d-none');
+                statusUploadManual.innerHTML = '<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Falha de comunicação com o servidor: ' + err + '</span>';
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

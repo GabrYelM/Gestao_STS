@@ -45,37 +45,36 @@
                 <table id="tabela-cids-config" class="table table-hover table-striped table-bordered align-middle small w-100">
                     <thead class="table-primary text-nowrap">
                         <tr>
-                            <th style="width: 50px;" class="text-center">ID</th>
-                            <th>Especialidade</th>
-                            <th>CBO (Código / Nome)</th>
-                            <th class="text-center" style="width: 100px;">CID</th>
-                            <th>Descrição do CID</th>
-                            <th>Procedimento</th>
-                            <th>Observações</th>
-                            <th class="text-center" style="width: 130px;">Ações</th>
+                            <th style="width: 45px;" class="text-center">#</th>
+                            <th>ESPECIALIDADE</th>
+                            <th class="text-center" style="width: 90px;">CID</th>
+                            <th>DESCRIÇÃO DO CID</th>
+                            <th>OBSERVAÇÕES</th>
+                            <th>PROCEDIMENTO</th>
+                            <th class="text-center" style="width: 90px;">CBO</th>
+                            <th class="text-center" style="width: 120px;">AÇÕES</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for r in regras %}
                         <tr>
-                            <td class="text-center font-monospace text-muted">{{ r.id }}</td>
+                            <td class="text-center font-monospace text-muted">{{ loop.index }}</td>
                             <td class="fw-semibold text-primary">{{ r.especialidade }}</td>
-                            <td>
-                                {% if r.cbo_codigo %}
-                                <span class="badge bg-light text-dark border font-monospace me-1">{{ r.cbo_codigo }}</span>
-                                <span class="text-secondary small">{{ r.cbo_nome or '' }}</span>
-                                {% else %}
-                                <span class="text-muted">-</span>
-                                {% endif %}
-                            </td>
                             <td class="text-center">
                                 <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 font-monospace fs-6 fw-bold">
                                     {{ r.cid }}
                                 </span>
                             </td>
                             <td>{{ r.cid_descricao or '-' }}</td>
-                            <td class="small text-muted">{{ r.procedimento_nome or r.procedimento_codigo or '-' }}</td>
                             <td class="small text-secondary">{{ r.observacoes or '-' }}</td>
+                            <td class="small text-muted">{{ r.procedimento_nome or r.procedimento_codigo or '-' }}</td>
+                            <td class="text-center">
+                                {% if r.cbo_codigo %}
+                                <span class="badge bg-light text-dark border font-monospace">{{ r.cbo_codigo }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
                             <td class="text-center text-nowrap">
                                 <button type="button" class="btn btn-sm btn-outline-primary py-1 px-2 rounded-pill me-1 btn-editar-regra"
                                     data-id="{{ r.id }}"
