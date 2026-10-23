@@ -3,6 +3,81 @@
 {% block title %}Fila de Espera e Regulação - Gestão STS{% endblock %}
 
 {% block content %}
+<style>
+/* Estrutura Visual Idêntica às Tabelas da Produção */
+#tabela-resumo-fe,
+#tabela-resumo-fr,
+#tabela-nominal-fe,
+#tabela-nominal-fr {
+    min-width: 100% !important;
+    width: 100% !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+#tabela-resumo-fe th, #tabela-resumo-fe td,
+#tabela-resumo-fr th, #tabela-resumo-fr td,
+#tabela-nominal-fe th, #tabela-nominal-fe td,
+#tabela-nominal-fr th, #tabela-nominal-fr td {
+    vertical-align: middle;
+    padding: 5px 8px !important;
+    border: 1px solid #dee2e6 !important;
+}
+
+#tabela-resumo-fe thead th,
+#tabela-resumo-fr thead th,
+#tabela-nominal-fe thead th,
+#tabela-nominal-fr thead th {
+    background-color: #f1f5f9 !important;
+    color: #1e293b !important;
+    font-size: 0.76rem !important;
+    font-weight: 600 !important;
+    border: 1px solid #cbd5e1 !important;
+    white-space: nowrap !important;
+}
+
+#tabela-resumo-fe tbody td,
+#tabela-resumo-fr tbody td,
+#tabela-nominal-fe tbody td,
+#tabela-nominal-fr tbody td {
+    font-size: 0.75rem !important;
+    line-height: 1.25 !important;
+    color: #334155 !important;
+}
+
+#tabela-resumo-fe tbody tr:hover,
+#tabela-resumo-fr tbody tr:hover,
+#tabela-nominal-fe tbody tr:hover,
+#tabela-nominal-fr tbody tr:hover {
+    background-color: #f8fafc !important;
+}
+
+#tabela-resumo-fe tfoot th,
+#tabela-resumo-fr tfoot th,
+#tabela-nominal-fe tfoot th,
+#tabela-nominal-fr tfoot th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-size: 0.78rem !important;
+    font-weight: 700 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-top: 2px solid #0d6efd !important;
+}
+
+/* Espaçamento e Alinhamento do Funil de Filtro do Excel */
+.header-excel-container {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 4px !important;
+    width: 100% !important;
+}
+.header-excel-container .header-text {
+    font-size: 0.76rem !important;
+    font-weight: 600 !important;
+}
+</style>
+
 <div class="container-fluid mt-3 px-4">
     <!-- Cabeçalho e Botões de Ação -->
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
@@ -15,21 +90,17 @@
             </p>
         </div>
         <div class="d-flex flex-wrap gap-2 mt-2 mt-md-0">
-            {% if session.get("is_admin") %}
-            <form action="{{ url_for('fila_espera.importar_pasta') }}" method="POST" class="d-inline" onsubmit="return confirm('Deseja processar os arquivos SIGA e FR da pasta ARQUIVOS ORIGINAIS/Fila de espera?');">
-                <button type="submit" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm" title="Carrega automaticamente os arquivos SIGA e FR presentes na pasta local">
-                    <i class="bi bi-folder-check me-1"></i> Ingerir Arquivos da Pasta
-                </button>
-            </form>
-            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalUploadArquivos">
-                <i class="bi bi-cloud-arrow-up me-1"></i> Upload Manual
-            </button>
+            <a href="{{ url_for('fila_espera.tela_extracao') }}" class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm" title="Acesse para coletar relatórios via Robô do BI ou realizar upload manual com substituição total">
+                <i class="bi bi-cloud-arrow-down me-1"></i> Extração BI & Ingestão de Arquivos
+            </a>
             <a href="{{ url_for('fila_espera.gerenciar_cids') }}" class="btn btn-outline-dark btn-sm rounded-pill px-3 shadow-sm">
                 <i class="bi bi-gear-wide-connected me-1"></i> Configurar CIDs
             </a>
-            {% endif %}
-            <a href="{{ url_for('fila_espera.exportar_excel') }}" class="btn btn-success btn-sm rounded-pill px-3 shadow-sm">
-                <i class="bi bi-file-earmark-excel me-1"></i> Exportar Planilha (.xlsx)
+            <button type="button" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#modalExportarAuditoriaCids" title="Exporta 1 planilha Excel por unidade contendo apenas as linhas com conferência de CID (corretos e incorretos)">
+                <i class="bi bi-shield-check me-1"></i> Exportar CIDs por Unidade
+            </button>
+            <a href="{{ url_for('fila_espera.exportar_excel') }}" class="btn btn-success btn-sm rounded-pill px-3 shadow-sm" title="Exporta a planilha Excel completa com as 4 tabelas consolidadas">
+                <i class="bi bi-file-earmark-excel me-1"></i> Exportar Planilha Completa (.xlsx)
             </a>
         </div>
     </div>
@@ -93,7 +164,7 @@
                                 <a href="?status_cid=INCORRETO" class="text-danger text-decoration-underline">Filtrar Incorretos</a>
                                 {% else %}
                                 Todos em conformidade
-                                {% endif %}
+                            {% endif %}
                             </span>
                         </div>
                         <div class="fs-1 text-danger-subtle"><i class="bi bi-exclamation-triangle-fill"></i></div>
@@ -103,7 +174,7 @@
         </div>
     </div>
 
-    <!-- Barra de Filtros -->
+    <!-- Barra de Filtros Rápidos -->
     <div class="card shadow-sm border-0 rounded-3 mb-4 bg-light">
         <div class="card-body p-3">
             <form method="GET" action="{{ url_for('fila_espera.index') }}" class="row g-2 align-items-end">
@@ -184,55 +255,79 @@
                 <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="fw-bold text-primary mb-0"><i class="bi bi-pie-chart-fill me-2"></i>Resumo da Fila de Espera por Unidade e Especialidade</h5>
-                        <span class="text-muted small">Agrupamento consolidado com contagem de Primeira Vez, Retorno, Reserva Técnica e Conferência de CID.</span>
+                        <span class="text-muted small">Agrupamento consolidado com Primeira Vez, Retorno, Reserva Técnica e Conferência de CID. Filtros de coluna disponíveis diretamente no cabeçalho.</span>
                     </div>
                     <span class="badge bg-light text-dark border px-3 py-2 fw-semibold">{{ resumo_fe|length }} agrupamentos</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive p-3">
-                        <table id="tabela-resumo-fe" class="table table-hover table-striped table-bordered align-middle small w-100">
-                            <thead class="table-primary text-nowrap">
+                        <table id="tabela-resumo-fe" class="table table-hover table-bordered align-middle small w-100">
+                            <thead>
                                 <tr>
-                                    <th>Estabelecimento Solicitante</th>
-                                    <th>Especialidade</th>
-                                    <th>CBO</th>
-                                    <th>Procedimento</th>
-                                    <th class="text-center">Primeira Vez</th>
-                                    <th class="text-center">Retorno</th>
-                                    <th class="text-center">Reserva Técnica</th>
-                                    <th class="text-center">Total</th>
+                                    <th class="text-start">Estabelecimento Solicitante</th>
+                                    <th class="text-start">Especialidade</th>
+                                    <th class="text-center">CBO</th>
+                                    <th class="text-start">Procedimento</th>
+                                    <th class="text-end">Primeira Vez</th>
+                                    <th class="text-end">Retorno</th>
+                                    <th class="text-end">Reserva Técnica</th>
+                                    <th class="text-end">Total</th>
                                     <th class="text-center">Conferência CID</th>
-                                    <th class="text-center text-success">CIDs Corretos</th>
-                                    <th class="text-center text-danger">CIDs Incorretos</th>
+                                    <th class="text-end text-success">CIDs Corretos</th>
+                                    <th class="text-end text-danger">CIDs Incorretos</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                {% set total_pv = namespace(val=0) %}
+                                {% set total_ret = namespace(val=0) %}
+                                {% set total_rt = namespace(val=0) %}
+                                {% set total_geral = namespace(val=0) %}
+                                {% set total_corretos = namespace(val=0) %}
+                                {% set total_incorretos = namespace(val=0) %}
                                 {% for r in resumo_fe %}
+                                {% set total_pv.val = total_pv.val + r.primeira_vez %}
+                                {% set total_ret.val = total_ret.val + r.retorno %}
+                                {% set total_rt.val = total_rt.val + r.reserva_tecnica %}
+                                {% set total_geral.val = total_geral.val + r.total %}
+                                {% set total_corretos.val = total_corretos.val + r.cids_corretos %}
+                                {% set total_incorretos.val = total_incorretos.val + r.cids_incorretos %}
                                 <tr>
-                                    <td class="fw-semibold">{{ r.estabelecimento }}</td>
-                                    <td>{{ r.especialidade }}</td>
-                                    <td>
+                                    <td class="text-start fw-semibold">{{ r.estabelecimento }}</td>
+                                    <td class="text-start">{{ r.especialidade }}</td>
+                                    <td class="text-center">
                                         {% if r.cbo_codigo %}
                                         <span class="badge bg-light text-dark border font-monospace">{{ r.cbo_codigo }}</span>
                                         {% else %}
                                         <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-truncate" style="max-width: 250px;" title="{{ r.procedimento }}">{{ r.procedimento }}</td>
-                                    <td class="text-center fw-semibold">{{ r.primeira_vez if r.primeira_vez > 0 else '-' }}</td>
-                                    <td class="text-center fw-semibold">{{ r.retorno if r.retorno > 0 else '-' }}</td>
-                                    <td class="text-center fw-semibold">{{ r.reserva_tecnica if r.reserva_tecnica > 0 else '-' }}</td>
-                                    <td class="text-center fw-bold text-primary fs-6">{{ r.total }}</td>
+                                    <td class="text-start text-truncate" style="max-width: 280px;" title="{{ r.procedimento }}">{{ r.procedimento }}</td>
+                                    <td class="text-end fw-semibold">{{ "{:,}".format(r.primeira_vez).replace(',', '.') if r.primeira_vez > 0 else '-' }}</td>
+                                    <td class="text-end fw-semibold">{{ "{:,}".format(r.retorno).replace(',', '.') if r.retorno > 0 else '-' }}</td>
+                                    <td class="text-end fw-semibold">{{ "{:,}".format(r.reserva_tecnica).replace(',', '.') if r.reserva_tecnica > 0 else '-' }}</td>
+                                    <td class="text-end fw-bold text-primary">{{ "{:,}".format(r.total).replace(',', '.') }}</td>
                                     <td class="text-center">
                                         <span class="badge bg-{{ r.badge_cid }}-subtle text-{{ r.badge_cid }} border border-{{ r.badge_cid }}-subtle px-2 py-1">
                                             {{ r.status_cid }}
                                         </span>
                                     </td>
-                                    <td class="text-center text-success fw-semibold">{{ r.cids_corretos if r.cids_corretos > 0 else '-' }}</td>
-                                    <td class="text-center text-danger fw-bold">{{ r.cids_incorretos if r.cids_incorretos > 0 else '-' }}</td>
+                                    <td class="text-end text-success fw-semibold">{{ "{:,}".format(r.cids_corretos).replace(',', '.') if r.cids_corretos > 0 else '-' }}</td>
+                                    <td class="text-end text-danger fw-bold">{{ "{:,}".format(r.cids_incorretos).replace(',', '.') if r.cids_incorretos > 0 else '-' }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th class="text-start" colspan="4">Total Geral</th>
+                                    <th class="text-end fw-bold">{{ "{:,}".format(total_pv.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold">{{ "{:,}".format(total_ret.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold">{{ "{:,}".format(total_rt.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold text-primary">{{ "{:,}".format(total_geral.val).replace(',', '.') }}</th>
+                                    <th class="text-center">-</th>
+                                    <th class="text-end fw-bold text-success">{{ "{:,}".format(total_corretos.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold text-danger">{{ "{:,}".format(total_incorretos.val).replace(',', '.') }}</th>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>
@@ -245,30 +340,30 @@
                 <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="fw-bold text-primary mb-0"><i class="bi bi-people-fill me-2"></i>Lista Nominal de Pacientes Ativos na Fila de Espera (SIGA)</h5>
-                        <span class="text-muted small">Todos os pacientes ativos com verificação de conformidade do código de CID.</span>
+                        <span class="text-muted small">Todos os pacientes ativos com verificação de conformidade do código de CID. Filtros Excel por coluna habilitados.</span>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive p-3">
-                        <table id="tabela-nominal-fe" class="table table-hover table-striped table-bordered align-middle small w-100">
-                            <thead class="table-primary text-nowrap">
+                        <table id="tabela-nominal-fe" class="table table-hover table-bordered align-middle small w-100">
+                            <thead>
                                 <tr>
-                                    <th>Data Inclusão</th>
-                                    <th>Estabelecimento</th>
-                                    <th>Especialidade</th>
-                                    <th>CBO</th>
-                                    <th>Procedimento</th>
-                                    <th>Atendimento</th>
-                                    <th>Protocolo</th>
-                                    <th>Nome Paciente</th>
-                                    <th>CNS Paciente</th>
-                                    <th>Prioridade</th>
-                                    <th>CID</th>
-                                    <th>Verificação CID</th>
+                                    <th class="text-center">Data Inclusão</th>
+                                    <th class="text-start">Estabelecimento</th>
+                                    <th class="text-start">Especialidade</th>
+                                    <th class="text-center">CBO</th>
+                                    <th class="text-start">Procedimento</th>
+                                    <th class="text-start">Atendimento</th>
+                                    <th class="text-center">Protocolo</th>
+                                    <th class="text-start">Nome Paciente</th>
+                                    <th class="text-center">CNS Paciente</th>
+                                    <th class="text-center">Prioridade</th>
+                                    <th class="text-center">CID</th>
+                                    <th class="text-center">Verificação CID</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Carregamento Server-Side via AJAX -->
+                                <!-- Carregamento AJAX de alta performance com deferRender -->
                             </tbody>
                         </table>
                     </div>
@@ -282,55 +377,79 @@
                 <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="fw-bold text-success mb-0"><i class="bi bi-pie-chart-fill me-2"></i>Resumo da Fila do Regulador por Prioridade</h5>
-                        <span class="text-muted small">Agrupamento consolidado com contagem de Alta, Média, Baixa prioridade e Conferência de CID.</span>
+                        <span class="text-muted small">Agrupamento consolidado com contagem de Alta, Média, Baixa prioridade e Conferência de CID. Filtros de coluna no cabeçalho.</span>
                     </div>
                     <span class="badge bg-light text-dark border px-3 py-2 fw-semibold">{{ resumo_fr|length }} agrupamentos</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive p-3">
-                        <table id="tabela-resumo-fr" class="table table-hover table-striped table-bordered align-middle small w-100">
-                            <thead class="table-success text-nowrap">
+                        <table id="tabela-resumo-fr" class="table table-hover table-bordered align-middle small w-100">
+                            <thead>
                                 <tr>
-                                    <th>Estabelecimento Solicitante</th>
-                                    <th>Especialidade</th>
-                                    <th>CBO</th>
-                                    <th>Procedimento</th>
-                                    <th class="text-center text-danger">Alta</th>
-                                    <th class="text-center text-warning">Média</th>
-                                    <th class="text-center text-info">Baixa</th>
-                                    <th class="text-center">Total</th>
+                                    <th class="text-start">Estabelecimento Solicitante</th>
+                                    <th class="text-start">Especialidade</th>
+                                    <th class="text-center">CBO</th>
+                                    <th class="text-start">Procedimento</th>
+                                    <th class="text-end text-danger">Alta</th>
+                                    <th class="text-end text-warning">Média</th>
+                                    <th class="text-end text-info">Baixa</th>
+                                    <th class="text-end">Total</th>
                                     <th class="text-center">Conferência CID</th>
-                                    <th class="text-center text-success">CIDs Corretos</th>
-                                    <th class="text-center text-danger">CIDs Incorretos</th>
+                                    <th class="text-end text-success">CIDs Corretos</th>
+                                    <th class="text-end text-danger">CIDs Incorretos</th>
                                 </tr>
                             </thead>
                             <tbody>
+                                {% set total_alta = namespace(val=0) %}
+                                {% set total_media = namespace(val=0) %}
+                                {% set total_baixa = namespace(val=0) %}
+                                {% set total_fr_geral = namespace(val=0) %}
+                                {% set total_fr_corretos = namespace(val=0) %}
+                                {% set total_fr_incorretos = namespace(val=0) %}
                                 {% for r in resumo_fr %}
+                                {% set total_alta.val = total_alta.val + r.alta %}
+                                {% set total_media.val = total_media.val + r.media %}
+                                {% set total_baixa.val = total_baixa.val + r.baixa %}
+                                {% set total_fr_geral.val = total_fr_geral.val + r.total %}
+                                {% set total_fr_corretos.val = total_fr_corretos.val + r.cids_corretos %}
+                                {% set total_fr_incorretos.val = total_fr_incorretos.val + r.cids_incorretos %}
                                 <tr>
-                                    <td class="fw-semibold">{{ r.estabelecimento }}</td>
-                                    <td>{{ r.especialidade }}</td>
-                                    <td>
+                                    <td class="text-start fw-semibold">{{ r.estabelecimento }}</td>
+                                    <td class="text-start">{{ r.especialidade }}</td>
+                                    <td class="text-center">
                                         {% if r.cbo_codigo %}
                                         <span class="badge bg-light text-dark border font-monospace">{{ r.cbo_codigo }}</span>
                                         {% else %}
                                         <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
-                                    <td class="text-truncate" style="max-width: 250px;" title="{{ r.procedimento }}">{{ r.procedimento }}</td>
-                                    <td class="text-center fw-bold text-danger">{{ r.alta if r.alta > 0 else '-' }}</td>
-                                    <td class="text-center fw-semibold text-warning">{{ r.media if r.media > 0 else '-' }}</td>
-                                    <td class="text-center fw-semibold text-info">{{ r.baixa if r.baixa > 0 else '-' }}</td>
-                                    <td class="text-center fw-bold text-success fs-6">{{ r.total }}</td>
+                                    <td class="text-start text-truncate" style="max-width: 280px;" title="{{ r.procedimento }}">{{ r.procedimento }}</td>
+                                    <td class="text-end fw-bold text-danger">{{ "{:,}".format(r.alta).replace(',', '.') if r.alta > 0 else '-' }}</td>
+                                    <td class="text-end fw-semibold text-warning">{{ "{:,}".format(r.media).replace(',', '.') if r.media > 0 else '-' }}</td>
+                                    <td class="text-end fw-semibold text-info">{{ "{:,}".format(r.baixa).replace(',', '.') if r.baixa > 0 else '-' }}</td>
+                                    <td class="text-end fw-bold text-success">{{ "{:,}".format(r.total).replace(',', '.') }}</td>
                                     <td class="text-center">
                                         <span class="badge bg-{{ r.badge_cid }}-subtle text-{{ r.badge_cid }} border border-{{ r.badge_cid }}-subtle px-2 py-1">
                                             {{ r.status_cid }}
                                         </span>
                                     </td>
-                                    <td class="text-center text-success fw-semibold">{{ r.cids_corretos if r.cids_corretos > 0 else '-' }}</td>
-                                    <td class="text-center text-danger fw-bold">{{ r.cids_incorretos if r.cids_incorretos > 0 else '-' }}</td>
+                                    <td class="text-end text-success fw-semibold">{{ "{:,}".format(r.cids_corretos).replace(',', '.') if r.cids_corretos > 0 else '-' }}</td>
+                                    <td class="text-end text-danger fw-bold">{{ "{:,}".format(r.cids_incorretos).replace(',', '.') if r.cids_incorretos > 0 else '-' }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th class="text-start" colspan="4">Total Geral</th>
+                                    <th class="text-end fw-bold text-danger">{{ "{:,}".format(total_alta.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold text-warning">{{ "{:,}".format(total_media.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold text-info">{{ "{:,}".format(total_baixa.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold text-success">{{ "{:,}".format(total_fr_geral.val).replace(',', '.') }}</th>
+                                    <th class="text-center">-</th>
+                                    <th class="text-end fw-bold text-success">{{ "{:,}".format(total_fr_corretos.val).replace(',', '.') }}</th>
+                                    <th class="text-end fw-bold text-danger">{{ "{:,}".format(total_fr_incorretos.val).replace(',', '.') }}</th>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>
@@ -343,29 +462,29 @@
                 <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
                     <div>
                         <h5 class="fw-bold text-success mb-0"><i class="bi bi-person-lines-fill me-2"></i>Lista Nominal da Fila do Regulador (FR-03 + FR-04)</h5>
-                        <span class="text-muted small">Pacientes em regulação com motivo de encaminhamento e situação obtida do FR-04.</span>
+                        <span class="text-muted small">Pacientes em regulação com motivo de encaminhamento e situação obtida do FR-04. Filtros Excel por coluna habilitados.</span>
                     </div>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive p-3">
-                        <table id="tabela-nominal-fr" class="table table-hover table-striped table-bordered align-middle small w-100">
-                            <thead class="table-success text-nowrap">
+                        <table id="tabela-nominal-fr" class="table table-hover table-bordered align-middle small w-100">
+                            <thead>
                                 <tr>
-                                    <th>Data Entrada</th>
-                                    <th>Estabelecimento</th>
-                                    <th>Especialidade</th>
-                                    <th>CBO</th>
-                                    <th>Procedimento</th>
-                                    <th>Prioridade</th>
-                                    <th>Nº Solicitação</th>
-                                    <th>Nome Paciente</th>
-                                    <th>Código CID</th>
-                                    <th>Verificação CID</th>
-                                    <th>Situação Regulador</th>
+                                    <th class="text-center">Data Entrada</th>
+                                    <th class="text-start">Estabelecimento</th>
+                                    <th class="text-start">Especialidade</th>
+                                    <th class="text-center">CBO</th>
+                                    <th class="text-start">Procedimento</th>
+                                    <th class="text-center">Prioridade</th>
+                                    <th class="text-center">Nº Solicitação</th>
+                                    <th class="text-start">Nome Paciente</th>
+                                    <th class="text-center">Código CID</th>
+                                    <th class="text-center">Verificação CID</th>
+                                    <th class="text-start">Situação Regulador</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Carregamento Server-Side via AJAX -->
+                                <!-- Carregamento AJAX de alta performance com deferRender -->
                             </tbody>
                         </table>
                     </div>
@@ -376,44 +495,106 @@
     </div>
 </div>
 
-<!-- Modal para Upload Manual dos 3 Arquivos -->
-<div class="modal fade" id="modalUploadArquivos" tabindex="-1" aria-labelledby="modalUploadArquivosLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title" id="modalUploadArquivosLabel">
-                    <i class="bi bi-cloud-arrow-up me-2"></i>Ingestão dos Arquivos da Fila de Espera
+<!-- Modal de Exportação de Auditoria de CIDs por Unidade -->
+<div class="modal fade" id="modalExportarAuditoriaCids" tabindex="-1" aria-labelledby="modalExportarAuditoriaCidsLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow rounded-4">
+            <div class="modal-header bg-success text-white py-3">
+                <h5 class="modal-title fw-bold" id="modalExportarAuditoriaCidsLabel">
+                    <i class="bi bi-shield-check me-2"></i>Exportar CIDs Auditados por Unidade
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
             </div>
-            <form action="{{ url_for('fila_espera.importar_arquivos') }}" method="POST" enctype="multipart/form-data">
+            <form action="{{ url_for('fila_espera.exportar_auditoria_cids_route') }}" method="POST" id="formExportarAuditoriaCids">
                 <div class="modal-body p-4">
-                    <p class="text-muted small mb-4">
-                        Selecione os 3 arquivos de entrada para consolidação das tabelas nominais e resumos:
-                    </p>
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">1. Arquivo SIGA (Fila de Espera - Pacientes Ativos)</label>
-                        <input type="file" name="arquivo_siga" class="form-control" accept=".csv,.txt" required>
-                        <div class="form-text">Ex: <code>SIGA_-_Fila_de_Espera_-_Relatorio_Operacional_...csv</code></div>
+                    <div class="alert alert-info py-2 px-3 small border-0 rounded-3 mb-3 d-flex align-items-center">
+                        <i class="bi bi-info-circle-fill fs-5 text-primary me-2"></i>
+                        <div>
+                            Exporta <strong>exclusivamente as linhas que passaram pela validação de CIDs</strong> (tanto com CID correto quanto incorreto). É gerada <strong>1 planilha Excel (.xlsx) por unidade</strong> com os dados nominais da Fila de Espera, Fila do Regulador e Resumo de Conformidade.
+                        </div>
                     </div>
 
+                    <!-- Filtro de Status de CID -->
                     <div class="mb-3">
-                        <label class="form-label fw-bold">2. Arquivo FR-03 (Lista Nominal com Motivo)</label>
-                        <input type="file" name="arquivo_fr03" class="form-control" accept=".csv,.txt" required>
-                        <div class="form-text">Ex: <code>FR-03 Lista Nominal de Pacientes na Fila da Regulação com Motivo.csv</code></div>
+                        <label class="form-label fw-bold small text-secondary">Filtrar Status do CID:</label>
+                        <div class="d-flex flex-wrap gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="status_filtro" id="statusTodos" value="TODOS" checked>
+                                <label class="form-check-label small" for="statusTodos">
+                                    Todos (Corretos e Incorretos)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="status_filtro" id="statusIncorretos" value="INCORRETO">
+                                <label class="form-check-label small text-danger fw-semibold" for="statusIncorretos">
+                                    Apenas Incorretos (Incompatíveis)
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="status_filtro" id="statusCorretos" value="CORRETO">
+                                <label class="form-check-label small text-success fw-semibold" for="statusCorretos">
+                                    Apenas Corretos
+                                </label>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">3. Arquivo FR-04 (Pacientes Devolvidos e Reinseridos)</label>
-                        <input type="file" name="arquivo_fr04" class="form-control" accept=".csv,.txt" required>
-                        <div class="form-text">Ex: <code>FR-04 Lista Nominal de Pacientes Devolvidos e Reinseridos...csv</code> (utilizado para cruzar a Situação da Regulação).</div>
+                    <!-- Seleção de Unidades -->
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                            <label class="form-label fw-bold small text-secondary mb-0">
+                                Selecione a(s) Unidade(s) Solicitante(s):
+                            </label>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 rounded-pill small" id="btnMarcarTodasUnidades">
+                                    <i class="bi bi-check-all"></i> Marcar Todas
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 rounded-pill small" id="btnDesmarcarTodasUnidades">
+                                    <i class="bi bi-x"></i> Desmarcar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Campo de busca dentro do modal -->
+                        <div class="input-group input-group-sm mb-2">
+                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control" id="buscarUnidadeModal" placeholder="Buscar unidade por nome...">
+                        </div>
+
+                        <!-- Lista de Unidades com Scroll -->
+                        <div class="border rounded-3 p-2 bg-white" style="max-height: 280px; overflow-y: auto;" id="containerListaUnidadesModal">
+                            {% for u in unidades_auditadas %}
+                            <div class="form-check border-bottom py-1 item-unidade-modal" data-nome="{{ u.unidade|lower }}">
+                                <input class="form-check-input chk-unidade-modal" type="checkbox" name="unidades" value="{{ u.unidade }}" id="chk_u_{{ loop.index }}" checked>
+                                <label class="form-check-label small d-flex justify-content-between align-items-center w-100 pe-2" for="chk_u_{{ loop.index }}">
+                                    <span class="fw-medium text-dark">{{ u.unidade }}</span>
+                                    <span>
+                                        <span class="badge bg-light text-dark border font-monospace me-1" title="Total de linhas auditadas">{{ u.total }}</span>
+                                        {% if u.incorretos > 0 %}
+                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle" title="CIDs Incompatíveis/Incorretos">{{ u.incorretos }} incorreto(s)</span>
+                                        {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle" title="100% Conforme">100% correto</span>
+                                        {% endif %}
+                                    </span>
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="form-text small mt-1">
+                            <span id="contadorUnidadesSelecionadas" class="fw-bold text-success">{{ unidades_auditadas|length }}</span> de {{ unidades_auditadas|length }} unidade(s) selecionada(s).
+                        </div>
+                    </div>
+
+                    <div class="mt-3 p-2 bg-light rounded-3 border small text-muted">
+                        <i class="bi bi-file-earmark-zip me-1 text-primary"></i>
+                        <strong>Formato de Saída:</strong> Se selecionar 1 unidade, será feito o download direto da planilha <code>.xlsx</code>. Se selecionar 2 ou mais unidades, será gerado um arquivo compactado <code>.zip</code> com 1 planilha individual para cada unidade.
                     </div>
                 </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary rounded-pill px-4 fw-bold">
-                        <i class="bi bi-upload me-1"></i> Iniciar Processamento
+
+                <div class="modal-footer bg-light py-2 px-4 rounded-bottom-4">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3 btn-sm" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success rounded-pill px-4 btn-sm fw-bold shadow-sm" id="btnConfirmarExportacaoUnidades">
+                        <i class="bi bi-download me-1"></i> Gerar e Exportar
                     </button>
                 </div>
             </form>
@@ -425,6 +606,11 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.colVis.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <script>
 function mudarAba(nomeAba) {
@@ -440,10 +626,10 @@ $(document).ready(function() {
         "sInfoFiltered": "(Filtrados de _MAX_ registros)",
         "sInfoThousands": ".",
         "sLengthMenu": "_MENU_ por página",
-        "sLoadingRecords": "Carregando...",
-        "sProcessing": "Processando...",
+        "sLoadingRecords": "Carregando dados...",
+        "sProcessing": '<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div> Processando...',
         "sZeroRecords": "Nenhum registro encontrado",
-        "sSearch": "Buscar:",
+        "sSearch": "Buscar na Tabela:",
         "oPaginate": {
             "sNext": "Próximo",
             "sPrevious": "Anterior",
@@ -452,18 +638,44 @@ $(document).ready(function() {
         }
     };
 
+    const domProducao = '<"row mb-2 align-items-center"<"col-sm-12 col-md-4"l><"col-sm-12 col-md-4 text-center"B><"col-sm-12 col-md-4 text-end"f>><"table-responsive"t><"row mt-2"<"col-sm-12 col-md-5"i><"col-sm-12 col-md-7"p>>';
+    const botoesProducao = [
+        {
+            extend: 'colvis',
+            text: '<i class="bi bi-layout-three-columns"></i> Colunas',
+            className: 'btn btn-outline-secondary btn-sm me-1',
+            postfixButtons: ['colvisRestore']
+        }
+    ];
+
     // 1. Tabela RESUMO_FE (Client-side)
     $('#tabela-resumo-fe').DataTable({
         language: dtIdioma,
+        dom: domProducao,
+        buttons: botoesProducao,
         pageLength: 25,
-        order: [[7, 'desc']] // Ordena pelo Total desc
+        lengthMenu: [10, 25, 50, 100, 500, 1000],
+        order: [[7, 'desc']], // Ordena pelo Total desc
+        initComplete: function() {
+            if (typeof window.initExcelFilters === 'function') {
+                window.initExcelFilters(this.api());
+            }
+        }
     });
 
     // 2. Tabela RESUMO_FR (Client-side)
     $('#tabela-resumo-fr').DataTable({
         language: dtIdioma,
+        dom: domProducao,
+        buttons: botoesProducao,
         pageLength: 25,
-        order: [[7, 'desc']] // Ordena pelo Total desc
+        lengthMenu: [10, 25, 50, 100, 500, 1000],
+        order: [[7, 'desc']], // Ordena pelo Total desc
+        initComplete: function() {
+            if (typeof window.initExcelFilters === 'function') {
+                window.initExcelFilters(this.api());
+            }
+        }
     });
 
     // Parâmetros de filtro para passar nas chamadas server-side
@@ -473,39 +685,55 @@ $(document).ready(function() {
         d.status_cid = "{{ status_cid_selecionado }}";
     };
 
-    // 3. Tabela Nominal FE (Server-Side)
+    // 3. Tabela Nominal FE (Client-side com carregamento JSON AJAX e deferRender)
     let feIniciada = false;
     function iniciarNominalFE() {
         if (feIniciada) return;
         feIniciada = true;
         $('#tabela-nominal-fe').DataTable({
             language: dtIdioma,
-            serverSide: true,
+            dom: domProducao,
+            buttons: botoesProducao,
+            deferRender: true,
             processing: true,
             pageLength: 25,
+            lengthMenu: [10, 25, 50, 100, 500, 1000],
             ajax: {
-                url: "{{ url_for('fila_espera.dados_nominal_fe') }}",
+                url: "{{ url_for('fila_espera.dados_nominal_fe_json') }}",
                 data: filtrosParams
             },
-            order: [[0, 'desc']]
+            order: [[0, 'desc']],
+            initComplete: function() {
+                if (typeof window.initExcelFilters === 'function') {
+                    window.initExcelFilters(this.api());
+                }
+            }
         });
     }
 
-    // 4. Tabela Nominal FR (Server-Side)
+    // 4. Tabela Nominal FR (Client-side com carregamento JSON AJAX e deferRender)
     let frIniciada = false;
     function iniciarNominalFR() {
         if (frIniciada) return;
         frIniciada = true;
         $('#tabela-nominal-fr').DataTable({
             language: dtIdioma,
-            serverSide: true,
+            dom: domProducao,
+            buttons: botoesProducao,
+            deferRender: true,
             processing: true,
             pageLength: 25,
+            lengthMenu: [10, 25, 50, 100, 500, 1000],
             ajax: {
-                url: "{{ url_for('fila_espera.dados_nominal_fr') }}",
+                url: "{{ url_for('fila_espera.dados_nominal_fr_json') }}",
                 data: filtrosParams
             },
-            order: [[0, 'desc']]
+            order: [[0, 'desc']],
+            initComplete: function() {
+                if (typeof window.initExcelFilters === 'function') {
+                    window.initExcelFilters(this.api());
+                }
+            }
         });
     }
 
@@ -523,6 +751,58 @@ $(document).ready(function() {
         } else if (targetId === 'tab-nominal-fr') {
             iniciarNominalFR();
         }
+    });
+
+    // --- Controle do Modal de Exportação por Unidade ---
+    function atualizarContadorUnidades() {
+        const totalChecked = $('.chk-unidade-modal:checked').length;
+        $('#contadorUnidadesSelecionadas').text(totalChecked);
+        if (totalChecked === 0) {
+            $('#btnConfirmarExportacaoUnidades').prop('disabled', true);
+        } else {
+            $('#btnConfirmarExportacaoUnidades').prop('disabled', false);
+        }
+    }
+
+    $('#btnMarcarTodasUnidades').on('click', function() {
+        $('.item-unidade-modal:visible .chk-unidade-modal').prop('checked', true);
+        atualizarContadorUnidades();
+    });
+
+    $('#btnDesmarcarTodasUnidades').on('click', function() {
+        $('.item-unidade-modal:visible .chk-unidade-modal').prop('checked', false);
+        atualizarContadorUnidades();
+    });
+
+    $(document).on('change', '.chk-unidade-modal', function() {
+        atualizarContadorUnidades();
+    });
+
+    // Busca rápida de unidades no modal
+    $('#buscarUnidadeModal').on('input', function() {
+        const termo = $(this).val().toLowerCase().trim();
+        $('.item-unidade-modal').each(function() {
+            const nome = $(this).data('nome') || '';
+            if (!termo || nome.includes(termo)) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+    });
+
+    $('#formExportarAuditoriaCids').on('submit', function(e) {
+        if ($('.chk-unidade-modal:checked').length === 0) {
+            e.preventDefault();
+            alert('Por favor, selecione pelo menos uma unidade para exportar.');
+            return false;
+        }
+        // Fechar o modal após disparar o download
+        setTimeout(function() {
+            const modalEl = document.getElementById('modalExportarAuditoriaCids');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+        }, 800);
     });
 });
 </script>

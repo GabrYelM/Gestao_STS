@@ -1,5 +1,8 @@
 import os
 import io
+import zipfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for, send_file, session
 from werkzeug.utils import secure_filename
@@ -14,10 +17,71 @@ from services.fila_espera import (
     carregar_arquivos_locais_pasta,
     processar_arquivos_fila,
     recalcular_validacoes_cid,
-    exportar_excel_completo
+    exportar_excel_completo,
+    obter_nominal_fe_json,
+    obter_nominal_fr_json,
+    executar_extracao_bi_fr,
+    obter_unidades_auditadas_cid,
+    gerar_exportacao_auditoria_cids,
+    resolver_arquivo_ou_zip,
+    extrair_e_identificar_pacote_zip
 )
 
 bp = Blueprint("fila_espera", __name__, url_prefix="/fila_espera")
+
+executor_extracao_fr = ThreadPoolExecutor(max_workers=1)
+evento_cancelar_fr = threading.Event()
+status_extracao_fr = {
+    "em_andamento": False,
+    "concluido": False,
+    "cancelado": False,
+    "progresso": "",
+    "porcentagem": 0,
+    "logs": [],
+    "total_fr": 0,
+    "erro": None
+}
+
+
+def worker_extracao_fr(usuario, senha, relatorio_opcao):
+    global status_extracao_fr, evento_cancelar_fr
+    evento_cancelar_fr.clear()
+    status_extracao_fr["em_andamento"] = True
+    status_extracao_fr["concluido"] = False
+    status_extracao_fr["cancelado"] = False
+    status_extracao_fr["progresso"] = "Iniciando robô de extração..."
+    status_extracao_fr["porcentagem"] = 5
+    status_extracao_fr["logs"] = []
+    status_extracao_fr["erro"] = None
+
+    def callback(msg, pct):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        status_extracao_fr["logs"].append(f"[{timestamp}] {msg}")
+        status_extracao_fr["progresso"] = msg
+        if pct is not None:
+            status_extracao_fr["porcentagem"] = pct
+
+    resumo, erro = executar_extracao_bi_fr(
+        usuario=usuario,
+        senha=senha,
+        relatorio_opcao=relatorio_opcao,
+        callback_status=callback,
+        cancel_event=evento_cancelar_fr
+    )
+
+    status_extracao_fr["em_andamento"] = False
+    status_extracao_fr["concluido"] = True
+
+    if evento_cancelar_fr.is_set():
+        status_extracao_fr["cancelado"] = True
+        status_extracao_fr["progresso"] = "Extração cancelada pelo usuário."
+    elif erro:
+        status_extracao_fr["erro"] = erro
+        status_extracao_fr["progresso"] = f"Erro: {erro}"
+    else:
+        status_extracao_fr["total_fr"] = resumo.get("total_fr", 0) if resumo else 0
+        status_extracao_fr["porcentagem"] = 100
+        status_extracao_fr["progresso"] = "Extração e substituição concluídas com sucesso!"
 
 
 @bp.before_app_request
@@ -50,6 +114,9 @@ def index():
         status_cid_filtro=status_cid_filtro
     )
 
+    # Carregar lista de unidades com linhas auditadas para o modal de exportação por unidade
+    unidades_auditadas = obter_unidades_auditadas_cid()
+
     return render_template(
         "fila_espera/index.html",
         metricas=metricas,
@@ -60,7 +127,8 @@ def index():
         status_cid_selecionado=status_cid_filtro,
         aba_ativa=aba_ativa,
         resumo_fe=resumo_fe,
-        resumo_fr=resumo_fr
+        resumo_fr=resumo_fr,
+        unidades_auditadas=unidades_auditadas
     )
 
 
@@ -297,17 +365,88 @@ def dados_nominal_fr():
     })
 
 
+@bp.route("/dados_nominal_fe_json")
+def dados_nominal_fe_json():
+    """Retorna todos os registros da Fila de Espera Nominal para o DataTable client-side com Excel Filter."""
+    estab_filtro = request.args.get("estabelecimento", "").strip()
+    espec_filtro = request.args.get("especialidade", "").strip()
+    status_cid_filtro = request.args.get("status_cid", "").strip()
+    return jsonify(obter_nominal_fe_json(estab_filtro, espec_filtro, status_cid_filtro))
+
+
+@bp.route("/dados_nominal_fr_json")
+def dados_nominal_fr_json():
+    """Retorna todos os registros da Fila do Regulador Nominal para o DataTable client-side com Excel Filter."""
+    estab_filtro = request.args.get("estabelecimento", "").strip()
+    espec_filtro = request.args.get("especialidade", "").strip()
+    status_cid_filtro = request.args.get("status_cid", "").strip()
+    return jsonify(obter_nominal_fr_json(estab_filtro, espec_filtro, status_cid_filtro))
+
+
+@bp.route("/extracao")
+def tela_extracao():
+    """Tela de extração automatizada de relatórios do BI e upload manual com substituição total."""
+    init_db()
+    metricas = obter_metricas_cards()
+    return render_template("fila_espera/extracao.html", metricas=metricas)
+
+
+@bp.route("/iniciar_extracao", methods=["POST"])
+def iniciar_extracao():
+    """Dispara a extração em segundo plano dos relatórios FR-03 e FR-04 via Playwright."""
+    global status_extracao_fr
+    if status_extracao_fr.get("em_andamento", False):
+        return jsonify({"erro": "Já existe uma extração em andamento."}), 400
+
+    if request.is_json:
+        data = request.get_json() or {}
+        usuario = data.get("usuario", "").strip()
+        senha = data.get("senha", "").strip()
+        relatorio = data.get("relatorio", "FR_TODOS").strip()
+    else:
+        usuario = request.form.get("usuario", "").strip()
+        senha = request.form.get("senha", "").strip()
+        relatorio = request.form.get("relatorio", "FR_TODOS").strip()
+
+    if not usuario or not senha:
+        return jsonify({"erro": "Informe o Usuário e Senha corporativos do BI (SIGA Saúde / Prodam)."}), 400
+
+    executor_extracao_fr.submit(worker_extracao_fr, usuario, senha, relatorio)
+    return jsonify({"mensagem": "Extração iniciada com sucesso!", "status": "em_andamento"}), 200
+
+
+@bp.route("/status_extracao")
+def status_extracao_route():
+    """Consulta o progresso e logs da extração em segundo plano."""
+    return jsonify(status_extracao_fr)
+
+
+@bp.route("/cancelar_extracao", methods=["POST"])
+def cancelar_extracao_route():
+    """Interrompe a execução do robô de extração do BI."""
+    global evento_cancelar_fr, status_extracao_fr
+    if not status_extracao_fr.get("em_andamento", False):
+        return jsonify({"mensagem": "Nenhuma extração em andamento."}), 200
+
+    evento_cancelar_fr.set()
+    status_extracao_fr["cancelado"] = True
+    status_extracao_fr["em_andamento"] = False
+    status_extracao_fr["concluido"] = True
+    status_extracao_fr["progresso"] = "Extração cancelada pelo usuário."
+    return jsonify({"mensagem": "Cancelamento solicitado com sucesso."}), 200
+
+
+@bp.route("/upload_manual", methods=["POST"])
 @bp.route("/importar", methods=["POST"])
-@admin_required
-def importar_arquivos():
-    """Recebe upload dos 3 arquivos (SIGA, FR-03 e FR-04) e processa."""
+def upload_manual():
+    """Recebe upload dos arquivos e substitui integralmente os registros anteriores. Aceita .CSV, .TXT e .ZIP."""
     siga_file = request.files.get("arquivo_siga")
     fr03_file = request.files.get("arquivo_fr03")
     fr04_file = request.files.get("arquivo_fr04")
 
-    if not (siga_file or fr03_file):
-        flash("Selecione pelo menos o arquivo SIGA ou os arquivos FR-03 e FR-04.", "warning")
-        return redirect(url_for("fila_espera.index"))
+    if not (siga_file or fr03_file or fr04_file):
+        flash("Selecione pelo menos o arquivo SIGA (.csv/.zip) ou os arquivos da regulação para upload.", "warning")
+        return redirect(url_for("fila_espera.tela_extracao"))
 
     upload_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "uploads_fila_espera")
     os.makedirs(upload_dir, exist_ok=True)
@@ -315,31 +454,70 @@ def importar_arquivos():
     path_siga = None
     path_fr03 = None
     path_fr04 = None
+    nome_siga = None
+    nome_fr03 = None
+    nome_fr04 = None
 
     if siga_file and siga_file.filename:
-        path_siga = os.path.join(upload_dir, secure_filename(siga_file.filename))
+        nome_siga = secure_filename(siga_file.filename)
+        path_siga = os.path.join(upload_dir, nome_siga)
         siga_file.save(path_siga)
 
     if fr03_file and fr03_file.filename:
-        path_fr03 = os.path.join(upload_dir, secure_filename(fr03_file.filename))
+        nome_fr03 = secure_filename(fr03_file.filename)
+        path_fr03 = os.path.join(upload_dir, nome_fr03)
         fr03_file.save(path_fr03)
 
     if fr04_file and fr04_file.filename:
-        path_fr04 = os.path.join(upload_dir, secure_filename(fr04_file.filename))
+        nome_fr04 = secure_filename(fr04_file.filename)
+        path_fr04 = os.path.join(upload_dir, nome_fr04)
         fr04_file.save(path_fr04)
+
+    # 1. Caso especial: Um arquivo .ZIP foi enviado no campo SIGA e contém múltiplos relatórios (SIGA e/ou FR-03/FR-04)
+    if path_siga and (path_siga.lower().endswith(".zip") or zipfile.is_zipfile(path_siga)):
+        pacote = extrair_e_identificar_pacote_zip(path_siga, upload_dir)
+        if pacote:
+            if pacote["siga_path"]:
+                path_siga = pacote["siga_path"]
+                nome_siga = pacote["siga_nome"]
+            if not path_fr03 and pacote["fr03_path"]:
+                path_fr03 = pacote["fr03_path"]
+                nome_fr03 = pacote["fr03_nome"]
+            if not path_fr04 and pacote["fr04_path"]:
+                path_fr04 = pacote["fr04_path"]
+                nome_fr04 = pacote["fr04_nome"]
+
+    # 2. Resolução individual de arquivos .ZIP caso tenham sido enviados separadamente
+    if path_siga and (path_siga.lower().endswith(".zip") or zipfile.is_zipfile(path_siga)):
+        p, n = resolver_arquivo_ou_zip(path_siga, upload_dir, tipo_esperado="siga")
+        if p:
+            path_siga = p
+            nome_siga = n
+
+    if path_fr03 and (path_fr03.lower().endswith(".zip") or zipfile.is_zipfile(path_fr03)):
+        p, n = resolver_arquivo_ou_zip(path_fr03, upload_dir, tipo_esperado="fr03")
+        if p:
+            path_fr03 = p
+            nome_fr03 = n
+
+    if path_fr04 and (path_fr04.lower().endswith(".zip") or zipfile.is_zipfile(path_fr04)):
+        p, n = resolver_arquivo_ou_zip(path_fr04, upload_dir, tipo_esperado="fr04")
+        if p:
+            path_fr04 = p
+            nome_fr04 = n
 
     try:
         resumo = processar_arquivos_fila(
             path_siga, path_fr03, path_fr04,
-            nome_siga=siga_file.filename if siga_file else "Nenhum",
-            nome_fr03=fr03_file.filename if fr03_file else "Nenhum",
-            nome_fr04=fr04_file.filename if fr04_file else "Nenhum"
+            nome_siga=nome_siga,
+            nome_fr03=nome_fr03,
+            nome_fr04=nome_fr04
         )
-        flash(f"Ingestão concluída com sucesso! Fila de Espera: {resumo['total_fe']} registros | Fila do Regulador: {resumo['total_fr']} registros.", "success")
+        flash(f"Arquivos processados com sucesso! Registros anteriores substituídos. Fila de Espera: {resumo['total_fe']} | Fila do Regulador: {resumo['total_fr']}.", "success")
+        return redirect(url_for("fila_espera.index"))
     except Exception as e:
-        flash(f"Erro ao processar os arquivos da fila de espera: {e}", "danger")
-
-    return redirect(url_for("fila_espera.index"))
+        flash(f"Erro ao processar os arquivos da fila: {e}", "danger")
+        return redirect(url_for("fila_espera.tela_extracao"))
 
 
 @bp.route("/importar_pasta", methods=["POST"])
@@ -440,7 +618,7 @@ def excluir_cid(id):
 
 @bp.route("/cids/restaurar", methods=["POST"])
 def restaurar_cids():
-    """Restaura as regras padrão oficiais da portaria e variantes clínicas."""
+    """Restaura as 20 regras oficiais da tabela regulatória."""
     from services.fila_espera import CIDS_DEFINIDOS_PADRAO
     conn = get_db()
     with conn:
@@ -458,8 +636,8 @@ def restaurar_cids():
             ))
     conn.close()
 
-    recalcular_validacoes_cid()
-    flash("Configuração de CIDs restaurada com sucesso com todos os padrões oficiais e variantes clínicas!", "success")
+    fe_recalc, fr_recalc = recalcular_validacoes_cid()
+    flash(f"Configuração de CIDs restaurada com sucesso com as 20 regras oficiais! ({fe_recalc} linhas de Fila de Espera e {fr_recalc} de Regulação recalculadas).", "success")
     return redirect(url_for("fila_espera.gerenciar_cids"))
 
 
@@ -480,4 +658,36 @@ def exportar_excel():
         )
     except Exception as e:
         flash(f"Erro ao exportar a planilha: {e}", "danger")
+        return redirect(url_for("fila_espera.index"))
+
+
+@bp.route("/exportar_auditoria_cids", methods=["GET", "POST"])
+def exportar_auditoria_cids_route():
+    """
+    Gera e exporta planilhas com as linhas auditadas de CIDs (CORRETO ou INCORRETO):
+    - 1 unidade selecionada: download direto do arquivo .xlsx dessa unidade.
+    - 2 ou mais unidades (ou todas): download de arquivo .zip com 1 planilha .xlsx por unidade.
+    """
+    if request.method == "POST":
+        unidades = request.form.getlist("unidades")
+        status_filtro = request.form.get("status_filtro", "TODOS").strip()
+    else:
+        unidade_param = request.args.get("unidade", "").strip()
+        unidades = [unidade_param] if unidade_param else []
+        status_filtro = request.args.get("status_filtro", "TODOS").strip()
+
+    if not unidades:
+        flash("Selecione pelo menos uma unidade para exportação.", "warning")
+        return redirect(url_for("fila_espera.index"))
+
+    try:
+        buffer, nome_arquivo, mimetype = gerar_exportacao_auditoria_cids(unidades, status_filtro)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=nome_arquivo,
+            mimetype=mimetype
+        )
+    except Exception as e:
+        flash(f"Erro ao exportar auditoria de CIDs por unidade: {e}", "danger")
         return redirect(url_for("fila_espera.index"))

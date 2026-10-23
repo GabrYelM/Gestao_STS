@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}Extração BI e Ingestão de Fila de Espera - Gestão STS{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3 px-4 mb-5">
+    <!-- Cabeçalho e Voltar -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div>
+            <h2 class="h4 fw-bold text-primary mb-1">
+                <i class="bi bi-cloud-arrow-down me-2"></i>Extração BI e Ingestão de Relatórios da Regulação
+            </h2>
+            <p class="text-muted small mb-0">
+                Coleta automatizada dos relatórios FR-03 e FR-04 via robô Playwright ou upload manual direto com substituição completa no banco de dados.
+            </p>
+        </div>
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+            <a href="{{ url_for('fila_espera.index') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 shadow-sm">
+                <i class="bi bi-arrow-left me-1"></i> Voltar para a Fila de Espera
+            </a>
+        </div>
+    </div>
+
+    <!-- Cards de Resumo Rápido -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-primary border-4 rounded-3 h-100 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted small fw-semibold">Fila de Espera Atual</span>
+                        <h4 class="fw-bold text-primary mt-1 mb-0">{{ "{:,}".format(metricas.total_fe).replace(',', '.') }}</h4>
+                        <span class="text-muted" style="font-size: 0.75rem;">Pacientes Ativos</span>
+                    </div>
+                    <div class="fs-2 text-primary-subtle"><i class="bi bi-people-fill"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-success border-4 rounded-3 h-100 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted small fw-semibold">Fila do Regulador Atual</span>
+                        <h4 class="fw-bold text-success mt-1 mb-0">{{ "{:,}".format(metricas.total_fr).replace(',', '.') }}</h4>
+                        <span class="text-muted" style="font-size: 0.75rem;">Regulação Pendente</span>
+                    </div>
+                    <div class="fs-2 text-success-subtle"><i class="bi bi-person-lines-fill"></i></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 border-start border-warning border-4 rounded-3 h-100 bg-white p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted small fw-semibold">Regra de Substituição</span>
+                        <h6 class="fw-bold text-warning mt-1 mb-0">Substituição Completa</h6>
+                        <span class="text-muted" style="font-size: 0.75rem;">Expurgo de registros antigos sem acúmulo</span>
+                    </div>
+                    <div class="fs-2 text-warning-subtle"><i class="bi bi-arrow-repeat"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Coluna Esquerda: Robô de Extração do BI (SIGA Saúde) -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-header bg-primary text-white py-3 rounded-top-4 d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 fs-6 fw-bold">
+                        <i class="bi bi-robot me-2"></i>Robô de Extração Automática do BI (SIGA Saúde)
+                    </h5>
+                    <span class="badge bg-light text-primary fw-semibold">Playwright</span>
+                </div>
+                <div class="card-body p-4 bg-white">
+                    <p class="text-muted small mb-3">
+                        O robô autônomo conecta-se ao portal do <strong>SIGA Saúde / BI</strong>, aplica os filtros territoriais da <strong>STS Penha</strong> e exporta os relatórios de regulação, substituindo os dados existentes no sistema de forma transparente.
+                    </p>
+
+                    <!-- Seletor do Relatório -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">Relatório da Regulação a Coletar</label>
+                        <select id="relatorio-bi" class="form-select form-select-sm" required>
+                            <option value="FR_TODOS" selected>Carga Completa Regulação (FR-03 + FR-04)</option>
+                            <option value="FR_03">FR-03 - Lista Nominal de Pacientes na Fila da Regulação com Motivo</option>
+                            <option value="FR_04">FR-04 - Lista Nominal de Pacientes Devolvidos e Reinseridos na Fila do Regulador</option>
+                        </select>
+                        <small class="text-muted" style="font-size: 0.72rem;">A opção recomendada é a Carga Completa, que cruza o motivo do FR-03 com a situação do FR-04.</small>
+                    </div>
+
+                    <!-- Credenciais Corporativas -->
+                    <div class="p-3 border rounded-3 bg-light mb-3">
+                        <label class="form-label fw-bold small text-secondary mb-2">
+                            <i class="bi bi-person-badge text-primary me-1"></i>Credenciais de Acesso ao BI (SIGA Saúde / Prodam)
+                        </label>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label for="usuario-bi" class="form-label small text-muted mb-1">Usuário de Rede</label>
+                                <input type="text" id="usuario-bi" class="form-control form-control-sm" placeholder="ex: d123456" required autocomplete="username">
+                            </div>
+                            <div class="col-sm-6">
+                                <label for="senha-bi" class="form-label small text-muted mb-1">Senha de Rede</label>
+                                <input type="password" id="senha-bi" class="form-control form-control-sm" placeholder="Senha do portal" required autocomplete="current-password">
+                            </div>
+                        </div>
+                        <div class="mt-2 text-muted" style="font-size: 0.72rem;">
+                            <i class="bi bi-shield-check text-success me-1"></i>Credenciais transmitidas em sessão volátil ao robô e nunca salvas em disco.
+                        </div>
+                    </div>
+
+                    <!-- Botões de Ação do Robô -->
+                    <div class="d-grid gap-2 mb-3">
+                        <button type="button" class="btn btn-primary fw-semibold shadow-sm" id="btn-iniciar-robo">
+                            <span id="spinner-robo" class="spinner-border spinner-border-sm d-none me-2" role="status" aria-hidden="true"></span>
+                            <span id="texto-botao-robo"><i class="bi bi-play-circle me-1"></i> Iniciar Extração do BI</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm fw-semibold d-none" id="btn-cancelar-robo">
+                            <i class="bi bi-stop-circle me-1"></i> Cancelar Extração
+                        </button>
+                    </div>
+
+                    <!-- Painel de Progresso e Logs em Tempo Real -->
+                    <div id="painel-status-robo" class="mt-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold text-secondary" id="label-progresso">Status da Execução</span>
+                            <span class="small fw-bold text-primary" id="pct-progresso">0%</span>
+                        </div>
+                        <div class="progress mb-3" style="height: 10px;">
+                            <div id="barra-progresso-robo" class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%;"></div>
+                        </div>
+
+                        <label class="form-label small fw-bold text-secondary mb-1">
+                            <i class="bi bi-terminal me-1"></i>Terminal de Logs em Tempo Real
+                        </label>
+                        <div id="terminal-logs" class="bg-dark text-light p-3 rounded-3 font-monospace small" style="height: 160px; overflow-y: auto; font-size: 0.74rem; line-height: 1.4;">
+                            <span class="text-muted">// Aguardando início da execução do robô...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coluna Direita: Upload Manual e Substituição Direta de Arquivos -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 rounded-4 h-100">
+                <div class="card-header bg-dark text-white py-3 rounded-top-4 d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0 fs-6 fw-bold">
+                        <i class="bi bi-cloud-arrow-up-fill me-2 text-warning"></i>Upload Manual e Substituição Direta
+                    </h5>
+                    <span class="badge bg-warning text-dark fw-semibold">Substituição Total</span>
+                </div>
+                <div class="card-body p-4 bg-white">
+                    <div class="alert alert-warning border-0 shadow-sm py-2 px-3 small mb-2">
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                        <strong>Atenção à Substituição:</strong> Todos os arquivos enviados substituem integralmente os dados anteriores da fila correspondente no banco SQLite, garantindo que o sistema não acumule registros defasados.
+                    </div>
+
+                    <div class="alert alert-primary border-0 shadow-sm py-2 px-3 small mb-3 d-flex align-items-center">
+                        <i class="bi bi-file-earmark-zip-fill fs-5 text-primary me-2"></i>
+                        <div>
+                            <strong>Suporte a Arquivos Compactados (.ZIP):</strong> Os arquivos da fila de espera e regulação podem ser enviados em formato <code>.CSV</code>, <code>.TXT</code> ou compactados em <code>.ZIP</code>. Se você tiver um único arquivo <code>.ZIP</code> contendo os relatórios (SIGA, FR-03 e/ou FR-04), basta enviá-lo no primeiro campo que o sistema extrai e identifica os arquivos automaticamente.
+                        </div>
+                    </div>
+
+                    <p class="text-muted small mb-3">
+                        Selecione os arquivos abaixo para importação imediata:
+                    </p>
+
+                    <form action="{{ url_for('fila_espera.upload_manual') }}" method="POST" enctype="multipart/form-data">
+                        <!-- Arquivo SIGA -->
+                        <div class="mb-3 p-3 border rounded-3 bg-light">
+                            <label class="form-label fw-bold small text-primary mb-1 d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-file-earmark-spreadsheet me-1"></i>1. Arquivo SIGA (Fila de Espera - Pacientes Ativos)</span>
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace">.CSV, .TXT ou .ZIP</span>
+                            </label>
+                            <input type="file" name="arquivo_siga" class="form-control form-control-sm" accept=".csv,.txt,.zip">
+                            <div class="form-text" style="font-size: 0.72rem;">
+                                Ex: <code>SIGA_-_Fila_de_Espera_...csv</code> ou arquivo compactado <code>.zip</code>. Substitui os registros nominais da Fila de Espera.
+                            </div>
+                        </div>
+
+                        <!-- Arquivo FR-03 -->
+                        <div class="mb-3 p-3 border rounded-3 bg-light">
+                            <label class="form-label fw-bold small text-success mb-1 d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-file-earmark-ruled me-1"></i>2. Arquivo FR-03 (Lista Nominal de Pacientes com Motivo)</span>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace">.CSV, .TXT ou .ZIP</span>
+                            </label>
+                            <input type="file" name="arquivo_fr03" class="form-control form-control-sm" accept=".csv,.txt,.zip">
+                            <div class="form-text" style="font-size: 0.72rem;">
+                                Ex: <code>FR-03 Lista Nominal de Pacientes na Fila da Regulação...csv</code> ou <code>.zip</code>. Base nominal da regulação.
+                            </div>
+                        </div>
+
+                        <!-- Arquivo FR-04 -->
+                        <div class="mb-3 p-3 border rounded-3 bg-light">
+                            <label class="form-label fw-bold small text-info mb-1 d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-file-earmark-check me-1"></i>3. Arquivo FR-04 (Devolvidos e Reinseridos no Regulador)</span>
+                                <span class="badge bg-info-subtle text-info border border-info-subtle font-monospace">.CSV, .TXT ou .ZIP</span>
+                            </label>
+                            <input type="file" name="arquivo_fr04" class="form-control form-control-sm" accept=".csv,.txt,.zip">
+                            <div class="form-text" style="font-size: 0.72rem;">
+                                Ex: <code>FR-04 Lista Nominal de Pacientes Devolvidos e Reinseridos...csv</code> ou <code>.zip</code>. Cruzamento da situação de regulação.
+                            </div>
+                        </div>
+
+                        <div class="d-grid mt-4">
+                            <button type="submit" class="btn btn-success fw-bold shadow-sm py-2">
+                                <i class="bi bi-upload me-1"></i> Subir Arquivo(s) e Substituir Dados
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Seção Inferior: Regras e Parâmetros Automatizados -->
+        <div class="col-12 mt-2">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-light text-dark py-3 fw-bold border-bottom">
+                    <i class="bi bi-info-circle me-2 text-primary"></i>Parâmetros e Regras Aplicadas pelo Robô na Regulação
+                </div>
+                <div class="card-body p-4 bg-white rounded-bottom-4">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 30%;">Parâmetro SSRS no BI</th>
+                                    <th style="width: 40%;">Valor Aplicado Automaticamente</th>
+                                    <th>Finalidade</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="fw-semibold">Hierarquia 1 Nível 2 Solicitante</td>
+                                    <td><span class="badge bg-primary-subtle text-primary border border-primary-subtle">COORD REGIONAL DE SAUDE SUDESTE</span></td>
+                                    <td>Filtro da Coordenadoria Regional Sudeste</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">Hierarquia 1 Nível 3 Solicitante</td>
+                                    <td><span class="badge bg-success-subtle text-success border border-success-subtle">SUDESTE - STS PENHA</span></td>
+                                    <td>Filtro territorial exclusivo da Supervisão Técnica de Saúde Penha</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">Estabelecimento / Especialidade / Procedimento</td>
+                                    <td><code>All</code> (Todas as Unidades e Especialidades)</td>
+                                    <td>Abrange todas as UBS, AE, CEOs e especialidades do território</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">Regulador Solicitado</td>
+                                    <td><code>Regulador Central, Regulador Regional, OUTROS</code></td>
+                                    <td>Abrangência total dos níveis de regulação</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-semibold">Destino no Banco SQLite</td>
+                                    <td>Tabela <code>fila_regulador_nominal</code> com cruzamento de CBO e CID</td>
+                                    <td>Substituição integral sem acúmulo de dados defasados</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script>
+$(document).ready(function() {
+    let intervaloStatus = null;
+
+    function atualizarTerminal(msg) {
+        const terminal = document.getElementById('terminal-logs');
+        const novaLinha = document.createElement('div');
+        novaLinha.textContent = msg;
+        terminal.appendChild(novaLinha);
+        terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function consultarStatus() {
+        $.getJSON("{{ url_for('fila_espera.status_extracao_route') }}", function(data) {
+            if (!data) return;
+
+            // Atualiza barra e porcentagem
+            const pct = data.porcentagem || (data.em_andamento ? 45 : 0);
+            $('#barra-progresso-robo').css('width', pct + '%');
+            $('#pct-progresso').text(pct + '%');
+            $('#label-progresso').text(data.progresso || 'Executando...');
+
+            // Atualiza logs no terminal
+            if (data.logs && data.logs.length > 0) {
+                const terminal = document.getElementById('terminal-logs');
+                terminal.innerHTML = '';
+                data.logs.forEach(function(l) {
+                    const linha = document.createElement('div');
+                    linha.textContent = l;
+                    terminal.appendChild(linha);
+                });
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+
+            // Conclusão com sucesso
+            if (data.concluido && !data.em_andamento) {
+                clearInterval(intervaloStatus);
+                intervaloStatus = null;
+
+                $('#btn-iniciar-robo').prop('disabled', false);
+                $('#spinner-robo').addClass('d-none');
+                $('#btn-cancelar-robo').addClass('d-none');
+                $('#barra-progresso-robo').removeClass('progress-bar-animated');
+
+                if (data.cancelado) {
+                    $('#barra-progresso-robo').addClass('bg-warning').removeClass('bg-primary bg-danger bg-success');
+                    atualizarTerminal("// Processo cancelado pelo usuário.");
+                } else if (data.erro) {
+                    $('#barra-progresso-robo').addClass('bg-danger').removeClass('bg-primary bg-warning bg-success');
+                    atualizarTerminal("// Erro na execução: " + data.erro);
+                    alert("A extração foi interrompida com erro: " + data.erro);
+                } else {
+                    $('#barra-progresso-robo').addClass('bg-success').removeClass('bg-primary bg-danger bg-warning');
+                    $('#pct-progresso').text('100%');
+                    atualizarTerminal("// Extração e substituição concluídas com sucesso!");
+                    
+                    if (confirm("Extração concluída com sucesso! Deseja visualizar as tabelas atualizadas agora?")) {
+                        window.location.href = "{{ url_for('fila_espera.index') }}";
+                    }
+                }
+            }
+        });
+    }
+
+    // Iniciar robô
+    $('#btn-iniciar-robo').on('click', function() {
+        const usuario = $('#usuario-bi').val().trim();
+        const senha = $('#senha-bi').val().trim();
+        const relatorio = $('#relatorio-bi').val();
+
+        if (!usuario || !senha) {
+            alert("Por favor, preencha o Usuário e a Senha corporativos do BI.");
+            return;
+        }
+
+        $('#btn-iniciar-robo').prop('disabled', true);
+        $('#spinner-robo').removeClass('d-none');
+        $('#btn-cancelar-robo').removeClass('d-none');
+        $('#barra-progresso-robo').removeClass('bg-danger bg-warning bg-success').addClass('bg-primary progress-bar-animated').css('width', '5%');
+        $('#pct-progresso').text('5%');
+        $('#label-progresso').text('Iniciando robô...');
+        $('#terminal-logs').html('<div class="text-info">// Disparando execução autônoma do robô Playwright...</div>');
+
+        $.ajax({
+            url: "{{ url_for('fila_espera.iniciar_extracao') }}",
+            type: "POST",
+            contentType: "application/json",
+            data: JSON.stringify({
+                usuario: usuario,
+                senha: senha,
+                relatorio: relatorio
+            }),
+            success: function(resp) {
+                atualizarTerminal("// Robô iniciado com sucesso em segundo plano.");
+                if (intervaloStatus) clearInterval(intervaloStatus);
+                intervaloStatus = setInterval(consultarStatus, 1500);
+            },
+            error: function(err) {
+                $('#btn-iniciar-robo').prop('disabled', false);
+                $('#spinner-robo').addClass('d-none');
+                $('#btn-cancelar-robo').addClass('d-none');
+                const msg = (err.responseJSON && err.responseJSON.erro) ? err.responseJSON.erro : "Falha ao iniciar robô.";
+                atualizarTerminal("// Erro ao iniciar: " + msg);
+                alert(msg);
+            }
+        });
+    });
+
+    // Cancelar robô
+    $('#btn-cancelar-robo').on('click', function() {
+        if (!confirm("Deseja realmente cancelar a extração em andamento?")) return;
+        $('#btn-cancelar-robo').prop('disabled', true).text("Cancelando...");
+
+        $.post("{{ url_for('fila_espera.cancelar_extracao_route') }}", function(resp) {
+            atualizarTerminal("// Cancelamento solicitado. Aguardando liberação do navegador...");
+        });
+    });
+});
+</script>
+{% endblock %}
