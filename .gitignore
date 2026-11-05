@@ -28,6 +28,7 @@ contratos/uploads_tmp/
 *.db-journal
 *.sqlite
 *.sqlite3
+!contratos/stspe_template.db
 
 # Arquivos Brutos e Dados Volumosos
 ARQUIVOS ORIGINAIS/

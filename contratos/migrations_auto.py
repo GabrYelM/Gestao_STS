@@ -1745,9 +1745,22 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
 
     # 3. Cadastro dos Indicadores M (Anexo III - RAST)
     port_row = conn.execute("SELECT id FROM portarias ORDER BY id LIMIT 1").fetchone()
-    portaria_id = (port_row[0] if isinstance(port_row, (tuple, list)) else port_row["id"]) if port_row else 1
+    if not port_row:
+        cur_p = conn.execute(
+            "INSERT INTO portarias (numero, periodo_inicio, periodo_fim) VALUES ('Anexo II RAST', '2026-01-01', '2026-12-31')"
+        )
+        portaria_id = cur_p.lastrowid
+    else:
+        portaria_id = (port_row[0] if isinstance(port_row, (tuple, list)) else port_row["id"])
+
     at02_row = conn.execute("SELECT id FROM fontes_dados WHERE nome = 'AT02' LIMIT 1").fetchone()
-    at02_id = (at02_row[0] if isinstance(at02_row, (tuple, list)) else at02_row["id"]) if at02_row else 1
+    if not at02_row:
+        cur_f = conn.execute(
+            "INSERT INTO fontes_dados (nome, descricao, granularidade, formato_arquivo) VALUES ('AT02', 'SIGA (AT-02)', 'procedimento', 'csv')"
+        )
+        at02_id = cur_f.lastrowid
+    else:
+        at02_id = (at02_row[0] if isinstance(at02_row, (tuple, list)) else at02_row["id"])
 
     indicadores_m = [
         ("M13", "HD, AE, AMA-E - Telessaúde (Médicos)", "MONITORAMENTO", "ATENCAO_ESPECIALIZADA", "HOSPITAL_DIA", "SIGA (AT-02 / AT-51)", at02_id, 1, 0),
@@ -1800,6 +1813,8 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
         return cur.lastrowid
 
     def _garantir_cbo(iid, cbo_cod=None, curinga=0, sg_id=None):
+        if cbo_cod:
+            conn.execute("INSERT OR IGNORE INTO cbo (codigo, nome_categoria) VALUES (?, ?)", (cbo_cod, cbo_cod))
         if sg_id is None:
             r = conn.execute(
                 """SELECT 1 FROM indicador_cbo
@@ -1844,6 +1859,7 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
     # 3.1 M13 - Telessaúde (Médicos)
     m13_id = ind_ids["M13"]
     _garantir_cbo(m13_id, None, 1, None)
+    conn.execute("INSERT OR IGNORE INTO cbo (codigo, nome_categoria) VALUES ('223505', 'Enfermeiro')")
     conn.execute(
         "INSERT OR IGNORE INTO indicador_cbo_excecao (indicador_id, cbo_codigo) VALUES (?, '223505')",
         (m13_id,),
@@ -1921,21 +1937,23 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
     )
     if _tabela_existe(conn, "estabelecimento_tipo_servico"):
         for eid_sadt in (6, 53):
-            ex_sadt = conn.execute(
-                "SELECT 1 FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ? AND tipo_servico = 'SADT'",
-                (eid_sadt,),
-            ).fetchone()
-            if not ex_sadt:
-                conn.execute(
-                    "INSERT INTO estabelecimento_tipo_servico (estabelecimento_id, tipo_servico) VALUES (?, 'SADT')",
+            if conn.execute("SELECT 1 FROM estabelecimentos WHERE id = ?", (eid_sadt,)).fetchone():
+                ex_sadt = conn.execute(
+                    "SELECT 1 FROM estabelecimento_tipo_servico WHERE estabelecimento_id = ? AND tipo_servico = 'SADT'",
                     (eid_sadt,),
-                )
+                ).fetchone()
+                if not ex_sadt:
+                    conn.execute(
+                        "INSERT INTO estabelecimento_tipo_servico (estabelecimento_id, tipo_servico) VALUES (?, 'SADT')",
+                        (eid_sadt,),
+                    )
     if _tabela_existe(conn, "indicador_estabelecimento_excecao"):
         for eid_exc in (6, 53):
-            conn.execute(
-                "INSERT OR IGNORE INTO indicador_estabelecimento_excecao (indicador_id, estabelecimento_id) VALUES (?, ?)",
-                (m38_id, eid_exc),
-            )
+            if conn.execute("SELECT 1 FROM estabelecimentos WHERE id = ?", (eid_exc,)).fetchone():
+                conn.execute(
+                    "INSERT OR IGNORE INTO indicador_estabelecimento_excecao (indicador_id, estabelecimento_id) VALUES (?, ?)",
+                    (m38_id, eid_exc),
+                )
     if _tabela_existe(conn, "metas"):
         conn.execute(
             "DELETE FROM metas WHERE estabelecimento_id IN (6, 53) AND (indicador_id = ? OR (indicador_id = 44 AND subgrupo_id IS NULL))",
@@ -2072,6 +2090,16 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
             ("6.01.22", "DIAGNÓSTICO EM GINECOLOGIA-OBSTETRÍCIA", "APOIO DIAGNÓSTICO", "P44", None, 44, 32),
         ]
         for cp, prod, serv, cod_ind, cbo_cod, iid, sg_id in mapeamentos_ws:
+            real_iid = iid
+            real_sg_id = sg_id
+            if real_iid and not conn.execute("SELECT 1 FROM indicadores WHERE id = ?", (real_iid,)).fetchone():
+                real_iid = None
+                real_sg_id = None
+            elif real_sg_id and not conn.execute("SELECT 1 FROM indicador_subgrupo WHERE id = ?", (real_sg_id,)).fetchone():
+                real_sg_id = None
+            if cbo_cod:
+                conn.execute("INSERT OR IGNORE INTO cbo (codigo, nome_categoria) VALUES (?, ?)", (cbo_cod, cbo_cod))
+
             ex = conn.execute(
                 "SELECT id FROM de_para_websaass_indicador WHERE cod_producao = ? LIMIT 1",
                 (cp,),
@@ -2082,14 +2110,14 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
                     """UPDATE de_para_websaass_indicador
                        SET producao = ?, servico = ?, codigo_indicador = ?, cbo_codigo = ?, indicador_id = ?, subgrupo_id = ?
                        WHERE id = ?""",
-                    (prod, serv, cod_ind, cbo_cod, iid, sg_id, ex_id),
+                    (prod, serv, cod_ind, cbo_cod, real_iid, real_sg_id, ex_id),
                 )
             else:
                 conn.execute(
                     """INSERT INTO de_para_websaass_indicador
                        (cod_producao, producao, servico, codigo_indicador, cbo_codigo, indicador_id, subgrupo_id)
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (cp, prod, serv, cod_ind, cbo_cod, iid, sg_id),
+                    (cp, prod, serv, cod_ind, cbo_cod, real_iid, real_sg_id),
                 )
 
     # 5. Sincronizar profissionais RT (SICAP) e PMMB (SCNES)
@@ -2117,6 +2145,8 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
             ("Ruben Alfonso Cortes Oduardo", "700508922668156", "225170", 65, 0, None, 1),
         ]
         for p_nome, p_cns, p_cbo, p_est, p_rt, p_eq, p_pmmb in novos_profs:
+            if not conn.execute("SELECT 1 FROM estabelecimentos WHERE id = ?", (p_est,)).fetchone():
+                continue
             ex_p = conn.execute(
                 "SELECT id FROM profissionais WHERE estabelecimento_id = ? AND (cns = ? OR lower(nome) = lower(?)) LIMIT 1",
                 (p_est, p_cns, p_nome),

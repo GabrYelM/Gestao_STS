@@ -36,11 +36,18 @@ def close_db(e=None):
 
 
 def init_db_command_impl(app):
-    """Cria o banco a partir do schema.sql se ele ainda não existir."""
+    """Cria o banco a partir do template pré-configurado ou schema.sql se ele ainda não existir."""
     db_path = app.config.get("STSPE_DATABASE_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "stspe.db"))
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stspe_template.db")
     schema_path = os.path.join(os.path.dirname(__file__), "schema.sql")
 
     if os.path.exists(db_path):
+        return
+
+    # Se existe o template pré-configurado (com portarias, estabelecimentos e indicadores da STS Penha), copia diretamente
+    if os.path.exists(template_path):
+        import shutil
+        shutil.copy2(template_path, db_path)
         return
 
     conn = sqlite3.connect(db_path)

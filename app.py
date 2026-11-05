@@ -51,7 +51,9 @@ try:
     import contratos
     contratos.init_app(app)
 except Exception as e:
-    print(f"[app] Aviso ao inicializar módulo de contratos: {e}")
+    import traceback
+    print(f"[app] Erro ao inicializar módulo de contratos: {e}")
+    traceback.print_exc()
 
 # Inicialização do Módulo de Fila de Espera e Regulação
 try:
