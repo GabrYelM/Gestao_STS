@@ -2199,6 +2199,38 @@ def detalhe_indicador(indicador_id):
     except Exception:
         profissionais_sugestoes = []
 
+    try:
+        vinculos_websaass = db.execute(
+            """SELECT dp.id, dp.cod_producao, dp.producao, dp.servico, dp.cbo_codigo,
+                      dp.subgrupo_id, sg.nome AS subgrupo_nome
+               FROM de_para_websaass_indicador dp
+               LEFT JOIN indicador_subgrupo sg ON sg.id = dp.subgrupo_id
+               WHERE dp.indicador_id = ?
+               ORDER BY dp.cod_producao, dp.servico, dp.id""",
+            (indicador_id,),
+        ).fetchall()
+    except Exception:
+        vinculos_websaass = []
+
+    try:
+        linhas_websaass_disponiveis = db.execute(
+            """SELECT DISTINCT s.cod_producao, s.producao, s.servico,
+                      (SELECT dp.codigo_indicador FROM de_para_websaass_indicador dp
+                       WHERE lower(trim(dp.cod_producao)) = lower(trim(s.cod_producao))
+                         AND dp.indicador_id IS NOT NULL
+                       LIMIT 1) AS vinculado_a
+               FROM staging_webssas s
+               WHERE s.cod_producao IS NOT NULL AND trim(s.cod_producao) != ''
+               ORDER BY (vinculado_a IS NOT NULL), s.cod_producao, s.servico"""
+        ).fetchall()
+    except Exception:
+        linhas_websaass_disponiveis = []
+
+    try:
+        cbos_lista_ws = db.execute("SELECT codigo, nome_categoria FROM cbo ORDER BY codigo").fetchall()
+    except Exception:
+        cbos_lista_ws = []
+
     tipos_equipe_cadastrados = [
         r["tipo_equipe"] for r in db.execute(
             "SELECT DISTINCT tipo_equipe FROM profissionais "
@@ -2317,6 +2349,9 @@ def detalhe_indicador(indicador_id):
         cbos_rel134=cbos_rel134,
         excecoes_profissional=excecoes_profissional,
         profissionais_sugestoes=profissionais_sugestoes,
+        vinculos_websaass=vinculos_websaass,
+        linhas_websaass_disponiveis=linhas_websaass_disponiveis,
+        cbos_lista_ws=cbos_lista_ws,
     )
 
 
@@ -2854,6 +2889,118 @@ def remover_excecao_profissional(indicador_id, excecao_id):
     sincronizar_apuracao_dinamica(db)
     flash("Exceção removida. Profissional volta a ser considerado na apuração deste indicador.", "sucesso")
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-cbos"))
+
+
+def _recalcular_websaass_todos_periodos(db):
+    from ..funcoes import calcular_webssas, _garantir_linhas_subgrupos, _normalizar_periodo
+    periodos_stg = [r[0] for r in db.execute("SELECT DISTINCT periodo FROM staging_webssas WHERE periodo IS NOT NULL").fetchall()]
+    for p in periodos_stg:
+        try:
+            calcular_webssas(db, p)
+            _garantir_linhas_subgrupos(db, _normalizar_periodo(p))
+        except Exception:
+            pass
+    db.commit()
+
+
+@bp.route("/indicadores/<int:indicador_id>/websaass/vincular", methods=["POST"])
+def add_vinculo_websaass(indicador_id):
+    db = get_db()
+    ind = db.execute("SELECT id, codigo FROM indicadores WHERE id = ?", (indicador_id,)).fetchone()
+    if not ind:
+        flash("Indicador não encontrado.", "erro")
+        return redirect(url_for("cadastros.lista_indicadores"))
+
+    cod_producao = (request.form.get("cod_producao") or "").strip()
+    producao = (request.form.get("producao") or "").strip()
+    servico = (request.form.get("servico") or "").strip() or None
+    cbo_codigo = (request.form.get("cbo_codigo") or "").strip() or None
+    subgrupo_id = request.form.get("subgrupo_id") or None
+    if subgrupo_id is not None and str(subgrupo_id).isdigit():
+        subgrupo_id = int(subgrupo_id)
+    else:
+        subgrupo_id = None
+
+    if not cod_producao and not producao:
+        flash("Informe o Código de Produção ou a Descrição da linha WebSaass.", "erro")
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-referencias"))
+
+    row = None
+    if cod_producao and servico:
+        row = db.execute(
+            """SELECT id FROM de_para_websaass_indicador
+               WHERE lower(trim(cod_producao)) = lower(trim(?))
+                 AND lower(trim(COALESCE(servico, ''))) = lower(trim(?))
+               LIMIT 1""",
+            (cod_producao, servico),
+        ).fetchone()
+    if not row and cod_producao and not servico:
+        row = db.execute(
+            """SELECT id FROM de_para_websaass_indicador
+               WHERE lower(trim(cod_producao)) = lower(trim(?))
+                 AND (servico IS NULL OR trim(servico) = '')
+               LIMIT 1""",
+            (cod_producao,),
+        ).fetchone()
+
+    if row:
+        db.execute(
+            """UPDATE de_para_websaass_indicador
+               SET indicador_id = ?, codigo_indicador = ?, subgrupo_id = ?, cbo_codigo = ?,
+                   producao = COALESCE(NULLIF(?, ''), producao),
+                   servico = COALESCE(?, servico)
+               WHERE id = ?""",
+            (indicador_id, ind["codigo"], subgrupo_id, cbo_codigo, producao, servico, row["id"]),
+        )
+    else:
+        db.execute(
+            """INSERT INTO de_para_websaass_indicador
+                   (cod_producao, producao, servico, codigo_indicador, cbo_codigo, indicador_id, subgrupo_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (cod_producao, producao, servico, ind["codigo"], cbo_codigo, indicador_id, subgrupo_id),
+        )
+    db.commit()
+    _recalcular_websaass_todos_periodos(db)
+    flash(f"Vínculo WebSaass '{cod_producao or producao}' associado ao indicador {ind['codigo']} com sucesso!", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-referencias"))
+
+
+@bp.route("/indicadores/<int:indicador_id>/websaass/<int:de_para_id>/editar", methods=["POST"])
+def editar_vinculo_websaass(indicador_id, de_para_id):
+    db = get_db()
+    cbo_codigo = (request.form.get("cbo_codigo") or "").strip() or None
+    subgrupo_id = request.form.get("subgrupo_id") or None
+    if subgrupo_id is not None and str(subgrupo_id).isdigit():
+        subgrupo_id = int(subgrupo_id)
+    else:
+        subgrupo_id = None
+    servico = (request.form.get("servico") or "").strip() or None
+
+    db.execute(
+        """UPDATE de_para_websaass_indicador
+           SET cbo_codigo = ?, subgrupo_id = ?, servico = ?
+           WHERE id = ? AND indicador_id = ?""",
+        (cbo_codigo, subgrupo_id, servico, de_para_id, indicador_id),
+    )
+    db.commit()
+    _recalcular_websaass_todos_periodos(db)
+    flash("Vínculo WebSaass atualizado com sucesso!", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-referencias"))
+
+
+@bp.route("/indicadores/<int:indicador_id>/websaass/<int:de_para_id>/desvincular", methods=["POST"])
+def remover_vinculo_websaass(indicador_id, de_para_id):
+    db = get_db()
+    db.execute(
+        """UPDATE de_para_websaass_indicador
+           SET indicador_id = NULL, codigo_indicador = NULL, subgrupo_id = NULL, cbo_codigo = NULL
+           WHERE id = ? AND indicador_id = ?""",
+        (de_para_id, indicador_id),
+    )
+    db.commit()
+    _recalcular_websaass_todos_periodos(db)
+    flash("Vínculo WebSaass removido deste indicador.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-referencias"))
 
 
 # ---------------------------------------------------------------------------

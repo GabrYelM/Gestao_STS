@@ -120,7 +120,7 @@
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="tab-referencias-btn" data-bs-toggle="tab" data-bs-target="#pane-referencias" type="button" role="tab" aria-controls="pane-referencias" aria-selected="false">
       <i class="fa-solid fa-arrows-split-up-and-left me-1"></i> De/Para & Regras
-      {% set total_regras = (vinculos_unidade|length if vinculos_unidade else 0) + (redirecionamentos_rel134|length if redirecionamentos_rel134 else 0) %}
+      {% set total_regras = (vinculos_websaass|length if vinculos_websaass else 0) + (vinculos_unidade|length if vinculos_unidade else 0) + (redirecionamentos_rel134|length if redirecionamentos_rel134 else 0) %}
       {% if total_regras > 0 %}
         <span class="badge bg-secondary ms-1">{{ total_regras }}</span>
       {% endif %}
@@ -738,9 +738,142 @@
   </div>
 
   <!-- ===================================================================
-       ABA 5: DE/PARA & REGRAS (Vínculos de Unidade de Referência)
+       ABA 5: DE/PARA & REGRAS (Vínculos WebSaass e Unidade de Referência)
        =================================================================== -->
   <div class="tab-pane fade" id="pane-referencias" role="tabpanel" aria-labelledby="tab-referencias-btn">
+
+    <!-- Vínculos com WebSaass (De/Para do Demonstrativo) -->
+    <div class="card" id="vinculos-websaass" style="margin-bottom:22px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:10px">
+        <div>
+          <h2 style="margin:0 0 4px"><i class="fa-solid fa-link me-2 text-primary"></i>Vínculos com WebSaass ({{ indicador.codigo }})</h2>
+          <p class="subtitulo-pagina" style="margin:0">
+            Gerencie diretamente quais linhas do Demonstrativo WebSaass (<code>cod_producao</code> / Serviço / Produção) pertencem a este indicador, com seu respectivo CBO/Regra e Subgrupo.
+          </p>
+        </div>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:12px;padding:6px 10px">
+          {{ vinculos_websaass|length if vinculos_websaass else 0 }} vínculo(s) ativo(s)
+        </span>
+      </div>
+
+      <!-- Formulário para adicionar vínculo WebSaass -->
+      <form method="post" action="{{ url_for('cadastros.add_vinculo_websaass', indicador_id=indicador.id) }}"
+            style="padding:12px;background:#f8fafc;border:1px solid var(--cor-borda);border-radius:var(--raio-sm);margin-bottom:14px">
+        <div style="margin-bottom:10px">
+          <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Selecionar linha já importada do WebSaass (preenchimento automático)</label>
+          <select id="select-linha-ws-disponivel" onchange="preencherCamposWebsaass(this)" style="width:100%;margin:0;font-size:12.5px">
+            <option value="">-- Escolha uma linha do WebSaass ou preencha manualmente abaixo --</option>
+            {% for lw in linhas_websaass_disponiveis %}
+            <option value="{{ lw.cod_producao }}|||{{ lw.producao or '' }}|||{{ lw.servico or '' }}">
+              [{{ lw.cod_producao }}] {{ lw.producao or '(sem descrição)' }} | Serviço: {{ lw.servico or '-' }}{% if lw.vinculado_a %} (vinculado a {{ lw.vinculado_a }}){% else %} [Sem vínculo]{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:130px 1.6fr 1.2fr 1fr {% if subgrupos %}1fr {% endif %}auto;gap:8px;align-items:end">
+          <div>
+            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Cód. Produção</label>
+            <input type="text" name="cod_producao" id="ws-input-cod" placeholder="Ex: 36.07.01" required style="width:100%;margin:0">
+          </div>
+          <div>
+            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Produção (Descrição)</label>
+            <input type="text" name="producao" id="ws-input-prod" placeholder="Descrição no WebSaass" style="width:100%;margin:0">
+          </div>
+          <div>
+            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Serviço (opcional)</label>
+            <input type="text" name="servico" id="ws-input-serv" placeholder="Deixe vazio p/ qualquer serviço" style="width:100%;margin:0">
+          </div>
+          <div>
+            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">CBO / Regra</label>
+            <input type="text" name="cbo_codigo" list="lista-cbos-ws" placeholder="Geral (vazio) ou CBO" style="width:100%;margin:0">
+            <datalist id="lista-cbos-ws">
+              {% for c in cbos_lista_ws %}
+              <option value="{{ c.codigo }}">{{ c.codigo }} - {{ c.nome_categoria }}</option>
+              {% endfor %}
+              <option value="223293_RT">223293_RT - Cirurgião Dentista ESF RT</option>
+              <option value="223208_RT">223208_RT - Cirurgião Dentista Tradicional RT</option>
+              <option value="225142_PMMB">225142_PMMB - Médico ESF PMMB</option>
+              <option value="225170_PMMB">225170_PMMB - Médico Generalista PMMB</option>
+            </datalist>
+          </div>
+          {% if subgrupos %}
+          <div>
+            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Subgrupo</label>
+            <select name="subgrupo_id" style="width:100%;margin:0">
+              <option value="">-- Nenhum --</option>
+              {% for sg in subgrupos %}
+              <option value="{{ sg.id }}">{{ sg.nome }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+          <div>
+            <button type="submit" class="btn-primary" style="margin:0;padding:7px 14px;white-space:nowrap">Vincular</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:110px">Cód. Prod.</th>
+              <th>Produção WebSaass</th>
+              <th>Serviço / CBO / Subgrupo</th>
+              <th style="width:95px;text-align:right">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for vw in vinculos_websaass %}
+            <tr>
+              <td><code>{{ vw.cod_producao or '-' }}</code></td>
+              <td style="font-size:12.5px">{{ vw.producao or '-' }}</td>
+              <td style="padding:4px 6px">
+                <form method="post" action="{{ url_for('cadastros.editar_vinculo_websaass', indicador_id=indicador.id, de_para_id=vw.id) }}" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+                  <input type="text" name="servico" value="{{ vw.servico or '' }}" placeholder="Qualquer serviço" title="Serviço WebSaass (vazio = qualquer serviço)" style="width:180px;margin:0;font-size:12px;padding:4px 6px">
+                  <input type="text" name="cbo_codigo" value="{{ vw.cbo_codigo or '' }}" list="lista-cbos-ws" placeholder="CBO (Geral)" title="CBO / Regra" style="width:115px;margin:0;font-size:12px;padding:4px 6px">
+                  {% if subgrupos %}
+                  <select name="subgrupo_id" style="width:130px;margin:0;font-size:12px;padding:4px 6px" title="Subgrupo">
+                    <option value="">Sem subgrupo</option>
+                    {% for sg in subgrupos %}
+                    <option value="{{ sg.id }}" {% if vw.subgrupo_id == sg.id %}selected{% endif %}>{{ sg.nome }}</option>
+                    {% endfor %}
+                  </select>
+                  {% endif %}
+                  <button type="submit" class="btn-sm" style="margin:0">Salvar</button>
+                </form>
+              </td>
+              <td style="text-align:right">
+                <form method="post" action="{{ url_for('cadastros.remover_vinculo_websaass', indicador_id=indicador.id, de_para_id=vw.id) }}" style="display:inline">
+                  <button type="submit" class="btn-link" style="color:var(--cor-perigo);font-size:12px" onclick="return confirm('Desvincular {{ vw.cod_producao }} deste indicador?')">desvincular</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" style="color:var(--cor-texto-muted);padding:14px;text-align:center">
+                Nenhuma linha do WebSaass vinculada a este indicador ainda. Use o formulário acima para vincular.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      function preencherCamposWebsaass(sel) {
+        if (!sel || !sel.value) return;
+        const partes = sel.value.split('|||');
+        const c = document.getElementById('ws-input-cod');
+        const p = document.getElementById('ws-input-prod');
+        const s = document.getElementById('ws-input-serv');
+        if (c) c.value = partes[0] || '';
+        if (p) p.value = partes[1] || '';
+        if (s) s.value = partes[2] || '';
+      }
+    </script>
+
     <div class="card" id="vinculos-unidade">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
         <div>

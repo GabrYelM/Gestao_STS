@@ -524,25 +524,33 @@ def espelho_websaass_xlsx():
     estabs_map = {e["id"]: e["nome"] for e in db.execute("SELECT id, nome FROM estabelecimentos").fetchall()}
     grupos = consolidacao.analisar(db)
 
-    # 2. Carregar de-para de indicadores (indexado por cod_producao e servico normalizado)
+    # 2. Carregar de-para de indicadores (indexado por cod_producao + servico, cod_producao e producao)
     from ..funcoes import _normalizar_texto_chave
     dp_ind = {}
+    dp_ind_por_cp = {}
+    dp_ind_por_prod = {}
     for dp in db.execute("""
         SELECT lower(trim(dp.cod_producao)) as cp,
+               dp.producao,
                dp.servico,
                dp.indicador_id, dp.subgrupo_id, dp.cbo_codigo, dp.codigo_indicador,
                i.nome as indicador_nome
         FROM de_para_websaass_indicador dp
         LEFT JOIN indicadores i ON i.id = dp.indicador_id
-        WHERE dp.cod_producao IS NOT NULL
+        WHERE dp.indicador_id IS NOT NULL
     """).fetchall():
-        cp = dp["cp"]
+        cp = (dp["cp"] or "").strip()
         serv_norm = _normalizar_texto_chave(dp["servico"])
+        prod_norm = _normalizar_texto_chave(dp["producao"])
         dp_dict = dict(dp)
-        if serv_norm:
-            dp_ind.setdefault((cp, serv_norm), []).append(dp_dict)
-        else:
-            dp_ind.setdefault((cp, ""), []).append(dp_dict)
+        if cp:
+            if serv_norm:
+                dp_ind.setdefault((cp, serv_norm), []).append(dp_dict)
+            else:
+                dp_ind.setdefault((cp, ""), []).append(dp_dict)
+            dp_ind_por_cp.setdefault(cp, []).append(dp_dict)
+        if prod_norm:
+            dp_ind_por_prod.setdefault(prod_norm, []).append(dp_dict)
 
     # 3. Carregar fatos apurados (STS)
     filtro_fatos = "WHERE tipo_registro = 'apurado'"
@@ -639,6 +647,7 @@ def espelho_websaass_xlsx():
 
         cp = (r["cod_producao"] or "").strip().lower()
         serv_norm = _normalizar_texto_chave(r["servico"])
+        prod_norm = _normalizar_texto_chave(r["producao"])
 
         regras = dp_ind.get((cp, serv_norm))
         if not regras and serv_norm:
@@ -647,7 +656,12 @@ def espelho_websaass_xlsx():
                     regras = r_list
                     break
         if not regras:
-            regras = dp_ind.get((cp, ""), [])
+            regras = dp_ind.get((cp, ""))
+        if not regras and cp:
+            regras = dp_ind_por_cp.get(cp)
+        if not regras and prod_norm:
+            regras = dp_ind_por_prod.get(prod_norm)
+        regras = regras or []
 
         per_linha = _normalizar_periodo(r["periodo"])
 
