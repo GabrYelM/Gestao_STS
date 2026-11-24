@@ -300,3 +300,16 @@ class VinculoEmab(db.Model):
     tipo = db.Column(db.String(50), default='EMAB')
 
 
+class ArquivoImportadoProducao(db.Model):
+    __tablename__ = 'arquivos_importados_producao'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    tipo_relatorio = db.Column(db.String(80), nullable=True, index=True)
+    nome_amigavel = db.Column(db.String(255), nullable=True)
+    periodo_referencia = db.Column(db.String(50), nullable=True)
+    nome_original = db.Column(db.String(255), nullable=False)
+    nome_disco = db.Column(db.String(255), nullable=False)
+    tamanho_bytes = db.Column(db.Integer, default=0)
+    data_importacao = db.Column(db.String(50), nullable=True)
+
+
+

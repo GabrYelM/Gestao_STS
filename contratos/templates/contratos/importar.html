@@ -1102,7 +1102,7 @@
             <th class="text-center">Status</th>
             <th class="text-end">Linhas Ingeridas</th>
             <th class="text-center">Data / Hora</th>
-            <th class="text-center pe-3" style="width: 90px;">Ações</th>
+            <th class="text-center pe-3" style="width: 130px;">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -1177,7 +1177,16 @@
             <td class="text-center small text-muted">
               {{ i.data_importacao }}
             </td>
-            <td class="text-center pe-3">
+            <td class="text-center pe-3 text-nowrap">
+              {% if i.arquivo_disponivel %}
+              <a href="{{ url_for('importacao.baixar_importacao', id=i.id) }}" class="btn btn-outline-primary btn-sm p-1 px-2 rounded me-1" title="Baixar arquivo original importado">
+                <i class="fa-solid fa-download"></i>
+              </a>
+              {% else %}
+              <button type="button" class="btn btn-outline-secondary btn-sm p-1 px-2 rounded me-1" disabled title="Arquivo original não disponível (importação anterior)">
+                <i class="fa-solid fa-download"></i>
+              </button>
+              {% endif %}
               <button type="button" class="btn btn-outline-danger btn-sm p-1 px-2 rounded" title="Excluir esta importação"
                       onclick="confirmarExclusao('{{ i.id }}', '{{ i.nome_arquivo }}', '{{ i.periodo_referencia }}', '{{ i.fonte_nome }}')">
                 <i class="fa-solid fa-trash-can"></i>

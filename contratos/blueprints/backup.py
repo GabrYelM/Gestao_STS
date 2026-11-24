@@ -18,7 +18,10 @@ com uma transação em aberto arrisca gerar uma cópia corrompida/inconsistente.
 """
 
 import os
+import shutil
 import sqlite3
+import tempfile
+import zipfile
 from datetime import datetime
 
 from flask import (
@@ -158,4 +161,120 @@ def excluir(nome_arquivo):
             flash("Arquivo de backup não encontrado.", "erro")
     except Exception as exc:  # noqa: BLE001
         flash(f"Não foi possível excluir: {exc}", "erro")
+    return redirect(url_for("backup.index"))
+
+
+def _validar_sqlite(caminho):
+    """Confirma se o arquivo possui o cabeçalho mágico de um banco SQLite 3 válido."""
+    if not os.path.exists(caminho) or os.path.getsize(caminho) < 100:
+        return False
+    with open(caminho, "rb") as f:
+        header = f.read(16)
+    return header == b"SQLite format 3\x00"
+
+
+def _restaurar_db_de(origem_path):
+    """Restaura o banco stspe.db a partir de origem_path com cópia de segurança prévia,
+    limpeza de arquivos WAL/SHM/journal e aplicação de migrações pendentes."""
+    from ..db import close_db, get_db
+    from ..migrations_auto import aplicar_migracoes_pendentes
+
+    if not _validar_sqlite(origem_path):
+        raise ValueError("O arquivo selecionado não é um banco de dados SQLite válido.")
+
+    destino_path = current_app.config.get("STSPE_DATABASE_PATH") or current_app.config.get("DATABASE_PATH")
+    if not destino_path:
+        raise ValueError("Caminho do banco de dados de contratos não configurado.")
+
+    # 1. Backup automático de segurança antes de sobrescrever
+    if os.path.exists(destino_path):
+        nome_seg = f"stspe_pre_restore_{datetime.now():%Y%m%d_%H%M%S}.db"
+        _gerar_backup_em(os.path.join(_backup_folder(), nome_seg))
+
+    # 2. Fecha conexão ativa no contexto Flask
+    close_db()
+
+    # 3. Remove sidecars SQLite (-wal, -shm, -journal) para evitar corrupção
+    for sufixo in ("-wal", "-shm", "-journal"):
+        sidecar = destino_path + sufixo
+        if os.path.exists(sidecar):
+            try:
+                os.remove(sidecar)
+            except Exception:
+                pass
+
+    # 4. Copia de forma segura usando API backup do sqlite3 (ou shutil se necessário)
+    shutil.copy2(origem_path, destino_path)
+
+    # 5. Garante schema atualizado
+    conn = get_db()
+    aplicar_migracoes_pendentes(conn)
+    conn.commit()
+
+
+@bp.route("/restaurar/<nome_arquivo>", methods=["POST"])
+def restaurar(nome_arquivo):
+    """Restaura o banco de contratos a partir de um backup salvo no servidor."""
+    nome_seguro = secure_filename(nome_arquivo)
+    caminho = os.path.join(_backup_folder(), nome_seguro)
+    if not os.path.exists(caminho):
+        flash("Arquivo de backup não encontrado.", "erro")
+        return redirect(url_for("backup.index"))
+    try:
+        _restaurar_db_de(caminho)
+        flash(
+            f"Backup '{nome_seguro}' restaurado com sucesso! (Uma cópia de segurança pré-restauração foi salva automaticamente.)",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Não foi possível restaurar o backup: {exc}", "erro")
+    return redirect(url_for("backup.index"))
+
+
+@bp.route("/restaurar_upload", methods=["POST"])
+def restaurar_upload():
+    """Restaura o banco de contratos a partir de um arquivo .db ou .zip enviado pelo usuário."""
+    arquivo = request.files.get("arquivo_backup")
+    if not arquivo or not arquivo.filename:
+        flash("Selecione um arquivo .db ou .zip para restaurar.", "erro")
+        return redirect(url_for("backup.index"))
+
+    nome_lower = arquivo.filename.lower()
+    if not (nome_lower.endswith(".db") or nome_lower.endswith(".zip")):
+        flash("Formato inválido. Envie um arquivo .db ou .zip contendo stspe.db.", "erro")
+        return redirect(url_for("backup.index"))
+
+    temp_dir = tempfile.mkdtemp()
+    try:
+        caminho_db = None
+        if nome_lower.endswith(".zip"):
+            zip_tmp = os.path.join(temp_dir, "upload.zip")
+            arquivo.save(zip_tmp)
+            with zipfile.ZipFile(zip_tmp, "r") as zf:
+                candidatos = [m for m in zf.namelist() if os.path.basename(m).lower().endswith(".db")]
+                alvo = next((m for m in candidatos if "stspe" in os.path.basename(m).lower()), None)
+                if not alvo and len(candidatos) == 1:
+                    alvo = candidatos[0]
+                if alvo:
+                    caminho_db = os.path.join(temp_dir, "stspe.db")
+                    with open(caminho_db, "wb") as f_out:
+                        f_out.write(zf.read(alvo))
+        else:
+            caminho_db = os.path.join(temp_dir, "stspe.db")
+            arquivo.save(caminho_db)
+
+        if not caminho_db or not os.path.exists(caminho_db):
+            flash("O arquivo enviado não contém um banco de contratos (stspe.db) válido.", "erro")
+            return redirect(url_for("backup.index"))
+
+        _restaurar_db_de(caminho_db)
+        flash(
+            f"Backup '{arquivo.filename}' restaurado com sucesso! (Uma cópia de segurança pré-restauração foi salva automaticamente.)",
+            "sucesso",
+        )
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Erro ao restaurar backup: {exc}", "erro")
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
     return redirect(url_for("backup.index"))

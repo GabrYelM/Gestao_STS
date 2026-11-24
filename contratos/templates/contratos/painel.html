@@ -578,7 +578,7 @@ async function abrirDetalheAlerta(tipo, titulo) {
     <i class="bi bi-info-circle me-1"></i> Consolidação por CNES: {{ qtd_indicadores_cnes }} indicador(es)
   </span>
   <div class="ms-auto d-flex align-items-center gap-2">
-    <a class="btn btn-outline-primary btn-sm fw-semibold" href="{{ url_for('relatorios.espelho_websaass_xlsx') }}" title="Planilha na estrutura original do WebSaass com o que o STS encontrou para cada linha">
+    <a class="btn btn-outline-primary btn-sm fw-semibold" href="{{ url_for('relatorios.espelho_websaass_xlsx') }}" title="Planilha na estrutura original do WebSaass com o que o STS encontrou para cada linha" onclick="return prepararExportacaoObs(this, event)">
       <i class="bi bi-file-earmark-spreadsheet me-1"></i> Espelho WebSaass c/ Apurado
     </a>
     <a class="btn btn-outline-success btn-sm fw-semibold" href="{{ url_for('relatorios.auditoria_websass_xlsx') }}" title="Planilha completa comparando Apurado STS vs Declarado Websaass" onclick="return prepararExportacaoObs(this, event)">
@@ -1185,7 +1185,10 @@ function montarHtmlTabelaProfissionais(dados, idPrefixo) {
 
   const temOrigem = dados.profissionais.some(p => p.origem_rotulo);
   const thOrigem = temOrigem ? '<th style="text-align:left; min-width:180px;">Origem da Produção</th>' : '';
-  const colspanDetalhe = temOrigem ? 4 : 3;
+  const colspanDetalhe = temOrigem ? 5 : 4;
+
+  const ativos = dados.profissionais.filter(p => !p.excluido);
+  const desconsiderados = dados.profissionais.filter(p => p.excluido);
 
   let bannerRegraHtml = '';
   if (dados.regra_profissional || dados.subgrupo_id == 22) {
@@ -1205,44 +1208,204 @@ function montarHtmlTabelaProfissionais(dados, idPrefixo) {
     `;
   }
 
-  let html = `${bannerRegraHtml}<table><thead><tr><th></th><th>Profissional / Equipe</th><th>CBO</th>${thOrigem}<th>Apurado STS</th></tr></thead><tbody>`;
-  dados.profissionais.forEach((p, i) => {
-    const idLinha = idPrefixo + '-prof-' + i;
-    const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+  let html = `${bannerRegraHtml}`;
+  if (ativos.length > 0) {
+    html += `<table><thead><tr><th></th><th>Profissional / Equipe</th><th>CBO</th>${thOrigem}<th>Apurado STS</th><th style="width:120px;text-align:center;">Ação</th></tr></thead><tbody>`;
+    ativos.forEach((p, i) => {
+      const idLinha = idPrefixo + '-prof-' + i;
+      const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+      const ehConsolidado = (p.nome_profissional || '').startsWith('Consolidado ');
 
-    let tdOrigem = '';
-    if (temOrigem) {
-      let badgeHtml = '';
-      if (p.is_transferido) {
-        badgeHtml = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-arrow-right-circle-fill"></i> ${p.origem_rotulo}</span>`;
-      } else if (p.origem_rotulo && (p.origem_rotulo.startsWith('eMulti:') || p.origem_rotulo.toLowerCase().includes('emulti') || p.origem_rotulo.toLowerCase().includes('emab'))) {
-        badgeHtml = `<span class="badge" style="background:#f3e8ff; color:#6b21a8; border:1px solid #e9d5ff; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-people-fill"></i> ${p.origem_rotulo}</span>`;
-      } else if (p.origem_rotulo && p.origem_rotulo.startsWith('UBS:')) {
-        badgeHtml = `<span class="badge" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-house-door-fill"></i> ${p.origem_rotulo}</span>`;
-      } else if (p.origem_rotulo && p.origem_rotulo.includes('AT-02')) {
-        badgeHtml = `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-search"></i> ${p.origem_rotulo}</span>`;
-      } else if (p.origem_rotulo) {
-        badgeHtml = `<span class="badge" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; font-weight:500; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-house-door"></i> ${p.origem_rotulo}</span>`;
-      } else {
-        badgeHtml = '<span style="color:var(--cor-texto-muted); font-size:11px;">-</span>';
+      let tdOrigem = '';
+      if (temOrigem) {
+        let badgeHtml = '';
+        if (p.is_transferido) {
+          badgeHtml = `<span class="badge" style="background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-arrow-right-circle-fill"></i> ${p.origem_rotulo}</span>`;
+        } else if (p.origem_rotulo && (p.origem_rotulo.startsWith('eMulti:') || p.origem_rotulo.toLowerCase().includes('emulti') || p.origem_rotulo.toLowerCase().includes('emab'))) {
+          badgeHtml = `<span class="badge" style="background:#f3e8ff; color:#6b21a8; border:1px solid #e9d5ff; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-people-fill"></i> ${p.origem_rotulo}</span>`;
+        } else if (p.origem_rotulo && p.origem_rotulo.startsWith('UBS:')) {
+          badgeHtml = `<span class="badge" style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-house-door-fill"></i> ${p.origem_rotulo}</span>`;
+        } else if (p.origem_rotulo && p.origem_rotulo.includes('AT-02')) {
+          badgeHtml = `<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:600; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-search"></i> ${p.origem_rotulo}</span>`;
+        } else if (p.origem_rotulo) {
+          badgeHtml = `<span class="badge" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; font-weight:500; font-size:11px; white-space:normal; text-align:left; display:inline-flex; align-items:center; gap:4px;" title="${p.origem_rotulo}"><i class="bi bi-house-door"></i> ${p.origem_rotulo}</span>`;
+        } else {
+          badgeHtml = '<span style="color:var(--cor-texto-muted); font-size:11px;">-</span>';
+        }
+        tdOrigem = `<td style="padding:6px 10px;">${badgeHtml}</td>`;
       }
-      tdOrigem = `<td style="padding:6px 10px;">${badgeHtml}</td>`;
-    }
 
-    html += `<tr>
-      <td><button type="button" class="btn-expandir" onclick="alternarProfissional(this, '${encodeURIComponent(p.nome_profissional)}', '${encodeURIComponent(p.cbo_codigo || '')}', '${encodeURIComponent(p.nome_estabelecimento || '')}')" title="Ver detalhes">+</button></td>
-      <td><strong>${p.nome_profissional}</strong></td>
-      <td>${p.cbo_codigo ? (p.cbo_nome ? p.cbo_codigo + ' - ' + p.cbo_nome : p.cbo_codigo) : ''}</td>
-      ${tdOrigem}
-      <td class="col-apurado-prof"><strong>${qtdFormatada}</strong></td>
-    </tr>
-    <tr class="linha-detalhe-profissional" id="${idLinha}" style="display:none">
-      <td></td>
-      <td colspan="${colspanDetalhe}" class="conteudo-detalhe-profissional"><em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em></td>
-    </tr>`;
-  });
-  html += '</tbody></table>';
+      const btnAcao = ehConsolidado
+        ? '<span style="color:var(--cor-texto-muted);font-size:11px;">-</span>'
+        : `<button type="button" class="btn-excluir-prof"
+                  onclick="excluirProfissionalDoPainel('${encodeURIComponent(p.nome_profissional)}', this)"
+                  style="background:transparent; border:1px solid #fca5a5; color:#b91c1c; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;"
+                  onmouseover="this.style.background='#fef2f2'"
+                  onmouseout="this.style.background='transparent'"
+                  title="Desconsiderar/excluir este profissional da apuração deste indicador">
+            <i class="bi bi-person-x"></i> Desconsiderar
+          </button>`;
+
+      html += `<tr>
+        <td><button type="button" class="btn-expandir" onclick="alternarProfissional(this, '${encodeURIComponent(p.nome_profissional)}', '${encodeURIComponent(p.cbo_codigo || '')}', '${encodeURIComponent(p.nome_estabelecimento || '')}')" title="Ver detalhes">+</button></td>
+        <td><strong>${p.nome_profissional}</strong></td>
+        <td>${p.cbo_codigo ? (p.cbo_nome ? p.cbo_codigo + ' - ' + p.cbo_nome : p.cbo_codigo) : ''}</td>
+        ${tdOrigem}
+        <td class="col-apurado-prof"><strong>${qtdFormatada}</strong></td>
+        <td style="text-align:center;">${btnAcao}</td>
+      </tr>
+      <tr class="linha-detalhe-profissional" id="${idLinha}" style="display:none">
+        <td></td>
+        <td colspan="${colspanDetalhe}" class="conteudo-detalhe-profissional"><em style="font-size:12px;color:var(--cor-texto-muted)">Carregando...</em></td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p style="font-size:12px;color:var(--cor-texto-muted);margin:0 0 8px;">Todos os profissionais listados nesta linha estão atualmente desconsiderados neste indicador.</p>';
+  }
+
+  if (desconsiderados.length > 0) {
+    html += `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #fca5a5;">
+      <div style="margin-bottom:6px;font-size:11px;font-weight:700;color:#b91c1c;display:flex;align-items:center;gap:6px;">
+        <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background-color:#dc2626;"></span>
+        Profissionais Desconsiderados neste Indicador (Não Contabilizados na Apuração)
+      </div>
+      <table><thead><tr><th>Profissional</th><th>CBO</th><th>Produção no Período</th><th style="width:110px;text-align:center;">Ação</th></tr></thead><tbody>`;
+    desconsiderados.forEach(p => {
+      const qtdFormatada = Number(p.apurado || 0).toLocaleString('pt-BR');
+      html += `<tr style="background:#fff5f5;opacity:0.9;">
+        <td><strong style="text-decoration:line-through;color:#b91c1c;">${p.nome_profissional}</strong></td>
+        <td>${p.cbo_codigo ? (p.cbo_nome ? p.cbo_codigo + ' - ' + p.cbo_nome : p.cbo_codigo) : ''}</td>
+        <td style="color:var(--cor-texto-muted);">${qtdFormatada}</td>
+        <td style="text-align:center;">
+          <button type="button"
+                  onclick="restaurarProfissionalNoPainel('${encodeURIComponent(p.nome_profissional)}', ${p.excecao_id || 'null'}, this)"
+                  style="background:transparent; border:1px solid #86efac; color:#15803d; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;"
+                  onmouseover="this.style.background='#f0fdf4'"
+                  onmouseout="this.style.background='transparent'"
+                  title="Restaurar este profissional para voltar a pontuar neste indicador">
+            <i class="bi bi-arrow-counterclockwise"></i> Restaurar
+          </button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
   return html;
+}
+
+async function excluirProfissionalDoPainel(nomeProfCodificado, btn) {
+  const nomeProf = decodeURIComponent(nomeProfCodificado);
+  if (!confirm(`Deseja desconsiderar/excluir o profissional:\n\n${nomeProf}\n\ndeste indicador? A produção dele deixará de ser contabilizada na apuração.`)) {
+    return;
+  }
+  const trDetalhe = btn.closest('tr.linha-detalhe');
+  const trResumo = trDetalhe ? trDetalhe.previousElementSibling : null;
+  if (!trResumo) return;
+
+  const textoOrig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '...';
+
+  try {
+    const resp = await fetch('{{ url_for("painel.excluir_profissional_indicador") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        indicador_id: trResumo.dataset.indicadorId,
+        subgrupo_id: trResumo.dataset.subgrupoId || null,
+        estabelecimento_ids: trResumo.dataset.estabelecimentoIds || '',
+        cbo_codigo: trResumo.dataset.cboCodigo || '',
+        periodo: trResumo.dataset.periodo || '',
+        nome_profissional: nomeProf,
+      })
+    });
+    const res = await resp.json();
+    if (!resp.ok || !res.ok) {
+      mostrarToast(res.mensagem || 'Erro ao desconsiderar profissional.', 'erro');
+      btn.disabled = false;
+      btn.innerHTML = textoOrig;
+      return;
+    }
+    if (res.linha) {
+      atualizarLinhaResumoNoDom(trResumo, res.linha);
+    }
+    cacheDetalhe.clear();
+    cacheProfissional.clear();
+    const celula = trDetalhe.querySelector('.conteudo-detalhe');
+    const dadosNovos = await carregarDetalhe(trResumo);
+    const idPrefixo = 'l' + Array.from(document.querySelectorAll('.linha-resumo')).indexOf(trResumo);
+    celula.innerHTML = montarHtmlProfissionais(dadosNovos, idPrefixo);
+    celula.querySelectorAll('.btn-expandir').forEach(b => {
+      b.dataset.indicadorId = trResumo.dataset.indicadorId;
+      b.dataset.estabelecimentoIds = trResumo.dataset.estabelecimentoIds;
+      b.dataset.subgrupoId = trResumo.dataset.subgrupoId;
+      b.dataset.cboCodigo = trResumo.dataset.cboCodigo;
+      b.dataset.periodo = trResumo.dataset.periodo;
+    });
+    mostrarToast(res.mensagem || 'Profissional desconsiderado com sucesso!', 'sucesso');
+  } catch (err) {
+    console.error(err);
+    mostrarToast('Erro de comunicação ao desconsiderar profissional.', 'erro');
+    btn.disabled = false;
+    btn.innerHTML = textoOrig;
+  }
+}
+
+async function restaurarProfissionalNoPainel(nomeProfCodificado, excecaoId, btn) {
+  const nomeProf = decodeURIComponent(nomeProfCodificado);
+  const trDetalhe = btn.closest('tr.linha-detalhe');
+  const trResumo = trDetalhe ? trDetalhe.previousElementSibling : null;
+  if (!trResumo) return;
+
+  const textoOrig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '...';
+
+  try {
+    const resp = await fetch('{{ url_for("painel.restaurar_profissional_indicador") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        indicador_id: trResumo.dataset.indicadorId,
+        subgrupo_id: trResumo.dataset.subgrupoId || null,
+        estabelecimento_ids: trResumo.dataset.estabelecimentoIds || '',
+        cbo_codigo: trResumo.dataset.cboCodigo || '',
+        periodo: trResumo.dataset.periodo || '',
+        excecao_id: excecaoId,
+        nome_profissional: nomeProf,
+      })
+    });
+    const res = await resp.json();
+    if (!resp.ok || !res.ok) {
+      mostrarToast(res.mensagem || 'Erro ao restaurar profissional.', 'erro');
+      btn.disabled = false;
+      btn.innerHTML = textoOrig;
+      return;
+    }
+    if (res.linha) {
+      atualizarLinhaResumoNoDom(trResumo, res.linha);
+    }
+    cacheDetalhe.clear();
+    cacheProfissional.clear();
+    const celula = trDetalhe.querySelector('.conteudo-detalhe');
+    const dadosNovos = await carregarDetalhe(trResumo);
+    const idPrefixo = 'l' + Array.from(document.querySelectorAll('.linha-resumo')).indexOf(trResumo);
+    celula.innerHTML = montarHtmlProfissionais(dadosNovos, idPrefixo);
+    celula.querySelectorAll('.btn-expandir').forEach(b => {
+      b.dataset.indicadorId = trResumo.dataset.indicadorId;
+      b.dataset.estabelecimentoIds = trResumo.dataset.estabelecimentoIds;
+      b.dataset.subgrupoId = trResumo.dataset.subgrupoId;
+      b.dataset.cboCodigo = trResumo.dataset.cboCodigo;
+      b.dataset.periodo = trResumo.dataset.periodo;
+    });
+    mostrarToast(res.mensagem || 'Profissional restaurado com sucesso!', 'sucesso');
+  } catch (err) {
+    console.error(err);
+    mostrarToast('Erro de comunicação ao restaurar profissional.', 'erro');
+    btn.disabled = false;
+    btn.innerHTML = textoOrig;
+  }
 }
 
 function alternarAbaDetalhe(btn, tipo) {

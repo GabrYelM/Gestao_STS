@@ -567,6 +567,26 @@ def espelho_websaass_xlsx():
         qty = f["total"] or 0
         mapa_fatos[(eid, iid, sub, cbo, per)] = qty
 
+    # 3B. Carregar observações cadastradas no Painel (painel_observacoes)
+    obs_por_ind_per = {}
+    try:
+        for ob in db.execute(
+            """SELECT indicador_id, estabelecimento_id, subgrupo_id, cbo_codigo, periodo, texto
+               FROM painel_observacoes
+               WHERE TRIM(COALESCE(texto, '')) != ''"""
+        ).fetchall():
+            per_ob = _normalizar_periodo(ob["periodo"])
+            if periodo_filtro and per_ob != _normalizar_periodo(periodo_filtro):
+                continue
+            obs_por_ind_per.setdefault((ob["indicador_id"], per_ob), []).append({
+                "estabelecimento_id": ob["estabelecimento_id"],
+                "subgrupo_id": ob["subgrupo_id"],
+                "cbo_codigo": (ob["cbo_codigo"] or "").strip() or None,
+                "texto": (ob["texto"] or "").strip(),
+            })
+    except Exception:
+        pass
+
     # 4. Consultar linhas de staging_webssas
     query_ws = "SELECT * FROM staging_webssas"
     params_ws = []
@@ -595,6 +615,7 @@ def espelho_websaass_xlsx():
         "Diferença",
         "Indicador STS Vinculado",
         "CBO / Regra STS",
+        "Observações",
     ]
 
     _cabecalho(ws, titulos)
@@ -638,13 +659,20 @@ def espelho_websaass_xlsx():
         inds_set = set()
         cbos_set = set()
         chaves_somadas = set()
+        obs_encontradas = []
         tem_vinculo = bool(regras)
+
+        eids_obs = set(eids_busca)
+        if estab_id:
+            eids_obs.add(estab_id)
+        if info_grp and info_grp.get("principal_id"):
+            eids_obs.add(info_grp["principal_id"])
 
         if estab_id and regras:
             for rg in regras:
                 iid = rg["indicador_id"]
                 sub = rg["subgrupo_id"]
-                cbo = rg["cbo_codigo"]
+                cbo = (rg["cbo_codigo"] or "").strip() or None
                 if rg["codigo_indicador"]:
                     inds_set.add(rg["codigo_indicador"])
                 if cbo:
@@ -663,6 +691,21 @@ def espelho_websaass_xlsx():
                                     chaves_somadas.add(k)
                                     apurado_sts += k_qty
 
+                # Coletar observações do painel vinculadas a esta linha
+                for ob in obs_por_ind_per.get((iid, per_linha), []):
+                    if ob["estabelecimento_id"] not in eids_obs:
+                        continue
+                    if sub is not None and ob["subgrupo_id"] is not None and ob["subgrupo_id"] != sub:
+                        continue
+                    if sub is not None and ob["subgrupo_id"] is None:
+                        continue
+                    if sub is None and ob["subgrupo_id"] is not None:
+                        continue
+                    if cbo is not None and ob["cbo_codigo"] is not None and ob["cbo_codigo"] != cbo:
+                        continue
+                    if ob["texto"] and ob["texto"] not in obs_encontradas:
+                        obs_encontradas.append(ob["texto"])
+
         dec_ws = r["qtde_realizada"] or 0
         dif = apurado_sts - dec_ws
 
@@ -678,6 +721,7 @@ def espelho_websaass_xlsx():
             dif,
             ", ".join(sorted(inds_set)) if inds_set else ("Sem vínculo" if not tem_vinculo else "-"),
             ", ".join(sorted(cbos_set)) if cbos_set else "Geral",
+            " | ".join(obs_encontradas),
         ])
 
         c_div = ws.cell(row=row_idx, column=col_idx_div)

@@ -388,6 +388,86 @@
             </div>
         </div>
     </div>
+
+    <!-- Histórico de Arquivos Importados da Produção (Download) -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-folder-check text-primary fs-5 me-2"></i>
+                        <h5 class="fw-bold mb-0">Arquivos Importados na Produção</h5>
+                        <span class="badge bg-light text-muted border ms-2">{{ arquivos_importados|length }} arquivo(s)</span>
+                    </div>
+                    <div class="input-group input-group-sm" style="max-width: 280px;">
+                        <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                        <input type="text" id="filtroArquivosProducao" class="form-control" placeholder="Filtrar arquivo, relatório ou período...">
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 small" id="tabelaArquivosProducao">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-3">Arquivo Original</th>
+                                    <th>Relatório</th>
+                                    <th class="text-center">Competência</th>
+                                    <th class="text-end">Tamanho</th>
+                                    <th class="text-center">Importado em</th>
+                                    <th class="text-center pe-3" style="width: 140px;">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for arq in arquivos_importados %}
+                                <tr>
+                                    <td class="ps-3 fw-semibold">
+                                        <i class="bi bi-file-earmark-arrow-down text-primary me-1"></i>
+                                        <span title="{{ arq.nome_original }}">{{ arq.nome_original }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ arq.nome_amigavel or arq.tipo_relatorio }}</span>
+                                    </td>
+                                    <td class="text-center font-monospace">{{ arq.periodo_referencia or '-' }}</td>
+                                    <td class="text-end text-muted">
+                                        {% if arq.tamanho_bytes >= 1048576 %}
+                                            {{ arq.tamanho_mb }} MB
+                                        {% else %}
+                                            {{ arq.tamanho_kb }} KB
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center text-muted">{{ arq.data_importacao or '-' }}</td>
+                                    <td class="text-center pe-3 text-nowrap">
+                                        {% if arq.disponivel %}
+                                        <a href="{{ url_for('baixar_arquivo_importado_producao', arquivo_id=arq.id) }}" class="btn btn-outline-primary btn-sm py-0 px-2 me-1" title="Baixar arquivo original importado">
+                                            <i class="bi bi-download me-1"></i>Baixar
+                                        </a>
+                                        {% else %}
+                                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 me-1" disabled title="Arquivo não disponível no disco">
+                                            <i class="bi bi-download"></i>
+                                        </button>
+                                        {% endif %}
+                                        <form method="POST" action="{{ url_for('excluir_arquivo_importado_producao', arquivo_id=arq.id) }}" class="d-inline" onsubmit="return confirm('Remover a cópia arquivada de {{ arq.nome_original }}? Os dados já importados no banco de dados NÃO serão apagados.');">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-2" title="Remover cópia arquivada do disco">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox fs-4 d-block mb-1"></i>
+                                        Nenhum arquivo arquivado ainda. Os próximos arquivos importados pela Produção (aqui ou via upload manual do BI) aparecerão listados aqui para download.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Modal de Confirmação para Remoção de Competência de Arquivo -->
@@ -648,6 +728,17 @@
         } finally {
             if (spinner) spinner.classList.add('d-none');
         }
+    }
+
+    // Filtro rápido da tabela de arquivos importados na Produção
+    const filtroArqProd = document.getElementById('filtroArquivosProducao');
+    if (filtroArqProd) {
+        filtroArqProd.addEventListener('input', function() {
+            const termo = (this.value || '').toLowerCase().trim();
+            document.querySelectorAll('#tabelaArquivosProducao tbody tr').forEach(tr => {
+                tr.style.display = !termo || tr.textContent.toLowerCase().includes(termo) ? '' : 'none';
+            });
+        });
     }
 </script>
 {% endblock %}

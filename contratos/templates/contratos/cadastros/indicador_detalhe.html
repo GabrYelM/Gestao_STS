@@ -104,6 +104,9 @@
       {% if vinculos_cbo %}
         <span class="badge bg-secondary ms-1">{{ vinculos_cbo|length }}</span>
       {% endif %}
+      {% if excecoes_profissional %}
+        <span class="badge bg-danger ms-1" title="{{ excecoes_profissional|length }} profissional(is) desconsiderado(s)">-{{ excecoes_profissional|length }}</span>
+      {% endif %}
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -500,6 +503,75 @@
       </ul>
     </div>
     {% endif %}
+
+    <!-- Profissionais Desconsiderados / Excluídos deste Indicador (disponível em TODOS os indicadores) -->
+    <div class="card card-tint-amber" style="margin-top:20px" id="bloco-excecoes-profissional">
+      <h2 style="margin:0 0 6px"><i class="fa-solid fa-user-slash me-2 text-danger"></i>Profissionais Desconsiderados no {{ indicador.codigo }}</h2>
+      <p class="subtitulo-pagina" style="margin-bottom:12px">
+        Profissionais incluídos abaixo têm sua produção <strong>100% desconsiderada/excluída</strong> na apuração deste indicador (funciona em todos os indicadores).
+        Você também pode desconsiderar ou restaurar profissionais diretamente pelo drill-down do Painel.
+      </p>
+      <form method="post" action="{{ url_for('cadastros.add_excecao_profissional', indicador_id=indicador.id) }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:2;min-width:240px">
+          <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Nome do Profissional</label>
+          <input type="text" name="nome_profissional" list="lista-profissionais-sugestoes" autocomplete="off" placeholder="Digite ou selecione o nome do profissional..." required style="width:100%;margin:0">
+          <datalist id="lista-profissionais-sugestoes">
+            {% for np in profissionais_sugestoes %}
+            <option value="{{ np }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        {% if subgrupos %}
+        <div style="flex:1;min-width:180px">
+          <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Subgrupo (opcional)</label>
+          <select name="subgrupo_id" style="width:100%;margin:0">
+            <option value="">-- Todos os subgrupos --</option>
+            {% for sg in subgrupos %}
+            <option value="{{ sg.id }}">{{ sg.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div style="flex:1;min-width:200px">
+          <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Unidade específica (opcional)</label>
+          <select name="estabelecimento_id" style="width:100%;margin:0">
+            <option value="">-- Todas as unidades --</option>
+            {% for e in estabelecimentos_lista %}
+            <option value="{{ e.id }}">{{ e.nome }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <button type="submit" class="btn-danger" style="margin:0;padding:7px 14px">Desconsiderar Profissional</button>
+        </div>
+      </form>
+
+      <ul style="padding-left:0;margin:14px 0 0;list-style:none;font-size:13px">
+        {% for ep in excecoes_profissional %}
+        <li style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#ffffff;border:1px solid #fed7aa;border-radius:var(--raio-sm);margin-bottom:6px;gap:8px;flex-wrap:wrap">
+          <div>
+            <span class="badge bg-danger me-1">🚫 Desconsiderado</span>
+            <strong style="text-decoration:line-through;color:var(--cor-perigo);">{{ ep.nome_profissional }}</strong>
+            {% if ep.subgrupo_nome %}
+              <span class="badge bg-light text-dark border ms-1" style="font-size:11px">Subgrupo: {{ ep.subgrupo_nome }}</span>
+            {% endif %}
+            {% if ep.estabelecimento_nome %}
+              <span class="badge bg-light text-dark border ms-1" style="font-size:11px">Unidade: {{ ep.estabelecimento_nome }}</span>
+            {% endif %}
+          </div>
+          <form method="post" action="{{ url_for('cadastros.remover_excecao_profissional', indicador_id=indicador.id, excecao_id=ep.id) }}" style="display:inline">
+            <button type="submit" class="btn-link" style="font-size:12px;color:var(--cor-sucesso,#15803d);font-weight:600" title="Voltar a contabilizar este profissional neste indicador">
+              Restaurar
+            </button>
+          </form>
+        </li>
+        {% else %}
+        <li style="color:var(--cor-texto-muted);font-style:italic;padding:6px 0">
+          Nenhum profissional desconsiderado neste indicador.
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
 
     <!-- Segmentação de Metas por Profissional -->
     <div class="card" style="margin-top:20px">

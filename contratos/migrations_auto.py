@@ -814,6 +814,8 @@ def aplicar_migracoes_pendentes(conn):
         aplicou_algo = True
     if _migrar_v25(conn):
         aplicou_algo = True
+    if _migrar_v26(conn):
+        aplicou_algo = True
 
     conn.commit()
     return aplicou_algo
@@ -2165,4 +2167,33 @@ def _garantir_indicadores_monitoramento_e_sicap(conn):
                        VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
                     (p_nome, p_cns, p_cbo, p_est, p_rt, p_eq, p_pmmb),
                 )
+
+
+def _migrar_v26(conn):
+    """v26: Exceções de profissional por indicador (para todos os indicadores) e caminho_arquivo em importacoes."""
+    aplicou = False
+
+    if not _tabela_existe(conn, "indicador_profissional_excecao"):
+        conn.execute(
+            """CREATE TABLE indicador_profissional_excecao (
+                   id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                   indicador_id       INTEGER NOT NULL REFERENCES indicadores(id) ON DELETE CASCADE,
+                   subgrupo_id        INTEGER REFERENCES indicador_subgrupo(id) ON DELETE CASCADE,
+                   estabelecimento_id INTEGER REFERENCES estabelecimentos(id) ON DELETE CASCADE,
+                   nome_profissional  TEXT NOT NULL,
+                   nome_normalizado   TEXT NOT NULL,
+                   criado_em          TEXT NOT NULL DEFAULT (datetime('now'))
+               )"""
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ind_prof_exc_ind ON indicador_profissional_excecao(indicador_id)"
+        )
+        aplicou = True
+
+    if _tabela_existe(conn, "importacoes") and not _coluna_existe(conn, "importacoes", "caminho_arquivo"):
+        conn.execute("ALTER TABLE importacoes ADD COLUMN caminho_arquivo TEXT")
+        aplicou = True
+
+    return aplicou
+
 

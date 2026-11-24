@@ -31,20 +31,37 @@
   </p>
 </div>
 
+<div class="card">
+  <h2>Restaurar backup (enviar arquivo)</h2>
+  <p class="subtitulo-pagina" style="margin-bottom:12px">
+    Envie um arquivo <code>.db</code> ou um pacote <code>.zip</code> de backup para restaurar o banco de contratos.
+    Antes de sobrescrever, o sistema cria automaticamente uma cópia de segurança (<code>stspe_pre_restore_*.db</code>) na pasta de backups.
+  </p>
+  <form method="post" action="{{ url_for('backup.restaurar_upload') }}" enctype="multipart/form-data"
+        onsubmit="return confirm('Tem certeza que deseja restaurar o banco de contratos a partir deste arquivo? Uma cópia de segurança do estado atual será salva antes.')"
+        style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <input type="file" name="arquivo_backup" accept=".db,.zip" required style="max-width:420px;margin:0">
+    <button type="submit" class="btn-secondary" style="margin:0">Restaurar backup enviado</button>
+  </form>
+</div>
+
 <div class="table-card">
   <div style="padding:14px 16px 0"><h2>Backups salvos no servidor</h2></div>
   <table>
-    <thead><tr><th>Arquivo</th><th>Tamanho</th><th>Criado em</th><th></th></tr></thead>
+    <thead><tr><th>Arquivo</th><th>Tamanho</th><th>Criado em</th><th>Ações</th></tr></thead>
     <tbody>
       {% for b in backups %}
       <tr>
         <td>{{ b.nome }}</td>
         <td>{{ b.tamanho_mb }} MB</td>
         <td>{{ b.criado_em }}</td>
-        <td>
+        <td style="white-space:nowrap">
           <a href="{{ url_for('backup.baixar', nome_arquivo=b.nome) }}">baixar</a> ·
+          <form method="post" action="{{ url_for('backup.restaurar', nome_arquivo=b.nome) }}" style="display:inline" onsubmit="return confirm('Restaurar o banco de contratos a partir de {{ b.nome }}? Uma cópia de segurança do estado atual será salva antes.')">
+            <button type="submit" class="btn-link" style="color:var(--cor-sucesso,#15803d);font-weight:600">restaurar</button>
+          </form> ·
           <form method="post" action="{{ url_for('backup.excluir', nome_arquivo=b.nome) }}" style="display:inline" onsubmit="return confirm('Excluir este backup?')">
-            <button type="submit" class="btn-link">excluir</button>
+            <button type="submit" class="btn-link" style="color:var(--cor-perigo,#b91c1c)">excluir</button>
           </form>
         </td>
       </tr>

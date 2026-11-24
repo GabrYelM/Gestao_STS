@@ -1,7 +1,7 @@
 import os
 import zipfile
 
-from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, send_file, url_for
 
 from ..db import get_db
 from ..etl import (
@@ -358,6 +358,32 @@ def upload_multiplo():
     return redirect(url_for("importacao.formulario"))
 
 
+def _pasta_uploads_contratos():
+    return (
+        current_app.config.get("STSPE_UPLOAD_FOLDER")
+        or current_app.config.get("UPLOAD_FOLDER")
+        or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads_tmp")
+    )
+
+
+def _resolver_caminho_importacao(imp):
+    """Retorna o caminho completo no disco do arquivo importado se ele ainda existir, ou None."""
+    caminho_salvo = None
+    try:
+        caminho_salvo = imp["caminho_arquivo"]
+    except (KeyError, IndexError):
+        caminho_salvo = None
+    if not caminho_salvo:
+        return None
+    if os.path.isabs(caminho_salvo) and os.path.isfile(caminho_salvo):
+        return caminho_salvo
+    pasta = _pasta_uploads_contratos()
+    candidato = os.path.join(pasta, os.path.basename(caminho_salvo))
+    if os.path.isfile(candidato):
+        return candidato
+    return None
+
+
 @bp.route("/", methods=["GET"])
 def formulario():
     # Acesso direto (sem ?partial=1) - inclusive o redirect de TODA importação/recálculo
@@ -366,11 +392,16 @@ def formulario():
     if request.args.get("partial") != "1":
         return redirect(url_for("cadastros.administracao", aba="importar"))
     db = get_db()
-    importacoes = db.execute(
+    rows_imp = db.execute(
         """SELECT imp.*, f.nome AS fonte_nome
            FROM importacoes imp JOIN fontes_dados f ON f.id = imp.fonte_id
-           ORDER BY imp.id DESC LIMIT 50"""
+           ORDER BY imp.id DESC LIMIT 100"""
     ).fetchall()
+    importacoes = []
+    for r in rows_imp:
+        d = dict(r)
+        d["arquivo_disponivel"] = _resolver_caminho_importacao(r) is not None
+        importacoes.append(d)
     periodos_at02 = [
         r["ano_mes"] for r in db.execute(
             "SELECT DISTINCT ano_mes FROM staging_at02 ORDER BY ano_mes DESC"
@@ -400,6 +431,28 @@ def formulario():
         tas=db.execute("SELECT id, numero, periodo_inicio, periodo_fim FROM termos_aditivos ORDER BY id DESC").fetchall(),
         partial=request.args.get("partial") == "1",
     )
+
+
+@bp.route("/<int:id>/baixar", methods=["GET"])
+def baixar_importacao(id):
+    """Permite baixar o arquivo original que foi importado no módulo de contratos."""
+    db = get_db()
+    imp = db.execute("SELECT * FROM importacoes WHERE id = ?", (id,)).fetchone()
+    if not imp:
+        flash(f"Importação #{id} não encontrada.", "erro")
+        return redirect(url_for("importacao.formulario"))
+
+    caminho = _resolver_caminho_importacao(imp)
+    if not caminho:
+        flash(
+            f"O arquivo original da importação #{id} ({imp['nome_arquivo']}) não está disponível no disco "
+            "(pode ter sido importado antes desta funcionalidade ou removido).",
+            "erro",
+        )
+        return redirect(url_for("importacao.formulario"))
+
+    nome_download = os.path.basename(imp["nome_arquivo"] or os.path.basename(caminho))
+    return send_file(caminho, as_attachment=True, download_name=nome_download)
 
 
 @bp.route("/<int:id>/excluir", methods=["POST"])

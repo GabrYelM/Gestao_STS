@@ -26,23 +26,30 @@
         </div>
     </div>
 
-    <!-- Status do Banco Atual -->
+    <!-- Status dos Bancos Atuais -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="card shadow-sm border-0 rounded-4 bg-light p-3">
-                <div class="row text-center text-md-start align-items-center">
-                    <div class="col-md-4 mb-2 mb-md-0 border-end">
-                        <span class="text-muted small d-block">Tamanho do Banco Atual:</span>
+                <div class="row text-center text-md-start align-items-center g-3">
+                    <div class="col-md-3 border-end">
+                        <span class="text-muted small d-block">Banco Principal (Produção / Fila):</span>
                         <h4 class="fw-bold text-dark mb-0">{{ tamanho_db_mb }} MB</h4>
+                        <span class="text-muted" style="font-size: 0.78rem;">Atualizado: {{ data_modificacao }}</span>
                     </div>
-                    <div class="col-md-4 mb-2 mb-md-0 border-end">
-                        <span class="text-muted small d-block">Última Modificação:</span>
-                        <h5 class="fw-semibold text-secondary mb-0">{{ data_modificacao }}</h5>
+                    <div class="col-md-3 border-end">
+                        <span class="text-muted small d-block">Banco de Contratos (stspe.db):</span>
+                        <h4 class="fw-bold text-primary mb-0">{{ tamanho_contratos_mb }} MB</h4>
+                        <span class="text-muted" style="font-size: 0.78rem;">Atualizado: {{ data_mod_contratos }}</span>
                     </div>
-                    <div class="col-md-4">
-                        <span class="text-muted small d-block">Formato de Exportação:</span>
-                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-bold">
-                            <i class="bi bi-file-earmark-zip me-1"></i> ZIP Compactado (~90% menor)
+                    <div class="col-md-3 border-end">
+                        <span class="text-muted small d-block">Backups Salvos no Servidor:</span>
+                        <h4 class="fw-bold text-success mb-0">{{ backups_servidor|length }}</h4>
+                        <span class="text-muted text-truncate d-block" style="font-size: 0.75rem;" title="{{ pasta_backups }}">Pasta: backups/</span>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="text-muted small d-block">Modo de Cópia Segura:</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-bold mt-1">
+                            <i class="bi bi-shield-check me-1"></i> SQLite Online Backup (.ZIP)
                         </span>
                     </div>
                 </div>
@@ -62,32 +69,38 @@
                         </div>
                         <div>
                             <h4 class="fw-bold mb-1">1. Exportar Cópia de Segurança</h4>
-                            <span class="text-muted small">Baixar pacote de dados completo</span>
+                            <span class="text-muted small">Baixar ou salvar pacote completo de dados</span>
                         </div>
                     </div>
                 </div>
                 <div class="card-body p-4 d-flex flex-column">
                     <p class="text-muted">
-                        Gera um arquivo <strong>.ZIP compactado</strong> contendo:
+                        Gera um arquivo <strong>.ZIP compactado e consistente (seguro em uso)</strong> contendo:
                     </p>
                     <ul class="text-muted small mb-4">
-                        <li><strong>database.db:</strong> Todos os dados históricos (AT-02, AT-03, REL-10, RAAS, etc.).</li>
-                        <li><strong>catalogo_geral.json:</strong> Cadastros completos de CBOs, Procedimentos e Unidades.</li>
+                        <li><strong>database.db:</strong> Todos os dados de Produção (AT-02, AT-03, REL-10, RAAS, BPA), Monitoramento, Fila de Espera e Usuários.</li>
+                        <li><strong>contratos/stspe.db:</strong> Todo o Módulo de Contratos de Gestão (Indicadores, Metas, Portarias, TAs, Apurações e Exceções).</li>
+                        <li><strong>Catálogos JSON:</strong> <code>catalogo_geral.json</code> e <code>profissionais_local.json</code>.</li>
                     </ul>
 
                     <div class="p-3 bg-light rounded-3 border mb-4">
                         <div class="d-flex align-items-center text-muted small">
                             <i class="bi bi-info-circle-fill text-info fs-5 me-2 flex-shrink-0"></i>
                             <div>
-                                A compressão reduz o arquivo de <strong>~1,34 GB</strong> para aproximadamente <strong>~124 MB</strong>, tornando o download rápido e fácil de armazenar.
+                                O backup utiliza a API nativa <code>sqlite3.backup()</code>, garantindo integridade total mesmo com o sistema em uso (modo WAL).
                             </div>
                         </div>
                     </div>
 
-                    <div class="mt-auto">
+                    <div class="mt-auto d-grid gap-2">
                         <a href="/admin/backup_db" class="btn btn-primary btn-lg rounded-pill w-100 fw-bold shadow-sm">
-                            <i class="bi bi-download me-2"></i> Gerar e Baixar Backup (.ZIP)
+                            <i class="bi bi-download me-2"></i> Gerar e Baixar Backup Completo (.ZIP)
                         </a>
+                        <form action="/admin/criar_backup_servidor" method="POST" class="d-grid">
+                            <button type="submit" class="btn btn-outline-primary rounded-pill fw-semibold">
+                                <i class="bi bi-hdd-stack me-2"></i> Salvar Cópia de Segurança no Servidor
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -109,14 +122,14 @@
                 </div>
                 <div class="card-body p-4 d-flex flex-column">
                     <div class="alert alert-warning border-0 rounded-3 small mb-3">
-                        <i class="bi bi-exclamation-triangle-fill me-1"></i> <strong>Atenção:</strong> Ao restaurar um backup, a base atual de dados e cadastros será substituída pelas informações contidas no arquivo selecionado.
+                        <i class="bi bi-exclamation-triangle-fill me-1"></i> <strong>Atenção:</strong> Ao restaurar um backup, a base atual será substituída pelas informações contidas no arquivo selecionado. Uma cópia de segurança pré-restauração (<code>pre_restore_*.zip</code>) é salva automaticamente no servidor antes de aplicar.
                     </div>
 
-                    <form action="/admin/restaurar_backup" method="POST" enctype="multipart/form-data" onsubmit="document.getElementById('btnSubmitRestaurarTela').innerHTML='<span class=\"spinner-border spinner-border-sm me-2\"></span> Restaurando banco...'; document.getElementById('btnSubmitRestaurarTela').disabled=true;">
+                    <form action="/admin/restaurar_backup" method="POST" enctype="multipart/form-data" onsubmit="document.getElementById('btnSubmitRestaurarTela').innerHTML='<span class=&quot;spinner-border spinner-border-sm me-2&quot;></span> Restaurando banco...'; document.getElementById('btnSubmitRestaurarTela').disabled=true;">
                         <div class="mb-4">
                             <label class="form-label fw-semibold">Selecione o arquivo de backup (.ZIP ou .DB):</label>
                             <input type="file" name="arquivo_backup" class="form-control form-control-lg rounded-3" accept=".zip,.db" required>
-                            <span class="text-muted small">Suporta arquivos <code>.zip</code> (compactados) ou arquivos brutos <code>.db</code>.</span>
+                            <span class="text-muted small">Suporta pacotes completos <code>.zip</code> ou arquivos individuais <code>database.db</code> / <code>stspe.db</code> (identificados automaticamente).</span>
                         </div>
 
                         <div class="mt-auto">
@@ -125,6 +138,68 @@
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2B. BACKUPS SALVOS NO SERVIDOR -->
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 rounded-4">
+                <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-archive-fill text-primary fs-5 me-2"></i>
+                        <h5 class="fw-bold mb-0">Backups Salvos no Servidor</h5>
+                        <span class="badge bg-light text-muted border ms-2">{{ backups_servidor|length }} arquivo(s)</span>
+                    </div>
+                    <small class="text-muted">Pasta: <code>{{ pasta_backups }}</code></small>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="ps-4">Arquivo</th>
+                                    <th>Tamanho</th>
+                                    <th>Criado em</th>
+                                    <th class="text-end pe-4">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for b in backups_servidor %}
+                                <tr>
+                                    <td class="ps-4 fw-semibold">
+                                        <i class="bi bi-file-earmark-zip text-primary me-2"></i>{{ b.nome }}
+                                    </td>
+                                    <td>{{ b.tamanho_mb }} MB</td>
+                                    <td class="text-muted">{{ b.criado_em }}</td>
+                                    <td class="text-end pe-4 text-nowrap">
+                                        <a href="{{ url_for('baixar_backup_servidor', nome_arquivo=b.nome) }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 me-1">
+                                            <i class="bi bi-download me-1"></i> Baixar
+                                        </a>
+                                        <form action="{{ url_for('restaurar_backup_servidor', nome_arquivo=b.nome) }}" method="POST" class="d-inline" onsubmit="return confirm('Restaurar o sistema a partir de {{ b.nome }}? Uma cópia de segurança do estado atual será salva antes.');">
+                                            <button type="submit" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1">
+                                                <i class="bi bi-arrow-clockwise me-1"></i> Restaurar
+                                            </button>
+                                        </form>
+                                        <form action="{{ url_for('excluir_backup_servidor', nome_arquivo=b.nome) }}" method="POST" class="d-inline" onsubmit="return confirm('Excluir permanentemente o backup {{ b.nome }} do servidor?');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-3">
+                                                <i class="bi bi-trash me-1"></i> Excluir
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        Nenhum backup salvo no servidor ainda. Clique em <strong>"Salvar Cópia de Segurança no Servidor"</strong> acima para criar um.
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

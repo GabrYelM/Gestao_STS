@@ -38,7 +38,8 @@ CREATE TABLE importacoes (
     data_importacao     TEXT NOT NULL DEFAULT (datetime('now')),
     linhas_importadas   INTEGER,
     status              TEXT NOT NULL DEFAULT 'concluido'
-        CHECK (status IN ('concluido', 'erro', 'processando'))
+        CHECK (status IN ('concluido', 'erro', 'processando')),
+    caminho_arquivo     TEXT
 );
 
 CREATE INDEX idx_importacoes_periodo ON importacoes(periodo_referencia);
@@ -924,5 +925,20 @@ CREATE TABLE IF NOT EXISTS painel_observacoes (
     atualizado_em       TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_painel_obs_ind_estab ON painel_observacoes(indicador_id, estabelecimento_id, periodo);
+
+-- ----------------------------------------------------------------------------
+-- 11. EXCEÇÕES DE PROFISSIONAIS POR INDICADOR (Desconsiderar/Excluir profissional)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS indicador_profissional_excecao (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    indicador_id       INTEGER NOT NULL REFERENCES indicadores(id) ON DELETE CASCADE,
+    subgrupo_id        INTEGER REFERENCES indicador_subgrupo(id) ON DELETE CASCADE,
+    estabelecimento_id INTEGER REFERENCES estabelecimentos(id) ON DELETE CASCADE,
+    nome_profissional  TEXT NOT NULL,
+    nome_normalizado   TEXT NOT NULL,
+    criado_em          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ind_prof_exc_ind ON indicador_profissional_excecao(indicador_id);
+
 
 

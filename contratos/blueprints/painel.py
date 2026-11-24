@@ -2082,6 +2082,33 @@ def linha_detalhe():
     )
     profissionais_ordenados = _ordenar_profissionais_alfabeticamente([dict(p) for p in profissionais])
 
+    # Marcar profissionais desconsiderados/excluídos neste indicador
+    try:
+        excecoes_rows = db.execute(
+            """SELECT id, subgrupo_id, estabelecimento_id, nome_normalizado
+               FROM indicador_profissional_excecao
+               WHERE indicador_id = ?""",
+            (indicador_id,),
+        ).fetchall()
+    except Exception:
+        excecoes_rows = []
+
+    est_ids_set = {int(e) for e in (est_ids or []) if str(e).isdigit()}
+    for p in profissionais_ordenados:
+        nome_norm = _normalizar_nome_prof(p.get("nome_profissional") or "")
+        exc_id = None
+        for ex in excecoes_rows:
+            if ex["nome_normalizado"] != nome_norm:
+                continue
+            if ex["subgrupo_id"] is not None and (subgrupo_id is None or int(ex["subgrupo_id"]) != int(subgrupo_id)):
+                continue
+            if ex["estabelecimento_id"] is not None and est_ids_set and int(ex["estabelecimento_id"]) not in est_ids_set:
+                continue
+            exc_id = ex["id"]
+            break
+        p["excluido"] = exc_id is not None
+        p["excecao_id"] = exc_id
+
     regra_prof_row = db.execute(
         """SELECT ip.id, ip.procedimento_codigo, ip.nome_profissional, p.nome as procedimento_nome
            FROM indicador_procedimento ip
@@ -3219,5 +3246,99 @@ def api_salvar_regra_profissional():
         except Exception:
             pass
         return jsonify({"ok": False, "erro": f"Erro ao processar regra do profissional: {str(e)}"}), 500
+
+
+@bp.route("/excluir_profissional_indicador", methods=["POST"])
+def excluir_profissional_indicador():
+    """Desconsidera/exclui um profissional de um indicador (opcionalmente por subgrupo)
+    e recalcula a apuração da competência."""
+    data = request.get_json(silent=True) or {}
+    indicador_id = data.get("indicador_id")
+    subgrupo_id = _subgrupo_da_linha(data.get("subgrupo_id"))
+    nome_profissional = (data.get("nome_profissional") or "").strip()
+    periodo = _normalizar_periodo(data.get("periodo") or "")
+
+    if not indicador_id or not nome_profissional:
+        return jsonify({"ok": False, "mensagem": "Indicador ou profissional não informado."}), 400
+
+    nome_norm = _normalizar_nome_prof(nome_profissional)
+    if not nome_norm:
+        return jsonify({"ok": False, "mensagem": "Nome de profissional inválido."}), 400
+
+    db = get_db()
+    existente = db.execute(
+        """SELECT id FROM indicador_profissional_excecao
+           WHERE indicador_id = ? AND nome_normalizado = ?
+             AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+             AND estabelecimento_id IS NULL
+           LIMIT 1""",
+        (indicador_id, nome_norm, subgrupo_id, subgrupo_id),
+    ).fetchone()
+
+    if not existente:
+        db.execute(
+            """INSERT INTO indicador_profissional_excecao
+                   (indicador_id, subgrupo_id, estabelecimento_id, nome_profissional, nome_normalizado)
+               VALUES (?, ?, NULL, ?, ?)""",
+            (indicador_id, subgrupo_id, nome_profissional, nome_norm),
+        )
+        db.commit()
+
+    from ..funcoes import sincronizar_apuracao_dinamica
+    sincronizar_apuracao_dinamica(db, periodo=periodo or None)
+
+    linha_atualizada = _obter_dados_linha_resumo(
+        db, indicador_id, data.get("estabelecimento_ids"), subgrupo_id, data.get("cbo_codigo"), periodo
+    )
+
+    return jsonify({
+        "ok": True,
+        "mensagem": f"Profissional '{nome_profissional}' desconsiderado deste indicador com sucesso!",
+        "linha": linha_atualizada,
+    })
+
+
+@bp.route("/restaurar_profissional_indicador", methods=["POST"])
+def restaurar_profissional_indicador():
+    """Restaura um profissional anteriormente desconsiderado/excluído de um indicador
+    e recalcula a apuração da competência."""
+    data = request.get_json(silent=True) or {}
+    indicador_id = data.get("indicador_id")
+    subgrupo_id = _subgrupo_da_linha(data.get("subgrupo_id"))
+    excecao_id = data.get("excecao_id")
+    nome_profissional = (data.get("nome_profissional") or "").strip()
+    periodo = _normalizar_periodo(data.get("periodo") or "")
+
+    if not indicador_id:
+        return jsonify({"ok": False, "mensagem": "Indicador não informado."}), 400
+
+    db = get_db()
+    if excecao_id:
+        db.execute("DELETE FROM indicador_profissional_excecao WHERE id = ? AND indicador_id = ?", (excecao_id, indicador_id))
+    elif nome_profissional:
+        nome_norm = _normalizar_nome_prof(nome_profissional)
+        db.execute(
+            """DELETE FROM indicador_profissional_excecao
+               WHERE indicador_id = ? AND nome_normalizado = ?
+                 AND (subgrupo_id IS NULL OR subgrupo_id = ?)""",
+            (indicador_id, nome_norm, subgrupo_id),
+        )
+    else:
+        return jsonify({"ok": False, "mensagem": "Informe a exceção ou o nome do profissional."}), 400
+
+    db.commit()
+
+    from ..funcoes import sincronizar_apuracao_dinamica
+    sincronizar_apuracao_dinamica(db, periodo=periodo or None)
+
+    linha_atualizada = _obter_dados_linha_resumo(
+        db, indicador_id, data.get("estabelecimento_ids"), subgrupo_id, data.get("cbo_codigo"), periodo
+    )
+
+    return jsonify({
+        "ok": True,
+        "mensagem": f"Profissional '{nome_profissional or ''}' restaurado neste indicador com sucesso!",
+        "linha": linha_atualizada,
+    })
 
 

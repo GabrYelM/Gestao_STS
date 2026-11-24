@@ -2166,6 +2166,39 @@ def detalhe_indicador(indicador_id):
         (indicador_id,),
     ).fetchall()
 
+    try:
+        excecoes_profissional = db.execute(
+            """SELECT ep.id, ep.nome_profissional, ep.subgrupo_id, ep.estabelecimento_id,
+                      sg.nome AS subgrupo_nome, es.nome AS estabelecimento_nome
+               FROM indicador_profissional_excecao ep
+               LEFT JOIN indicador_subgrupo sg ON sg.id = ep.subgrupo_id
+               LEFT JOIN estabelecimentos es ON es.id = ep.estabelecimento_id
+               WHERE ep.indicador_id=?
+               ORDER BY ep.nome_profissional""",
+            (indicador_id,),
+        ).fetchall()
+    except Exception:
+        excecoes_profissional = []
+
+    try:
+        profissionais_sugestoes = [
+            r[0] for r in db.execute(
+                """SELECT DISTINCT nome_prof FROM (
+                       SELECT nome AS nome_prof FROM profissionais WHERE nome IS NOT NULL AND trim(nome) != ''
+                       UNION
+                       SELECT nome_profissional AS nome_prof FROM staging_at02 WHERE nome_profissional IS NOT NULL AND trim(nome_profissional) != ''
+                       UNION
+                       SELECT nome_profissional AS nome_prof FROM staging_visita_domiciliar WHERE nome_profissional IS NOT NULL AND trim(nome_profissional) != ''
+                       UNION
+                       SELECT nome_profissional AS nome_prof FROM staging_dtic_rel134 WHERE nome_profissional IS NOT NULL AND trim(nome_profissional) != ''
+                       UNION
+                       SELECT nome_profissional AS nome_prof FROM staging_dtic_rel130 WHERE nome_profissional IS NOT NULL AND trim(nome_profissional) != ''
+                   ) ORDER BY nome_prof ASC"""
+            ).fetchall()
+        ]
+    except Exception:
+        profissionais_sugestoes = []
+
     tipos_equipe_cadastrados = [
         r["tipo_equipe"] for r in db.execute(
             "SELECT DISTINCT tipo_equipe FROM profissionais "
@@ -2282,6 +2315,8 @@ def detalhe_indicador(indicador_id):
         nomes_origem_disponiveis=nomes_origem_disponiveis,
         redirecionamentos_rel134=redirecionamentos_rel134,
         cbos_rel134=cbos_rel134,
+        excecoes_profissional=excecoes_profissional,
+        profissionais_sugestoes=profissionais_sugestoes,
     )
 
 
@@ -2761,6 +2796,64 @@ def remover_excecao_estabelecimento(indicador_id, excecao_id):
     sincronizar_apuracao_dinamica(db)
     flash("Exceção removida. Estabelecimento volta a ser considerado.", "sucesso")
     return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-unidades"))
+
+
+@bp.route("/indicadores/<int:indicador_id>/excecao_profissional", methods=["POST"])
+def add_excecao_profissional(indicador_id):
+    from ..funcoes import _normalizar_nome_prof
+    db = get_db()
+    nome_prof = (request.form.get("nome_profissional") or "").strip()
+    subgrupo_id = request.form.get("subgrupo_id") or None
+    if subgrupo_id is not None and str(subgrupo_id).isdigit():
+        subgrupo_id = int(subgrupo_id)
+    else:
+        subgrupo_id = None
+    estabelecimento_id = request.form.get("estabelecimento_id") or None
+    if estabelecimento_id is not None and str(estabelecimento_id).isdigit():
+        estabelecimento_id = int(estabelecimento_id)
+    else:
+        estabelecimento_id = None
+
+    if not nome_prof:
+        flash("Informe ou selecione o nome do profissional para desconsiderar.", "erro")
+        return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-cbos"))
+
+    nome_norm = _normalizar_nome_prof(nome_prof)
+    existe = db.execute(
+        """SELECT id FROM indicador_profissional_excecao
+           WHERE indicador_id = ? AND nome_normalizado = ?
+             AND ((subgrupo_id IS NULL AND ? IS NULL) OR subgrupo_id = ?)
+             AND ((estabelecimento_id IS NULL AND ? IS NULL) OR estabelecimento_id = ?)
+           LIMIT 1""",
+        (indicador_id, nome_norm, subgrupo_id, subgrupo_id, estabelecimento_id, estabelecimento_id),
+    ).fetchone()
+    if not existe:
+        db.execute(
+            """INSERT INTO indicador_profissional_excecao
+                   (indicador_id, subgrupo_id, estabelecimento_id, nome_profissional, nome_normalizado)
+               VALUES (?, ?, ?, ?, ?)""",
+            (indicador_id, subgrupo_id, estabelecimento_id, nome_prof, nome_norm),
+        )
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash(f"Profissional '{nome_prof}' passa a ser desconsiderado neste indicador.", "sucesso")
+    else:
+        flash(f"Profissional '{nome_prof}' já está desconsiderado neste indicador.", "info")
+
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-cbos"))
+
+
+@bp.route(
+    "/indicadores/<int:indicador_id>/excecao_profissional/<int:excecao_id>/remover",
+    methods=["POST"],
+)
+def remover_excecao_profissional(indicador_id, excecao_id):
+    db = get_db()
+    db.execute("DELETE FROM indicador_profissional_excecao WHERE id=? AND indicador_id=?", (excecao_id, indicador_id))
+    db.commit()
+    sincronizar_apuracao_dinamica(db)
+    flash("Exceção removida. Profissional volta a ser considerado na apuração deste indicador.", "sucesso")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-cbos"))
 
 
 # ---------------------------------------------------------------------------

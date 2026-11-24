@@ -282,9 +282,9 @@ def importar_at02(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
     db.execute("DELETE FROM staging_at02 WHERE ano_mes = ?", (periodo_referencia,))
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -500,9 +500,9 @@ def importar_webssas(caminho_arquivo, periodo_referencia, db, nome_arquivo=None,
     db.execute("DELETE FROM staging_webssas WHERE periodo = ? OR periodo = ?", (p_norm, p_web))
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -597,9 +597,9 @@ def importar_visita_domiciliar(caminho_arquivo, periodo_referencia, db, nome_arq
         )
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -872,9 +872,9 @@ def importar_bi_siga(fonte_at, caminho_arquivo, periodo_referencia, db, nome_arq
     )
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -945,9 +945,9 @@ def importar_dtic_rel134(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     db.execute("DELETE FROM staging_dtic_rel134 WHERE periodo_referencia = ?", (periodo_referencia,))
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -1021,9 +1021,9 @@ def importar_dtic_rel130(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     db.execute("DELETE FROM staging_dtic_rel130 WHERE periodo_referencia = ?", (periodo_referencia,))
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -1101,9 +1101,9 @@ def importar_sisad(caminho_arquivo, periodo_referencia, db, nome_arquivo=None):
     db.execute("DELETE FROM staging_sisad WHERE periodo_referencia = ?", (periodo_referencia,))
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 
@@ -1188,9 +1188,9 @@ def importar_dtic_rel164(caminho_arquivo, periodo_referencia, db, nome_arquivo=N
     db.execute("DELETE FROM staging_dtic_rel164 WHERE periodo_referencia = ?", (periodo_referencia,))
 
     cursor = db.execute(
-        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status)
-           VALUES (?, ?, ?, 'processando')""",
-        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia),
+        """INSERT INTO importacoes (fonte_id, nome_arquivo, periodo_referencia, status, caminho_arquivo)
+           VALUES (?, ?, ?, 'processando', ?)""",
+        (fonte_id, nome_arquivo or caminho_arquivo, periodo_referencia, os.path.basename(caminho_arquivo) if caminho_arquivo else None),
     )
     importacao_id = cursor.lastrowid
 

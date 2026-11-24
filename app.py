@@ -717,48 +717,266 @@ def logout():
     return redirect(url_for("index"))
 
 
+def _pasta_backups_sistema():
+    pasta = os.path.join(basedir, "backups")
+    os.makedirs(pasta, exist_ok=True)
+    return pasta
+
+
+def _criar_snapshot_sqlite(origem_path, destino_path):
+    """Cria uma cópia consistente de um banco SQLite usando sqlite3.Connection.backup()
+    (seguro mesmo com WAL ativo e conexões abertas)."""
+    import sqlite3
+    origem = sqlite3.connect(origem_path)
+    destino = sqlite3.connect(destino_path)
+    try:
+        with destino:
+            origem.backup(destino)
+    finally:
+        origem.close()
+        destino.close()
+
+
+def _validar_cabecalho_sqlite(caminho):
+    if not os.path.exists(caminho) or os.path.getsize(caminho) < 100:
+        return False
+    with open(caminho, "rb") as f:
+        return f.read(16) == b"SQLite format 3\x00"
+
+
+def _gerar_pacote_backup_zip(zip_path):
+    """Gera um arquivo .ZIP completo contendo snapshots consistentes de:
+    - database.db (Produção / Monitoramento / Fila de Espera / Usuários)
+    - contratos/stspe.db (Módulo de Contratos de Gestão)
+    - catalogo_geral.json e profissionais_local.json (quando existirem)
+    """
+    import zipfile, tempfile, shutil
+
+    db_path = os.path.join(basedir, 'database.db')
+    stspe_path = app.config.get("STSPE_DATABASE_PATH") or os.path.join(basedir, 'contratos', 'stspe.db')
+    cat_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
+    prof_path = os.path.join(basedir, 'services', 'profissionais_local.json')
+
+    snap_dir = tempfile.mkdtemp(prefix="sts_bkp_")
+    try:
+        with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+            if os.path.exists(db_path):
+                snap_main = os.path.join(snap_dir, 'database.db')
+                _criar_snapshot_sqlite(db_path, snap_main)
+                zf.write(snap_main, arcname='database.db')
+            if os.path.exists(stspe_path):
+                snap_contratos = os.path.join(snap_dir, 'stspe.db')
+                _criar_snapshot_sqlite(stspe_path, snap_contratos)
+                zf.write(snap_contratos, arcname='contratos/stspe.db')
+            if os.path.exists(cat_path):
+                zf.write(cat_path, arcname='catalogo_geral.json')
+            if os.path.exists(prof_path):
+                zf.write(prof_path, arcname='profissionais_local.json')
+    finally:
+        shutil.rmtree(snap_dir, ignore_errors=True)
+
+
+def _remover_sidecars_sqlite(db_path):
+    for sufixo in ("-wal", "-shm", "-journal"):
+        sidecar = db_path + sufixo
+        if os.path.exists(sidecar):
+            try:
+                os.remove(sidecar)
+            except Exception:
+                pass
+
+
+def _restaurar_pacote_backup(caminho_arquivo, nome_original):
+    """Restaura database.db, contratos/stspe.db e catálogos JSON a partir de um .ZIP ou .DB."""
+    import zipfile, shutil, tempfile, sqlite3
+    from datetime import datetime
+    from contratos.db import close_db as close_contratos_db, get_db as get_contratos_db
+    from contratos.migrations_auto import aplicar_migracoes_pendentes
+
+    db_path = os.path.join(basedir, 'database.db')
+    stspe_path = app.config.get("STSPE_DATABASE_PATH") or os.path.join(basedir, 'contratos', 'stspe.db')
+    cat_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
+    prof_path = os.path.join(basedir, 'services', 'profissionais_local.json')
+
+    temp_dir = tempfile.mkdtemp(prefix="sts_restore_")
+    try:
+        temp_main_db = None
+        temp_contratos_db = None
+        temp_cat = None
+        temp_prof = None
+
+        nome_lower = (nome_original or caminho_arquivo).lower()
+        if nome_lower.endswith(".zip"):
+            with zipfile.ZipFile(caminho_arquivo, 'r') as zf:
+                for member in zf.namelist():
+                    base_name = os.path.basename(member).lower()
+                    if base_name == 'database.db':
+                        temp_main_db = os.path.join(temp_dir, 'database.db')
+                        with open(temp_main_db, 'wb') as f_out:
+                            f_out.write(zf.read(member))
+                    elif base_name == 'stspe.db' or (base_name.endswith('.db') and 'stspe' in base_name):
+                        temp_contratos_db = os.path.join(temp_dir, 'stspe.db')
+                        with open(temp_contratos_db, 'wb') as f_out:
+                            f_out.write(zf.read(member))
+                    elif base_name == 'catalogo_geral.json':
+                        temp_cat = os.path.join(temp_dir, 'catalogo_geral.json')
+                        with open(temp_cat, 'wb') as f_out:
+                            f_out.write(zf.read(member))
+                    elif base_name == 'profissionais_local.json':
+                        temp_prof = os.path.join(temp_dir, 'profissionais_local.json')
+                        with open(temp_prof, 'wb') as f_out:
+                            f_out.write(zf.read(member))
+        else:
+            if not _validar_cabecalho_sqlite(caminho_arquivo):
+                raise ValueError("O arquivo .DB enviado não é um banco SQLite válido.")
+            # Auto-detecta se é banco de Contratos (possui tabela indicadores + fato_apuracao) ou Principal
+            eh_contratos = False
+            try:
+                conn_chk = sqlite3.connect(caminho_arquivo)
+                tabs = {r[0] for r in conn_chk.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                conn_chk.close()
+                if "indicadores" in tabs and "fato_apuracao" in tabs:
+                    eh_contratos = True
+            except Exception:
+                pass
+            if eh_contratos:
+                temp_contratos_db = caminho_arquivo
+            else:
+                temp_main_db = caminho_arquivo
+
+        if not temp_main_db and not temp_contratos_db:
+            raise ValueError("O arquivo de backup não contém nenhum banco de dados válido (database.db ou stspe.db).")
+
+        if temp_main_db and not _validar_cabecalho_sqlite(temp_main_db):
+            raise ValueError("O arquivo database.db dentro do backup está corrompido ou é inválido.")
+        if temp_contratos_db and not _validar_cabecalho_sqlite(temp_contratos_db):
+            raise ValueError("O arquivo stspe.db dentro do backup está corrompido ou é inválido.")
+
+        # Cria cópia de segurança automática antes de restaurar
+        try:
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            pre_zip = os.path.join(_pasta_backups_sistema(), f"pre_restore_{ts}.zip")
+            _gerar_pacote_backup_zip(pre_zip)
+        except Exception as e_pre:
+            print(f"Aviso ao criar backup pré-restauração: {e_pre}")
+
+        # Fecha conexões ativas de ambos os bancos
+        db.session.remove()
+        db.engine.dispose()
+        close_contratos_db()
+
+        itens_restaurados = []
+        if temp_main_db and os.path.exists(temp_main_db):
+            _remover_sidecars_sqlite(db_path)
+            shutil.copy2(temp_main_db, db_path)
+            itens_restaurados.append("Produção/Principal (database.db)")
+
+        if temp_contratos_db and os.path.exists(temp_contratos_db):
+            os.makedirs(os.path.dirname(stspe_path), exist_ok=True)
+            _remover_sidecars_sqlite(stspe_path)
+            shutil.copy2(temp_contratos_db, stspe_path)
+            itens_restaurados.append("Contratos de Gestão (stspe.db)")
+
+        if temp_cat and os.path.exists(temp_cat):
+            shutil.copy2(temp_cat, cat_path)
+            itens_restaurados.append("Catálogo Geral")
+
+        if temp_prof and os.path.exists(temp_prof):
+            shutil.copy2(temp_prof, prof_path)
+            itens_restaurados.append("Profissionais Locais")
+
+        if temp_contratos_db:
+            conn_c = get_contratos_db()
+            aplicar_migracoes_pendentes(conn_c)
+            conn_c.commit()
+
+        if temp_main_db:
+            sincronizar_todas_competencias()
+
+        return itens_restaurados
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _listar_backups_sistema():
+    from datetime import datetime
+    pasta = _pasta_backups_sistema()
+    itens = []
+    for nome in os.listdir(pasta):
+        if not nome.lower().endswith((".zip", ".db")):
+            continue
+        caminho = os.path.join(pasta, nome)
+        if not os.path.isfile(caminho):
+            continue
+        st = os.stat(caminho)
+        itens.append({
+            "nome": nome,
+            "tamanho_mb": round(st.st_size / (1024 * 1024), 2),
+            "criado_em": datetime.fromtimestamp(st.st_mtime).strftime("%d/%m/%Y às %H:%M"),
+            "_mtime": st.st_mtime,
+        })
+    itens.sort(key=lambda x: x["_mtime"], reverse=True)
+    return itens
+
+
 @app.route("/backup", methods=["GET"])
 @admin_required
 def tela_backup():
     from datetime import datetime
     db_path = os.path.join(basedir, 'database.db')
-    
+    stspe_path = app.config.get("STSPE_DATABASE_PATH") or os.path.join(basedir, 'contratos', 'stspe.db')
+
     tamanho_db_mb = 0
     data_modificacao = "N/A"
     if os.path.exists(db_path):
         tamanho_db_mb = round(os.path.getsize(db_path) / (1024 * 1024), 2)
-        mtime = os.path.getmtime(db_path)
-        data_modificacao = datetime.fromtimestamp(mtime).strftime("%d/%m/%Y às %H:%M")
-        
+        data_modificacao = datetime.fromtimestamp(os.path.getmtime(db_path)).strftime("%d/%m/%Y às %H:%M")
+
+    tamanho_contratos_mb = 0
+    data_mod_contratos = "N/A"
+    if os.path.exists(stspe_path):
+        tamanho_contratos_mb = round(os.path.getsize(stspe_path) / (1024 * 1024), 2)
+        data_mod_contratos = datetime.fromtimestamp(os.path.getmtime(stspe_path)).strftime("%d/%m/%Y às %H:%M")
+
     return render_template(
         "backup.html",
         tamanho_db_mb=tamanho_db_mb,
-        data_modificacao=data_modificacao
+        data_modificacao=data_modificacao,
+        tamanho_contratos_mb=tamanho_contratos_mb,
+        data_mod_contratos=data_mod_contratos,
+        backups_servidor=_listar_backups_sistema(),
+        pasta_backups=_pasta_backups_sistema(),
     )
 
 
 @app.route("/admin/backup_db", methods=["GET"])
 @admin_required
 def backup_db():
-    import zipfile, tempfile
+    import tempfile
     from datetime import datetime
+    from flask import after_this_request
 
     db_path = os.path.join(basedir, 'database.db')
-    cat_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
+    stspe_path = app.config.get("STSPE_DATABASE_PATH") or os.path.join(basedir, 'contratos', 'stspe.db')
 
-    if not os.path.exists(db_path):
-        return jsonify({"erro": "Banco de dados não encontrado."}), 404
+    if not os.path.exists(db_path) and not os.path.exists(stspe_path):
+        return jsonify({"erro": "Nenhum banco de dados encontrado."}), 404
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    temp_dir = tempfile.gettempdir()
-    zip_filename = f"Gestao_STS_backup_{timestamp}.zip"
-    zip_path = os.path.join(temp_dir, zip_filename)
+    zip_filename = f"Gestao_STS_backup_completo_{timestamp}.zip"
+    fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="sts_dl_")
+    os.close(fd)
 
-    with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        if os.path.exists(db_path):
-            zf.write(db_path, arcname='database.db')
-        if os.path.exists(cat_path):
-            zf.write(cat_path, arcname='catalogo_geral.json')
+    _gerar_pacote_backup_zip(zip_path)
+
+    @after_this_request
+    def _limpar_zip_temp(response):
+        try:
+            if os.path.exists(zip_path):
+                os.remove(zip_path)
+        except Exception:
+            pass
+        return response
 
     return send_file(
         zip_path,
@@ -768,10 +986,75 @@ def backup_db():
     )
 
 
+@app.route("/admin/criar_backup_servidor", methods=["POST"])
+@admin_required
+def criar_backup_servidor():
+    from datetime import datetime
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        zip_filename = f"Gestao_STS_backup_completo_{timestamp}.zip"
+        zip_path = os.path.join(_pasta_backups_sistema(), zip_filename)
+        _gerar_pacote_backup_zip(zip_path)
+        flash(f"Backup completo salvo no servidor com sucesso: {zip_filename}", "success")
+    except Exception as e:
+        flash(f"Erro ao criar backup no servidor: {str(e)}", "error")
+    return redirect(url_for("tela_backup"))
+
+
+@app.route("/admin/baixar_backup_servidor/<nome_arquivo>", methods=["GET"])
+@admin_required
+def baixar_backup_servidor(nome_arquivo):
+    from werkzeug.utils import secure_filename
+    nome_seg = secure_filename(nome_arquivo)
+    caminho = os.path.join(_pasta_backups_sistema(), nome_seg)
+    if not os.path.exists(caminho):
+        flash("Arquivo de backup não encontrado.", "error")
+        return redirect(url_for("tela_backup"))
+    return send_file(caminho, as_attachment=True, download_name=nome_seg)
+
+
+@app.route("/admin/restaurar_backup_servidor/<nome_arquivo>", methods=["POST"])
+@admin_required
+def restaurar_backup_servidor(nome_arquivo):
+    from werkzeug.utils import secure_filename
+    nome_seg = secure_filename(nome_arquivo)
+    caminho = os.path.join(_pasta_backups_sistema(), nome_seg)
+    if not os.path.exists(caminho):
+        flash("Arquivo de backup não encontrado.", "error")
+        return redirect(url_for("tela_backup"))
+    try:
+        itens = _restaurar_pacote_backup(caminho, nome_seg)
+        flash(
+            f"Backup '{nome_seg}' restaurado com sucesso! Atualizado(s): {', '.join(itens)}. "
+            "(Uma cópia de segurança pré-restauração foi salva automaticamente no servidor.)",
+            "success",
+        )
+    except Exception as e:
+        flash(f"Erro ao restaurar o backup: {str(e)}", "error")
+    return redirect(url_for("tela_backup"))
+
+
+@app.route("/admin/excluir_backup_servidor/<nome_arquivo>", methods=["POST"])
+@admin_required
+def excluir_backup_servidor(nome_arquivo):
+    from werkzeug.utils import secure_filename
+    nome_seg = secure_filename(nome_arquivo)
+    caminho = os.path.join(_pasta_backups_sistema(), nome_seg)
+    try:
+        if os.path.exists(caminho):
+            os.remove(caminho)
+            flash(f"Backup '{nome_seg}' excluído do servidor.", "success")
+        else:
+            flash("Arquivo de backup não encontrado.", "error")
+    except Exception as e:
+        flash(f"Erro ao excluir backup: {str(e)}", "error")
+    return redirect(url_for("tela_backup"))
+
+
 @app.route("/admin/restaurar_backup", methods=["POST"])
 @admin_required
 def restaurar_backup():
-    import zipfile, shutil, tempfile
+    import tempfile, shutil
 
     arquivo = request.files.get("arquivo_backup")
     if not arquivo or not arquivo.filename:
@@ -783,46 +1066,17 @@ def restaurar_backup():
         flash("Formato de arquivo inválido. Selecione um arquivo .ZIP ou .DB.", "error")
         return redirect(url_for("tela_backup"))
 
-    db_path = os.path.join(basedir, 'database.db')
-    cat_path = os.path.join(basedir, 'services', 'catalogo_geral.json')
-    temp_dir = tempfile.mkdtemp()
-
+    temp_dir = tempfile.mkdtemp(prefix="sts_up_restore_")
     try:
-        temp_extracted_db = None
-        temp_extracted_cat = None
-
-        if filename.endswith(".zip"):
-            with zipfile.ZipFile(arquivo, 'r') as zf:
-                for member in zf.namelist():
-                    base_name = os.path.basename(member)
-                    if base_name == 'database.db':
-                        temp_extracted_db = os.path.join(temp_dir, 'database.db')
-                        with open(temp_extracted_db, 'wb') as f_out:
-                            f_out.write(zf.read(member))
-                    elif base_name == 'catalogo_geral.json':
-                        temp_extracted_cat = os.path.join(temp_dir, 'catalogo_geral.json')
-                        with open(temp_extracted_cat, 'wb') as f_out:
-                            f_out.write(zf.read(member))
-        else:
-            temp_extracted_db = os.path.join(temp_dir, 'database.db')
-            arquivo.save(temp_extracted_db)
-
-        if not temp_extracted_db or not os.path.exists(temp_extracted_db):
-            flash("O arquivo enviado não contém um banco de dados válido.", "error")
-            return redirect(url_for("tela_backup"))
-
-        # Libera conexões ativas do SQLAlchemy
-        db.session.remove()
-        db.engine.dispose()
-
-        # Copia os arquivos restaurados
-        shutil.copy2(temp_extracted_db, db_path)
-        if temp_extracted_cat and os.path.exists(temp_extracted_cat):
-            shutil.copy2(temp_extracted_cat, cat_path)
-
-        # Sincroniza competências e recarrega banco
-        sincronizar_todas_competencias()
-        flash("Backup restaurado com sucesso! O banco de dados e os cadastros foram atualizados.", "success")
+        ext = os.path.splitext(arquivo.filename)[1] or ".zip"
+        tmp_upload = os.path.join(temp_dir, f"upload{ext}")
+        arquivo.save(tmp_upload)
+        itens = _restaurar_pacote_backup(tmp_upload, arquivo.filename)
+        flash(
+            f"Backup restaurado com sucesso! Atualizado(s): {', '.join(itens)}. "
+            "(Uma cópia de segurança pré-restauração foi salva automaticamente no servidor.)",
+            "success",
+        )
     except Exception as e:
         flash(f"Erro ao restaurar o backup: {str(e)}", "error")
     finally:
@@ -1316,6 +1570,47 @@ def producao():
 import zipfile
 import os
 
+def _pasta_uploads_producao():
+    pasta = os.path.join(basedir, "uploads_producao")
+    os.makedirs(pasta, exist_ok=True)
+    return pasta
+
+
+def _arquivar_arquivo_producao(origem_path, nome_original, tipo_relatorio, nome_amigavel, periodo_referencia=None):
+    """Salva uma cópia permanente do arquivo importado na Produção para permitir download posterior."""
+    import shutil, uuid
+    from datetime import datetime
+    try:
+        if not origem_path or not os.path.isfile(origem_path):
+            return None
+        pasta = _pasta_uploads_producao()
+        nome_orig = os.path.basename(nome_original or os.path.basename(origem_path))
+        ext = os.path.splitext(nome_orig)[1] or os.path.splitext(origem_path)[1]
+        nome_disco = f"{uuid.uuid4().hex}{ext}"
+        destino = os.path.join(pasta, nome_disco)
+        shutil.copy2(origem_path, destino)
+        tamanho = os.path.getsize(destino)
+        reg = models.ArquivoImportadoProducao(
+            tipo_relatorio=str(tipo_relatorio or "").upper(),
+            nome_amigavel=str(nome_amigavel or tipo_relatorio or "Relatório"),
+            periodo_referencia=str(periodo_referencia or "Automática"),
+            nome_original=nome_orig,
+            nome_disco=nome_disco,
+            tamanho_bytes=tamanho,
+            data_importacao=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        )
+        db.session.add(reg)
+        db.session.commit()
+        return reg.id
+    except Exception as e:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        print(f"[app] Aviso ao arquivar arquivo importado da Produção ({nome_original}): {e}")
+        return None
+
+
 @app.route("/upload_bi_manual", methods=["POST"])
 @admin_required
 def upload_bi_manual():
@@ -1362,11 +1657,12 @@ def upload_bi_manual():
     try:
         arquivo.save(caminho_temp)
         etl_func(caminho_temp, periodo)
+        nome_rel = MAPA_NOMES_RELATORIOS.get(relatorio, relatorio)
+        _arquivar_arquivo_producao(caminho_temp, arquivo.filename, relatorio, nome_rel, periodo)
         try:
             sincronizar_todas_competencias()
         except Exception:
             pass
-        nome_rel = MAPA_NOMES_RELATORIOS.get(relatorio, relatorio)
         return jsonify({
             "status": "success",
             "mensagem": f"Arquivo '{arquivo.filename}' processado com sucesso! Os dados de {mes}/{ano} do relatório {nome_rel} foram substituídos no banco de dados."
@@ -1543,7 +1839,7 @@ def _identificar_tipo_relatorio(nome_arquivo, tipo_selecionado="todos"):
 
     return None, None
 
-def _processar_arquivo_tabular(fonte_stream_ou_bytes, nome_original, tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo):
+def _processar_arquivo_tabular(fonte_stream_ou_bytes, nome_original, tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo, arquivar=True):
     """
     Processa qualquer arquivo do sistema (BPA, RAAS, DTIC, SIGA/BI, GAC, Painel, etc.)
     salvando em disco temporariamente, aplicando filtros de supervisão se necessário e executando o ETL.
@@ -1665,6 +1961,8 @@ def _processar_arquivo_tabular(fonte_stream_ou_bytes, nome_original, tipo_chave,
             res_etl = processa_vg04(caminho_final, periodo=periodo_form)
 
         if res_etl:
+            if arquivar:
+                _arquivar_arquivo_producao(caminho_final, nome_original, tipo_chave, nome_amigavel, periodo_form or desc_periodo_alvo)
             return True, None, None
         elif modo_estrito and periodo_form:
             return False, f"O arquivo '{nome_original}' ({nome_amigavel}) não contém registros para a competência {desc_periodo_alvo}.", None
@@ -1713,8 +2011,14 @@ def upload_dtic():
             
             # 1. Arquivos Compactados (.ZIP)
             if nome_lower.endswith('.zip'):
+                import tempfile
+                fd_z, tmp_zip_path = tempfile.mkstemp(suffix=".zip", prefix="prod_zip_")
+                os.close(fd_z)
                 try:
-                    with zipfile.ZipFile(arquivo, 'r') as zip_ref:
+                    arquivo.save(tmp_zip_path)
+                    sucessos_zip = 0
+                    tipos_zip = []
+                    with zipfile.ZipFile(tmp_zip_path, 'r') as zip_ref:
                         for nome_membro in zip_ref.namelist():
                             nl_membro = nome_membro.lower()
                             if nl_membro.endswith('/') or '__macosx' in nl_membro or '_erro' in nl_membro or '_protocolo' in nl_membro:
@@ -1730,18 +2034,31 @@ def upload_dtic():
                                 with zip_ref.open(nome_membro) as fonte:
                                     ok, av, er = _processar_arquivo_tabular(
                                         fonte, f"{os.path.basename(nome_arq)} -> {os.path.basename(nome_membro)}",
-                                        tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo
+                                        tipo_chave, nome_amigavel, ext, periodo_form, modo_estrito, desc_periodo_alvo,
+                                        arquivar=False,
                                     )
                                     if ok:
                                         sucessos += 1
+                                        sucessos_zip += 1
+                                        if nome_amigavel not in tipos_zip:
+                                            tipos_zip.append(nome_amigavel)
                                     if av:
                                         avisos.append(av)
                                     if er:
                                         erros.append(er)
                             else:
                                 avisos.append(f"O item '{os.path.basename(nome_membro)}' do ZIP '{nome_arq}' não pôde ser identificado automaticamente.")
+                    if sucessos_zip > 0:
+                        rotulo_zip = ", ".join(tipos_zip[:3]) + ("..." if len(tipos_zip) > 3 else "")
+                        _arquivar_arquivo_producao(tmp_zip_path, nome_arq, "ZIP", rotulo_zip or "Pacote ZIP", periodo_form or desc_periodo_alvo)
                 except Exception as e:
                     erros.append(f"Erro ao descompactar ou ler o arquivo ZIP '{nome_arq}': {e}")
+                finally:
+                    if os.path.exists(tmp_zip_path):
+                        try:
+                            os.remove(tmp_zip_path)
+                        except Exception:
+                            pass
             else:
                 # 2. Arquivos Descompactados (.CSV, .XLSX, .XLS, .DBF, .TXT, .HTML, BPA, RAAS, etc.)
                 tipo_chave, nome_amigavel = _identificar_tipo_relatorio(nome_arq, tipo_relatorio)
@@ -1791,6 +2108,27 @@ def upload_dtic():
     periodo_ativo_desc = formatar_descricao_competencia(periodo_ativo)
     status_dtic = obter_status_importacao_dtic(periodo_ativo)
     lista_competencias = listar_competencias_disponiveis()
+
+    pasta_prod = _pasta_uploads_producao()
+    arquivos_importados = []
+    try:
+        regs = models.ArquivoImportadoProducao.query.order_by(models.ArquivoImportadoProducao.id.desc()).limit(100).all()
+        for r in regs:
+            caminho_disk = os.path.join(pasta_prod, os.path.basename(r.nome_disco))
+            arquivos_importados.append({
+                "id": r.id,
+                "tipo_relatorio": r.tipo_relatorio,
+                "nome_amigavel": r.nome_amigavel,
+                "periodo_referencia": r.periodo_referencia,
+                "nome_original": r.nome_original,
+                "tamanho_kb": round((r.tamanho_bytes or 0) / 1024, 1),
+                "tamanho_mb": round((r.tamanho_bytes or 0) / (1024 * 1024), 2),
+                "tamanho_bytes": r.tamanho_bytes or 0,
+                "data_importacao": r.data_importacao,
+                "disponivel": os.path.isfile(caminho_disk),
+            })
+    except Exception:
+        arquivos_importados = []
     
     return render_template(
         "upload_dtic.html",
@@ -1801,8 +2139,41 @@ def upload_dtic():
         comp_auto_val=comp_auto_val,
         comp_auto_desc=comp_auto_desc,
         status_dtic=status_dtic,
-        lista_competencias=lista_competencias
+        lista_competencias=lista_competencias,
+        arquivos_importados=arquivos_importados,
     )
+
+
+@app.route("/producao/arquivos_importados/<int:arquivo_id>/baixar", methods=["GET"])
+@admin_required
+def baixar_arquivo_importado_producao(arquivo_id):
+    reg = models.ArquivoImportadoProducao.query.get(arquivo_id)
+    if not reg:
+        flash("Arquivo importado não encontrado.", "danger")
+        return redirect(url_for("upload_dtic"))
+    caminho = os.path.join(_pasta_uploads_producao(), os.path.basename(reg.nome_disco))
+    if not os.path.isfile(caminho):
+        flash(f"O arquivo '{reg.nome_original}' não está mais disponível no disco.", "warning")
+        return redirect(url_for("upload_dtic"))
+    return send_file(caminho, as_attachment=True, download_name=os.path.basename(reg.nome_original))
+
+
+@app.route("/producao/arquivos_importados/<int:arquivo_id>/excluir", methods=["POST"])
+@admin_required
+def excluir_arquivo_importado_producao(arquivo_id):
+    reg = models.ArquivoImportadoProducao.query.get(arquivo_id)
+    if reg:
+        caminho = os.path.join(_pasta_uploads_producao(), os.path.basename(reg.nome_disco))
+        if os.path.isfile(caminho):
+            try:
+                os.remove(caminho)
+            except Exception:
+                pass
+        nome_orig = reg.nome_original
+        db.session.delete(reg)
+        db.session.commit()
+        flash(f"Cópia arquivada '{nome_orig}' removida com sucesso (os dados já importados no banco permanecem intactos).", "success")
+    return redirect(url_for("upload_dtic"))
 
 
 @app.route("/remover_competencia_arquivo", methods=["POST"])

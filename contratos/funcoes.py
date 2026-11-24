@@ -652,6 +652,61 @@ def _estabelecimento_permitido(db, indicador_id, estabelecimento_id):
     return excluido is None
 
 
+def _carregar_excecoes_profissional(db):
+    """Carrega todas as exceções de profissionais em memória para verificação O(1) nos cálculos.
+    Retorna dict: indicador_id -> list[(subgrupo_id, estabelecimento_id, nome_normalizado)]."""
+    mapa = {}
+    try:
+        rows = db.execute(
+            "SELECT indicador_id, subgrupo_id, estabelecimento_id, nome_normalizado FROM indicador_profissional_excecao"
+        ).fetchall()
+        for r in rows:
+            ind_id = r["indicador_id"]
+            mapa.setdefault(ind_id, []).append((r["subgrupo_id"], r["estabelecimento_id"], r["nome_normalizado"]))
+    except Exception:
+        pass
+    return mapa
+
+
+def _profissional_permitido(db, indicador_id, nome_profissional, subgrupo_id=None, estabelecimento_id=None, cache=None):
+    """Retorna False se o profissional estiver desconsiderado/excluído para o indicador (e subgrupo/estabelecimento)."""
+    if not nome_profissional or not indicador_id:
+        return True
+    nome_norm = _normalizar_nome_prof(nome_profissional)
+    if not nome_norm:
+        return True
+
+    if cache is not None:
+        regras = cache.get(int(indicador_id), [])
+        for sg_id, est_id, norm_exc in regras:
+            if norm_exc != nome_norm:
+                continue
+            if sg_id is not None and subgrupo_id is not None and int(sg_id) != int(subgrupo_id):
+                continue
+            if sg_id is not None and subgrupo_id is None:
+                continue
+            if est_id is not None and estabelecimento_id is not None and int(est_id) != int(estabelecimento_id):
+                continue
+            if est_id is not None and estabelecimento_id is None:
+                continue
+            return False
+        return True
+
+    try:
+        excluido = db.execute(
+            """SELECT 1 FROM indicador_profissional_excecao
+               WHERE indicador_id = ?
+                 AND nome_normalizado = ?
+                 AND (subgrupo_id IS NULL OR subgrupo_id = ?)
+                 AND (estabelecimento_id IS NULL OR estabelecimento_id = ?)
+               LIMIT 1""",
+            (indicador_id, nome_norm, subgrupo_id, estabelecimento_id),
+        ).fetchone()
+        return excluido is None
+    except Exception:
+        return True
+
+
 SERVICOS_COMPATIVEIS = {
     "UBS_ESF": {"UBS_ESF", "UBS_MISTA"},
     "UBS_TRAD": {"UBS_TRAD", "UBS_MISTA"},
@@ -995,7 +1050,7 @@ def _garantir_emulti_at02(db, periodo_norm):
             params_estab = list(cnes_lista)
 
             query_at02 = f"""
-                SELECT s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento,
+                SELECT s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento, s.nome_profissional,
                        sum(s.quantidade) as total, max(s.importacao_id) as imp_id
                 FROM staging_at02 s
                 WHERE s.ano_mes = ?
@@ -1007,14 +1062,20 @@ def _garantir_emulti_at02(db, periodo_norm):
                   AND lower(s.nome_estabelecimento) NOT LIKE '%cnr%'
                   AND lower(s.nome_estabelecimento) NOT LIKE '%cecco%'
                   AND lower(s.nome_estabelecimento) NOT LIKE '%teleassistencia%'
-                GROUP BY s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento
+                GROUP BY s.cod_cbo_sus, s.cod_procedimento, s.nome_procedimento, s.nome_profissional
             """
             params_at02 = [periodo_norm, *params_estab, *cbos_at02_alvo, *procs_validos]
             rows_at02 = db.execute(query_at02, params_at02).fetchall()
 
+            excecoes_prof_cache = _carregar_excecoes_profissional(db)
             for r_at02 in rows_at02:
                 qtd_at02 = int(r_at02["total"] or 0)
                 if qtd_at02 <= 0:
+                    continue
+                if not _profissional_permitido(
+                    db, ind_alvo["id"], r_at02["nome_profissional"],
+                    estabelecimento_id=est["id"], cache=excecoes_prof_cache
+                ):
                     continue
 
                 cbo_at02 = r_at02["cod_cbo_sus"]
@@ -1136,6 +1197,7 @@ def calcular_at02(db, periodo, importacao_id=None):
 
     linhas = db.execute(query, params).fetchall()
     mapa_nomes_subgrupo = {r["id"]: r["nome"] for r in db.execute("SELECT id, nome FROM indicador_subgrupo").fetchall()}
+    excecoes_prof_at02 = _carregar_excecoes_profissional(db)
 
     total = 0
     vinculadas = 0
@@ -1304,6 +1366,13 @@ def calcular_at02(db, periodo, importacao_id=None):
                 continue
             if not _estabelecimento_permitido(db, indicador_id, estabelecimento_id):
                 razoes_bloqueio.add("estabelecimento_excecao")
+                continue
+            if not _profissional_permitido(
+                db, indicador_id, linha["nome_profissional"],
+                subgrupo_id=subgrupo_id, estabelecimento_id=estabelecimento_id,
+                cache=excecoes_prof_at02
+            ):
+                razoes_bloqueio.add("profissional_excecao")
                 continue
             if not _servico_compativel(db, indicador_id, estabelecimento_id):
                 razoes_bloqueio.add("servico")
@@ -1697,6 +1766,7 @@ def calcular_visita_domiciliar(db, periodo, importacao_id=None):
         }
 
     cbo_acs = "515105"
+    excecoes_prof_vd = _carregar_excecoes_profissional(db)
     for linha in linhas:
         total += 1
         estabelecimento_id, _ = _resolver_estabelecimento_por_cnes(db, linha["cod_cnes"], indicador["id"])
@@ -1706,6 +1776,12 @@ def calcular_visita_domiciliar(db, periodo, importacao_id=None):
             continue
 
         if not _estabelecimento_permitido(db, indicador["id"], estabelecimento_id):
+            continue
+
+        if not _profissional_permitido(
+            db, indicador["id"], linha["nome_profissional"],
+            estabelecimento_id=estabelecimento_id, cache=excecoes_prof_vd
+        ):
             continue
 
         if not _servico_compativel(db, indicador["id"], estabelecimento_id):
@@ -2610,7 +2686,7 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
 
     # Staging query filtrando pelos CBOs de eMulti e desconsiderando reuniões (sem filtrar coluna emulti)
     query = """
-        SELECT cnes, nome_unidade, cbo_prof, num_participantes, ano, mes, importacao_id
+        SELECT cnes, nome_unidade, cbo_prof, nome_profissional, num_participantes, ano, mes, importacao_id
         FROM staging_dtic_rel134
         WHERE LOWER(COALESCE(supervisao, '')) LIKE '%penha%'
           AND CAST(COALESCE(num_participantes, '0') AS INTEGER) > 1
@@ -2635,6 +2711,9 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
         params.append(importacao_id)
 
     linhas = db.execute(query, params).fetchall()
+    excecoes_prof_134 = _carregar_excecoes_profissional(db)
+    id_p12 = ind_p12["id"] if ind_p12 else 12
+    id_p22 = ind_p22["id"] if ind_p22 else 22
 
     # Agrupar produção por (unidade_destino_id, cbo_codigo)
     producao_agrupada = {}
@@ -2651,6 +2730,18 @@ def calcular_dtic_rel134(db, periodo, importacao_id=None):
         cbo_cod = _resolver_cbo_rel134(r["cbo_prof"])
         if not cbo_cod:
             continue
+
+        # Verifica exceção de profissional em P12/P22
+        if r["nome_profissional"]:
+            tem_m12 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?", (origem_id, id_p12, cbo_cod)).fetchone()
+            tem_m22 = db.execute("SELECT 1 FROM metas WHERE estabelecimento_id = ? AND indicador_id = ? AND cbo_codigo = ?", (origem_id, id_p22, cbo_cod)).fetchone()
+            ind_check = id_p12 if (tem_m12 and not tem_m22) else (id_p22 if (tem_m22 and not tem_m12) else None)
+            if ind_check is None:
+                e_mr = db.execute("SELECT destinacao_mista FROM estabelecimentos WHERE id = ?", (origem_id,)).fetchone()
+                dm = (e_mr["destinacao_mista"] or "TRAD").upper() if e_mr else "TRAD"
+                ind_check = id_p12 if dm == "ESF" else id_p22
+            if not _profissional_permitido(db, ind_check, r["nome_profissional"], estabelecimento_id=origem_id, cache=excecoes_prof_134):
+                continue
 
         # Verifica se este CBO deve ser transferido para a base ou permanecer na unidade de realização:
         # Se a unidade de origem já possui meta própria para este CBO em P12 ou P22, ela NÃO transfere para a base.
@@ -2780,25 +2871,19 @@ def calcular_dtic_rel130(db, periodo, importacao_id=None):
                 (ind_p33["id"], cbo, ind_p33["id"], cbo),
             )
 
-    query = """SELECT cnes, unidade, nome_equipe, cod_cbo,
-                      COUNT(DISTINCT codigo_atendimento) AS total,
-                      MAX(importacao_id) AS imp_id
+    query = """SELECT cnes, unidade, nome_equipe, cod_cbo, nome_profissional,
+                      codigo_atendimento, importacao_id
                FROM staging_dtic_rel130
                WHERE (periodo_referencia = ? OR periodo_referencia LIKE ?)
                  AND (supervisao LIKE '%PENHA%' OR supervisao LIKE '%penha%')
                  AND substr(data_cadastro, 7, 4) = ?
-                 AND substr(data_cadastro, 4, 2) = ?
-               GROUP BY cnes, unidade, nome_equipe, cod_cbo"""
+                 AND substr(data_cadastro, 4, 2) = ?"""
     params = [periodo_norm, f"%{periodo_norm}%", ano_ref, mes_ref]
-    linhas = db.execute(query, params).fetchall()
+    linhas_raw = db.execute(query, params).fetchall()
+    excecoes_prof_130 = _carregar_excecoes_profissional(db)
 
-    total = 0
-    vinculadas = 0
-    max_imp_id = importacao_id
-
-    for r in linhas:
-        total += 1
-        qty = int(r["total"] or 0)
+    grupos_130 = {}
+    for r in linhas_raw:
         equipe = (r["nome_equipe"] or "").upper()
         if "EMAP" in equipe:
             indicador_id = ind_p33["id"] if ind_p33 else None
@@ -2806,26 +2891,39 @@ def calcular_dtic_rel130(db, periodo, importacao_id=None):
             indicador_id = ind_p30["id"] if ind_p30 else None
         else:
             continue
-
         if not indicador_id:
             continue
-
         estab_id, _ = _resolver_estabelecimento_por_cnes(db, r["cnes"], indicador_id)
         if not estab_id:
             estab_id = _resolver_estabelecimento_por_nome(db, r["unidade"])
         if not estab_id:
             continue
-
+        if not _profissional_permitido(db, indicador_id, r["nome_profissional"], estabelecimento_id=estab_id, cache=excecoes_prof_130):
+            continue
         cbo_cod = (r["cod_cbo"] or "").strip() or None
-        if not max_imp_id and r["imp_id"]:
-            max_imp_id = r["imp_id"]
+        chave = (estab_id, indicador_id, cbo_cod)
+        if chave not in grupos_130:
+            grupos_130[chave] = {"codigos": set(), "imp_id": r["importacao_id"]}
+        if r["codigo_atendimento"] is not None:
+            grupos_130[chave]["codigos"].add(r["codigo_atendimento"])
+        if r["importacao_id"]:
+            grupos_130[chave]["imp_id"] = r["importacao_id"]
+
+    total = len(grupos_130)
+    vinculadas = 0
+    max_imp_id = importacao_id
+
+    for (estab_id, indicador_id, cbo_cod), dados in grupos_130.items():
+        qty = len(dados["codigos"])
+        if not max_imp_id and dados["imp_id"]:
+            max_imp_id = dados["imp_id"]
 
         if qty > 0:
             db.execute(
                 """INSERT INTO fato_apuracao (
                        fonte_id, importacao_id, estabelecimento_id, cbo_codigo, indicador_id, periodo, quantidade, tipo_registro
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'apurado')""",
-                (fonte_id, r["imp_id"] or max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, cbo_cod, indicador_id, periodo_norm, qty),
+                (fonte_id, dados["imp_id"] or max_imp_id or _obter_importacao_sistema_id(db, periodo_norm), estab_id, cbo_cod, indicador_id, periodo_norm, qty),
             )
             vinculadas += qty
 
