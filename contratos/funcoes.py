@@ -2313,7 +2313,7 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                     continue
 
                 if not _profissional_permitido(
-                    db, ind_escolhido["id"], nome_origem,
+                    db, ind_escolhido["id"], (r["nome_estabelecimento"] or "").strip(),
                     estabelecimento_id=estab_id, cache=excecoes_prof_at61
                 ):
                     continue
@@ -2562,7 +2562,7 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                     continue
 
                 if not _profissional_permitido(
-                    db, ind_escolhido["id"], nome_origem,
+                    db, ind_escolhido["id"], (r["nome_estabelecimento"] or "").strip(),
                     estabelecimento_id=estab_id, cache=excecoes_prof_at61
                 ):
                     continue
