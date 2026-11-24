@@ -1955,7 +1955,7 @@ async function aplicarAcaoProcedimento(tipo, codigo, nome, btn) {
   const profissional = contexto.profissional || '';
   const cboProfissional = contexto.cboProfissional || '';
 
-  if (!indicadorId || !codigo) return;
+  if (!indicadorId || (!codigo && !nome)) return;
 
   const url = tipo === 'vincular'
     ? '{{ url_for("painel.vincular_procedimento") }}'
@@ -1963,9 +1963,10 @@ async function aplicarAcaoProcedimento(tipo, codigo, nome, btn) {
 
   const textoAcao = tipo === 'vincular' ? 'vincular' : 'remover';
   const textoGerundio = tipo === 'vincular' ? 'Vinculando...' : 'Removendo...';
+  const rotuloProc = codigo ? `[${codigo}] ${nome}` : nome;
   const msg = tipo === 'vincular'
-    ? `Deseja vincular o procedimento:\n\n[${codigo}] ${nome}\n\na este indicador? Ele passará a ser contabilizado na apuração.`
-    : `Deseja realmente remover o procedimento:\n\n[${codigo}] ${nome}\n\ndeste indicador? Ele deixará de ser contabilizado na apuração.`;
+    ? `Deseja vincular o procedimento:\n\n${rotuloProc}\n\na este indicador? Ele passará a ser contabilizado na apuração.`
+    : `Deseja realmente remover o procedimento:\n\n${rotuloProc}\n\ndeste indicador? Ele deixará de ser contabilizado na apuração.`;
 
   if (!confirm(msg)) return;
 
@@ -1983,6 +1984,7 @@ async function aplicarAcaoProcedimento(tipo, codigo, nome, btn) {
         estabelecimento_ids: estabelecimentoIds,
         cbo_codigo: cboCodigo,
         cod_procedimento: codigo,
+        nome_procedimento: nome,
         periodo: periodo,
       }),
     });

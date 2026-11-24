@@ -748,6 +748,34 @@ def _normalizar_nome_prof(txt):
     return " ".join(txt.upper().split())
 
 
+def _carregar_mapa_procedimentos_por_nome(db):
+    """Retorna dict: nome_normalizado -> codigo SIGTAP preferencial (evitando prefixo '00' duplicado)."""
+    mapa = {}
+    for r in db.execute("SELECT codigo, nome FROM procedimentos WHERE nome IS NOT NULL AND trim(nome) != ''").fetchall():
+        cod = str(r["codigo"] or "").strip()
+        chave = _normalizar_nome_prof(r["nome"])
+        if not cod or not chave:
+            continue
+        atual = mapa.get(chave)
+        if not atual:
+            mapa[chave] = cod
+        elif atual.startswith("00") and not cod.startswith("00"):
+            mapa[chave] = cod
+    return mapa
+
+
+def _resolver_codigo_procedimento_por_nome(db, nome_proc, mapa=None):
+    """Resolve o código SIGTAP de um procedimento pelo nome (sem acentos/maiúsculas)."""
+    if not nome_proc:
+        return ""
+    chave = _normalizar_nome_prof(nome_proc)
+    if not chave:
+        return ""
+    if mapa is None:
+        mapa = _carregar_mapa_procedimentos_por_nome(db)
+    return mapa.get(chave, "")
+
+
 def _garantir_linhas_subgrupos(db, periodo_norm):
     """
     Garante que especialidades vinculadas a subgrupos (ex: P43 Infantil: Neuro e Pneumo)
@@ -1854,6 +1882,15 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
     periodo_norm = _normalizar_periodo(periodo)
     ano = periodo_norm[:4]
     fontes_a_calcular = [fonte_at] if fonte_at else ["AT48", "AT49", "AT11", "AT39", "AT40", "AT57", "AT61", "AT08"]
+    mapa_proc_nome = _carregar_mapa_procedimentos_por_nome(db)
+    excecoes_prof_at61 = _carregar_excecoes_profissional(db)
+    excluidos_proc_at61 = {
+        (r["indicador_id"], str(r["procedimento_codigo"]).strip())
+        for r in db.execute(
+            "SELECT indicador_id, procedimento_codigo FROM indicador_procedimento WHERE tipo_vinculo = 'exclusao'"
+        ).fetchall()
+        if r["procedimento_codigo"]
+    }
     resumos = {}
 
     for fat in fontes_a_calcular:
@@ -2275,7 +2312,17 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                 if not ind_escolhido:
                     continue
 
+                if not _profissional_permitido(
+                    db, ind_escolhido["id"], nome_origem,
+                    estabelecimento_id=estab_id, cache=excecoes_prof_at61
+                ):
+                    continue
+
                 proc_cod = (r["procedimento_codigo"] or "").rstrip("A").strip()
+                if not proc_cod and r["procedimento_nome"]:
+                    proc_cod = _resolver_codigo_procedimento_por_nome(db, r["procedimento_nome"], mapa_proc_nome)
+                if proc_cod and (ind_escolhido["id"], proc_cod) in excluidos_proc_at61:
+                    continue
                 if proc_cod:
                     _garantir_procedimento(db, proc_cod, r["procedimento_nome"])
 
@@ -2368,6 +2415,15 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
             ).fetchall()
 
             termos_nao_ubs = ("caps", "cecco", "cer", "cnr", "hospital dia", "teleassistencia")
+            mapa_proc_nome = _carregar_mapa_procedimentos_por_nome(db)
+            excecoes_prof_at61 = _carregar_excecoes_profissional(db)
+            excluidos_proc_at61 = {
+                (r["indicador_id"], str(r["procedimento_codigo"]).strip())
+                for r in db.execute(
+                    "SELECT indicador_id, procedimento_codigo FROM indicador_procedimento WHERE tipo_vinculo = 'exclusao'"
+                ).fetchall()
+                if r["procedimento_codigo"]
+            }
             for r in linhas:
                 total += 1
                 qty = int(r["total"] or 0)
@@ -2505,7 +2561,17 @@ def calcular_bi_siga(db, periodo, fonte_at=None, importacao_id=None):
                 if not ind_escolhido:
                     continue
 
+                if not _profissional_permitido(
+                    db, ind_escolhido["id"], nome_origem,
+                    estabelecimento_id=estab_id, cache=excecoes_prof_at61
+                ):
+                    continue
+
                 proc_cod = (r["procedimento_codigo"] or "").rstrip("A").strip()
+                if not proc_cod and r["procedimento_nome"]:
+                    proc_cod = _resolver_codigo_procedimento_por_nome(db, r["procedimento_nome"], mapa_proc_nome)
+                if proc_cod and (ind_escolhido["id"], proc_cod) in excluidos_proc_at61:
+                    continue
                 if proc_cod:
                     _garantir_procedimento(db, proc_cod, r["procedimento_nome"])
 

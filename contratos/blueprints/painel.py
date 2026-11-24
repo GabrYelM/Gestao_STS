@@ -1054,17 +1054,33 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
         cbos_transferem = obter_cbos_transferencia_rel134(db)
         estabs_set = set(estabelecimento_ids) if estabelecimento_ids else set()
 
+        from ..funcoes import _carregar_mapa_procedimentos_por_nome, _resolver_codigo_procedimento_por_nome
+        mapa_proc_nome = _carregar_mapa_procedimentos_por_nome(db)
+        excluidos_proc = {
+            str(r[0]).strip()
+            for r in db.execute(
+                "SELECT procedimento_codigo FROM indicador_procedimento WHERE indicador_id = ? AND tipo_vinculo = 'exclusao'",
+                (indicador_id,),
+            ).fetchall()
+            if r[0]
+        }
+
         linhas_stg = db.execute(
-            """SELECT cod_cnes, nome_estabelecimento, cbo_nome, sum(quantidade) as total
+            """SELECT cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome, sum(quantidade) as total
                FROM staging_bi_siga
                WHERE fonte_at = 'AT61' AND (ano_mes = ? OR ano_mes LIKE ?)
-               GROUP BY cod_cnes, nome_estabelecimento, cbo_nome""",
+               GROUP BY cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome""",
             (str(periodo or ""), f"%{periodo}%"),
         ).fetchall()
 
         termos_nao_ubs = ("caps", "cecco", "cer", "cnr", "hospital dia", "teleassistencia")
         equipes_apuradas = {}
         for r in linhas_stg:
+            proc_cod_r = (r["procedimento_codigo"] or "").rstrip("A").strip()
+            if not proc_cod_r and r["procedimento_nome"]:
+                proc_cod_r = _resolver_codigo_procedimento_por_nome(db, r["procedimento_nome"], mapa_proc_nome)
+            if proc_cod_r and proc_cod_r in excluidos_proc:
+                continue
             c_cod = _resolver_cbo(db, None, r["cbo_nome"])
             if cbo_codigo and str(c_cod) != str(cbo_codigo):
                 continue
@@ -1627,19 +1643,30 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                 return itens
             return []
         from collections import defaultdict
+        from ..funcoes import _carregar_mapa_procedimentos_por_nome, _resolver_codigo_procedimento_por_nome
 
         cbos_transferem = obter_cbos_transferencia_rel134(db)
         estabs_set = set(estabelecimento_ids) if estabelecimento_ids else set()
+        mapa_proc_nome = _carregar_mapa_procedimentos_por_nome(db)
+        excluidos_proc = {
+            str(r[0]).strip()
+            for r in db.execute(
+                "SELECT procedimento_codigo FROM indicador_procedimento WHERE indicador_id = ? AND tipo_vinculo = 'exclusao'",
+                (indicador_id,),
+            ).fetchall()
+            if r[0]
+        }
 
         linhas_stg = db.execute(
-            """SELECT cod_cnes, nome_estabelecimento, cbo_nome, procedimento_nome, sum(quantidade) as total
+            """SELECT cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome, sum(quantidade) as total
                FROM staging_bi_siga
                WHERE fonte_at = 'AT61' AND (ano_mes = ? OR ano_mes LIKE ?)
-               GROUP BY cod_cnes, nome_estabelecimento, cbo_nome, procedimento_nome""",
+               GROUP BY cod_cnes, nome_estabelecimento, cbo_nome, procedimento_codigo, procedimento_nome""",
             (str(periodo or ""), f"%{periodo}%"),
         ).fetchall()
 
         res_proc = defaultdict(int)
+        cod_por_nome = {}
         for r in linhas_stg:
             c_cod = _resolver_cbo(db, None, r["cbo_nome"])
             if cbo_alvo and str(c_cod) != str(cbo_alvo):
@@ -1683,14 +1710,25 @@ def _procedimentos_do_profissional(db, indicador_id, estabelecimento_ids, cbo_co
                 ).fetchone())
 
             estab_final = unidade_base_id if (deve_transferir and unidade_base_id and not tem_meta_realizou) else (unidade_realizou_id or unidade_base_id)
-            if estabs_set and estab_final in estabs_set:
+            if (not estabs_set) or (estab_final in estabs_set):
                 proc_n = r["procedimento_nome"] or "Atendimento Individual eMulti"
+                proc_c = (r["procedimento_codigo"] or "").rstrip("A").strip()
+                if not proc_c:
+                    proc_c = _resolver_codigo_procedimento_por_nome(db, proc_n, mapa_proc_nome)
                 res_proc[proc_n] += int(r["total"] or 0)
-            elif not estabs_set:
-                proc_n = r["procedimento_nome"] or "Atendimento Individual eMulti"
-                res_proc[proc_n] += int(r["total"] or 0)
+                if proc_c:
+                    cod_por_nome[proc_n] = proc_c
 
-        return sorted([{"codigo": "", "nome": k, "apurado": v, "considerado": True} for k, v in res_proc.items()], key=lambda x: x["apurado"], reverse=True)
+        itens_at61 = []
+        for k, v in res_proc.items():
+            cod_k = cod_por_nome.get(k, "")
+            itens_at61.append({
+                "codigo": cod_k,
+                "nome": k,
+                "apurado": v,
+                "considerado": not (cod_k and cod_k in excluidos_proc),
+            })
+        return sorted(itens_at61, key=lambda x: (not x["considerado"], -x["apurado"]))
 
     # 6. SISAD (P31 [EMAD Ativos], P32 [Deshospitalizacao], P34 [EMAP Ativos])
     if ind_cod in ("P31", "P32", "P34"):
@@ -2306,12 +2344,23 @@ def desvincular_procedimento():
             pass
 
     cod_procedimento = str(data.get("cod_procedimento") or "").strip()
+    nome_procedimento = str(data.get("nome_procedimento") or "").strip()
     periodo = data.get("periodo")
+
+    db = get_db()
+    if not cod_procedimento and nome_procedimento:
+        from ..funcoes import _resolver_codigo_procedimento_por_nome
+        cod_procedimento = _resolver_codigo_procedimento_por_nome(db, nome_procedimento)
+        if not cod_procedimento:
+            import hashlib
+            cod_procedimento = "NOME_" + hashlib.md5(nome_procedimento.strip().upper().encode("utf-8")).hexdigest()[:10].upper()
+            db.execute(
+                "INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)",
+                (cod_procedimento, nome_procedimento),
+            )
 
     if not indicador_id or not cod_procedimento:
         return jsonify({"ok": False, "mensagem": "Indicador ou procedimento não informado."}), 400
-
-    db = get_db()
 
     # 1. Remove qualquer vínculo direto de inclusão para esse indicador/subgrupo
     db.execute(
@@ -2370,12 +2419,23 @@ def vincular_procedimento():
             pass
 
     cod_procedimento = str(data.get("cod_procedimento") or "").strip()
+    nome_procedimento = str(data.get("nome_procedimento") or "").strip()
     periodo = data.get("periodo")
+
+    db = get_db()
+    if not cod_procedimento and nome_procedimento:
+        from ..funcoes import _resolver_codigo_procedimento_por_nome
+        cod_procedimento = _resolver_codigo_procedimento_por_nome(db, nome_procedimento)
+        if not cod_procedimento:
+            import hashlib
+            cod_procedimento = "NOME_" + hashlib.md5(nome_procedimento.strip().upper().encode("utf-8")).hexdigest()[:10].upper()
+            db.execute(
+                "INSERT OR IGNORE INTO procedimentos (codigo, nome) VALUES (?, ?)",
+                (cod_procedimento, nome_procedimento),
+            )
 
     if not indicador_id or not cod_procedimento:
         return jsonify({"ok": False, "mensagem": "Indicador ou procedimento não informado."}), 400
-
-    db = get_db()
 
     # 1. Remove qualquer regra de exclusão anterior
     db.execute(
