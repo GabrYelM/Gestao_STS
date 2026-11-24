@@ -96,6 +96,35 @@ def _resultados_filtrados(db):
                     print(f"[painel] Erro ao recalcular AT-02 para período {p_m}: {exc_m}")
             db.commit()
 
+        # Garante que P09/P10/P19/P20 (AT57) estejam apurados se houver staging_bi_siga AT57 sem apurado no período
+        periodos_at57_pendentes = [
+            r[0] for r in db.execute("""
+                SELECT DISTINCT replace(replace(s.ano_mes, '-', ''), '/', '') AS p
+                FROM staging_bi_siga s
+                WHERE s.fonte_at = 'AT57' AND s.ano_mes IS NOT NULL AND s.quantidade > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM fato_apuracao f
+                      JOIN indicadores i ON i.id = f.indicador_id
+                      WHERE i.codigo IN ('P09', 'P10', 'P19', 'P20')
+                        AND f.periodo = replace(replace(s.ano_mes, '-', ''), '/', '')
+                        AND f.tipo_registro = 'apurado'
+                        AND f.quantidade > 0
+                  )
+            """).fetchall() if r[0]
+        ]
+        if periodos_at57_pendentes:
+            from ..funcoes import calcular_bi_siga
+            for p_57 in periodos_at57_pendentes:
+                try:
+                    calcular_bi_siga(db, p_57)
+                except Exception as exc_57:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                    print(f"[painel] Erro ao recalcular BI_SIGA para período {p_57}: {exc_57}")
+            db.commit()
+
         # Garante linhas 100% dinâmicas no painel para todas as metas e produções ativas
         from ..funcoes import _garantir_linhas_dinamicas
         periodos_presentes = [
