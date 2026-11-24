@@ -1255,6 +1255,8 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
         }
         is_pmmb = _eh_prof_pmmb(d["nome_profissional"])
         is_rt = _eh_prof_rt(d["nome_profissional"])
+        if is_rt and 59 in (estabelecimento_ids or []) and "rodrigo antunes" in (d["nome_profissional"] or "").lower() and str(periodo or "") < "202606":
+            is_rt = False
         if eh_linha_pmmb:
             if not is_pmmb:
                 continue

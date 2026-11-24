@@ -663,6 +663,24 @@ def espelho_websaass_xlsx():
             regras = dp_ind_por_prod.get(prod_norm)
         regras = regras or []
 
+        # Regras especiais espelhadas de calcular_webssas (M33 CNR e 36.08.08 -> P44)
+        serv_upper = (r["servico"] or "").upper()
+        if estab_id == 21 and (
+            "CONSULT" in serv_upper
+            or any((rg.get("codigo_indicador") or "") == "M33" for rg in regras)
+        ):
+            estab_id = 20
+            estab_nome = estabs_map.get(20, estab_nome)
+
+        if cp == "36.08.08" and estab_id in (6, 53):
+            regras = [{
+                "indicador_id": 44,
+                "subgrupo_id": 12,
+                "cbo_codigo": None,
+                "codigo_indicador": "P44",
+                "indicador_nome": "Exames",
+            }]
+
         per_linha = _normalizar_periodo(r["periodo"])
 
         # Consolidação por CNES / membros de estabelecimento

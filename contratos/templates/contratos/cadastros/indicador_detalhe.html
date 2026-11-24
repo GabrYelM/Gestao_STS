@@ -756,62 +756,118 @@
         </span>
       </div>
 
-      <!-- Formulário para adicionar vínculo WebSaass -->
-      <form method="post" action="{{ url_for('cadastros.add_vinculo_websaass', indicador_id=indicador.id) }}"
-            style="padding:12px;background:#f8fafc;border:1px solid var(--cor-borda);border-radius:var(--raio-sm);margin-bottom:14px">
-        <div style="margin-bottom:10px">
-          <label style="font-size:12px;font-weight:600;margin-bottom:4px;display:block">Selecionar linha já importada do WebSaass (preenchimento automático)</label>
-          <select id="select-linha-ws-disponivel" onchange="preencherCamposWebsaass(this)" style="width:100%;margin:0;font-size:12.5px">
-            <option value="">-- Escolha uma linha do WebSaass ou preencha manualmente abaixo --</option>
-            {% for lw in linhas_websaass_disponiveis %}
-            <option value="{{ lw.cod_producao }}|||{{ lw.producao or '' }}|||{{ lw.servico or '' }}">
-              [{{ lw.cod_producao }}] {{ lw.producao or '(sem descrição)' }} | Serviço: {{ lw.servico or '-' }}{% if lw.vinculado_a %} (vinculado a {{ lw.vinculado_a }}){% else %} [Sem vínculo]{% endif %}
-            </option>
-            {% endfor %}
-          </select>
-        </div>
-        <div style="display:grid;grid-template-columns:130px 1.6fr 1.2fr 1fr {% if subgrupos %}1fr {% endif %}auto;gap:8px;align-items:end">
-          <div>
-            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Cód. Produção</label>
-            <input type="text" name="cod_producao" id="ws-input-cod" placeholder="Ex: 36.07.01" required style="width:100%;margin:0">
-          </div>
-          <div>
-            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Produção (Descrição)</label>
-            <input type="text" name="producao" id="ws-input-prod" placeholder="Descrição no WebSaass" style="width:100%;margin:0">
-          </div>
-          <div>
-            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Serviço (opcional)</label>
-            <input type="text" name="servico" id="ws-input-serv" placeholder="Deixe vazio p/ qualquer serviço" style="width:100%;margin:0">
-          </div>
-          <div>
-            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">CBO / Regra</label>
-            <input type="text" name="cbo_codigo" list="lista-cbos-ws" placeholder="Geral (vazio) ou CBO" style="width:100%;margin:0">
-            <datalist id="lista-cbos-ws">
-              {% for c in cbos_lista_ws %}
-              <option value="{{ c.codigo }}">{{ c.codigo }} - {{ c.nome_categoria }}</option>
-              {% endfor %}
-              <option value="223293_RT">223293_RT - Cirurgião Dentista ESF RT</option>
-              <option value="223208_RT">223208_RT - Cirurgião Dentista Tradicional RT</option>
-              <option value="225142_PMMB">225142_PMMB - Médico ESF PMMB</option>
-              <option value="225170_PMMB">225170_PMMB - Médico Generalista PMMB</option>
-            </datalist>
-          </div>
-          {% if subgrupos %}
-          <div>
-            <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Subgrupo</label>
-            <select name="subgrupo_id" style="width:100%;margin:0">
-              <option value="">-- Nenhum --</option>
-              {% for sg in subgrupos %}
-              <option value="{{ sg.id }}">{{ sg.nome }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          {% endif %}
-          <div>
-            <button type="submit" class="btn-primary" style="margin:0;padding:7px 14px;white-space:nowrap">Vincular</button>
+      <!-- Busca e Filtro de linhas já importadas do WebSaass -->
+      <div style="padding:12px;background:#f8fafc;border:1px solid var(--cor-borda);border-radius:var(--raio-sm);margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <strong style="font-size:12.5px;color:var(--cor-texto)">
+            <i class="fa-solid fa-magnifying-glass me-1 text-primary"></i>Buscar linha importada do WebSaass para vincular
+          </strong>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="btn btn-sm btn-outline-warning active" id="btn-filtro-ws-sem" onclick="filtrarLinhasWebsaass('sem_vinculo')" style="font-size:11.5px;padding:2px 10px">
+              Sem vínculo
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-filtro-ws-todos" onclick="filtrarLinhasWebsaass('todos')" style="font-size:11.5px;padding:2px 10px">
+              Todos
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="btn-filtro-ws-vinc" onclick="filtrarLinhasWebsaass('vinculados')" style="font-size:11.5px;padding:2px 10px">
+              Já vinculados
+            </button>
+            <span id="contador-linhas-ws" style="font-size:11.5px;color:var(--cor-texto-muted);margin-left:6px"></span>
           </div>
         </div>
-      </form>
+
+        <input type="text" id="busca-linhas-ws" oninput="filtrarLinhasWebsaass()"
+               placeholder="Digite código (ex: 36.07), descrição, serviço ou indicador (ex: M29)..."
+               autocomplete="off" style="width:100%;margin:0 0 8px;font-size:12.5px">
+
+        <div style="max-height:220px;overflow-y:auto;border:1px solid var(--cor-borda);border-radius:var(--raio-sm);background:#ffffff;margin-bottom:12px">
+          <table style="margin:0;font-size:12px" id="tabela-linhas-ws-disponiveis">
+            <thead style="position:sticky;top:0;background:#f1f5f9;z-index:1">
+              <tr>
+                <th style="width:95px;padding:5px 8px">Cód. Prod.</th>
+                <th style="padding:5px 8px">Produção WebSaass</th>
+                <th style="padding:5px 8px">Serviço</th>
+                <th style="width:110px;padding:5px 8px">Status</th>
+                <th style="width:85px;padding:5px 8px;text-align:right">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for lw in linhas_websaass_disponiveis %}
+              <tr class="linha-ws-disp"
+                  data-vinculado="{{ '1' if lw.vinculado_a else '0' }}"
+                  data-busca="{{ (lw.cod_producao or '')|lower }} {{ (lw.producao or '')|lower }} {{ (lw.servico or '')|lower }} {{ (lw.vinculado_a or 'sem vinculo')|lower }}">
+                <td style="padding:5px 8px"><code>{{ lw.cod_producao }}</code></td>
+                <td style="padding:5px 8px">{{ lw.producao or '-' }}</td>
+                <td style="padding:5px 8px;color:var(--cor-texto-muted)">{{ lw.servico or '-' }}</td>
+                <td style="padding:5px 8px">
+                  {% if lw.vinculado_a %}
+                    <span class="badge bg-info-subtle text-primary border border-primary-subtle" style="font-size:10.5px">{{ lw.vinculado_a }}</span>
+                  {% else %}
+                    <span class="badge bg-warning-subtle text-dark border border-warning-subtle" style="font-size:10.5px">Sem vínculo</span>
+                  {% endif %}
+                </td>
+                <td style="padding:5px 8px;text-align:right">
+                  <button type="button" class="btn-sm" style="margin:0;padding:2px 8px;font-size:11px"
+                          data-cod="{{ lw.cod_producao or '' }}"
+                          data-prod="{{ lw.producao or '' }}"
+                          data-serv="{{ lw.servico or '' }}"
+                          onclick="selecionarLinhaWebsaass(this)">
+                    Selecionar
+                  </button>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" style="text-align:center;color:var(--cor-texto-muted);padding:12px">Nenhuma linha importada no WebSaass ainda.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Formulário para adicionar vínculo WebSaass -->
+        <form method="post" action="{{ url_for('cadastros.add_vinculo_websaass', indicador_id=indicador.id) }}" id="form-add-vinculo-ws">
+          <div style="display:grid;grid-template-columns:130px 1.6fr 1.2fr 1fr {% if subgrupos %}1fr {% endif %}auto;gap:8px;align-items:end">
+            <div>
+              <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Cód. Produção</label>
+              <input type="text" name="cod_producao" id="ws-input-cod" placeholder="Ex: 36.07.01" required style="width:100%;margin:0">
+            </div>
+            <div>
+              <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Produção (Descrição)</label>
+              <input type="text" name="producao" id="ws-input-prod" placeholder="Descrição no WebSaass" style="width:100%;margin:0">
+            </div>
+            <div>
+              <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Serviço (opcional)</label>
+              <input type="text" name="servico" id="ws-input-serv" placeholder="Deixe vazio p/ qualquer serviço" style="width:100%;margin:0">
+            </div>
+            <div>
+              <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">CBO / Regra</label>
+              <input type="text" name="cbo_codigo" list="lista-cbos-ws" placeholder="Geral (vazio) ou CBO" style="width:100%;margin:0">
+              <datalist id="lista-cbos-ws">
+                {% for c in cbos_lista_ws %}
+                <option value="{{ c.codigo }}">{{ c.codigo }} - {{ c.nome_categoria }}</option>
+                {% endfor %}
+                <option value="223293_RT">223293_RT - Cirurgião Dentista ESF RT</option>
+                <option value="223208_RT">223208_RT - Cirurgião Dentista Tradicional RT</option>
+                <option value="225142_PMMB">225142_PMMB - Médico ESF PMMB</option>
+                <option value="225170_PMMB">225170_PMMB - Médico Generalista PMMB</option>
+              </datalist>
+            </div>
+            {% if subgrupos %}
+            <div>
+              <label style="font-size:11.5px;font-weight:600;margin-bottom:3px;display:block">Subgrupo</label>
+              <select name="subgrupo_id" style="width:100%;margin:0">
+                <option value="">-- Nenhum --</option>
+                {% for sg in subgrupos %}
+                <option value="{{ sg.id }}">{{ sg.nome }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            <div>
+              <button type="submit" class="btn-primary" style="margin:0;padding:7px 14px;white-space:nowrap">Vincular</button>
+            </div>
+          </div>
+        </form>
+      </div>
 
       <div class="table-card">
         <table>
@@ -862,16 +918,48 @@
     </div>
 
     <script>
-      function preencherCamposWebsaass(sel) {
-        if (!sel || !sel.value) return;
-        const partes = sel.value.split('|||');
+      let modoFiltroWs = 'sem_vinculo';
+      function filtrarLinhasWebsaass(novoModo) {
+        if (novoModo) {
+          modoFiltroWs = novoModo;
+          const bSem = document.getElementById('btn-filtro-ws-sem');
+          const bTodos = document.getElementById('btn-filtro-ws-todos');
+          const bVinc = document.getElementById('btn-filtro-ws-vinc');
+          if (bSem) bSem.classList.toggle('active', modoFiltroWs === 'sem_vinculo');
+          if (bTodos) bTodos.classList.toggle('active', modoFiltroWs === 'todos');
+          if (bVinc) bVinc.classList.toggle('active', modoFiltroWs === 'vinculados');
+        }
+        const termo = (document.getElementById('busca-linhas-ws')?.value || '').toLowerCase().trim();
+        const linhas = document.querySelectorAll('#tabela-linhas-ws-disponiveis tbody tr.linha-ws-disp');
+        let visiveis = 0;
+        linhas.forEach(tr => {
+          const vinc = tr.dataset.vinculado === '1';
+          const texto = tr.dataset.busca || '';
+          const okModo = (modoFiltroWs === 'todos') || (modoFiltroWs === 'sem_vinculo' && !vinc) || (modoFiltroWs === 'vinculados' && vinc);
+          const okTexto = !termo || texto.includes(termo);
+          const mostrar = okModo && okTexto;
+          tr.style.display = mostrar ? '' : 'none';
+          if (mostrar) visiveis++;
+        });
+        const cnt = document.getElementById('contador-linhas-ws');
+        if (cnt) cnt.textContent = `${visiveis} de ${linhas.length} linha(s)`;
+      }
+
+      function selecionarLinhaWebsaass(btn) {
         const c = document.getElementById('ws-input-cod');
         const p = document.getElementById('ws-input-prod');
         const s = document.getElementById('ws-input-serv');
-        if (c) c.value = partes[0] || '';
-        if (p) p.value = partes[1] || '';
-        if (s) s.value = partes[2] || '';
+        if (c) c.value = btn.dataset.cod || '';
+        if (p) p.value = btn.dataset.prod || '';
+        if (s) s.value = btn.dataset.serv || '';
+        const form = document.getElementById('form-add-vinculo-ws');
+        if (form) {
+          form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          if (c) c.focus();
+        }
       }
+
+      document.addEventListener('DOMContentLoaded', () => filtrarLinhasWebsaass('sem_vinculo'));
     </script>
 
     <div class="card" id="vinculos-unidade">
