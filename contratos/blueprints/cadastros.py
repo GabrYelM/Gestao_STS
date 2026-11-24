@@ -2892,12 +2892,15 @@ def remover_excecao_profissional(indicador_id, excecao_id):
 
 
 def _recalcular_websaass_todos_periodos(db):
-    from ..funcoes import calcular_webssas, _garantir_linhas_subgrupos, _normalizar_periodo
+    from ..funcoes import calcular_webssas, calcular_at02, _garantir_linhas_subgrupos, _normalizar_periodo
     periodos_stg = [r[0] for r in db.execute("SELECT DISTINCT periodo FROM staging_webssas WHERE periodo IS NOT NULL").fetchall()]
     for p in periodos_stg:
         try:
             calcular_webssas(db, p)
-            _garantir_linhas_subgrupos(db, _normalizar_periodo(p))
+            p_norm = _normalizar_periodo(p)
+            if db.execute("SELECT 1 FROM staging_at02 WHERE ano_mes = ? LIMIT 1", (p_norm,)).fetchone():
+                calcular_at02(db, p_norm)
+            _garantir_linhas_subgrupos(db, p_norm)
         except Exception:
             pass
     db.commit()

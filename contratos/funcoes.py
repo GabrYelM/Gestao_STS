@@ -1232,6 +1232,23 @@ def calcular_at02(db, periodo, importacao_id=None):
         r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo IN ('P17', 'P18', 'M30')").fetchall()
     } | {17, 18}
     ids_m13 = {r[0] for r in db.execute("SELECT id FROM indicadores WHERE codigo = 'M13'").fetchall()}
+    ids_segmenta_rt = {
+        r[0] for r in db.execute(
+            """SELECT id FROM indicadores WHERE segmenta_metas_rt = 1
+               UNION
+               SELECT DISTINCT indicador_id FROM indicador_cbo WHERE cbo_codigo LIKE '%_RT'"""
+        ).fetchall()
+    } | ids_esf_odonto | ids_trad_odonto | {42}
+    ids_segmenta_pmmb = {
+        r[0] for r in db.execute(
+            """SELECT id FROM indicadores WHERE segmenta_metas_pmmb = 1
+               UNION
+               SELECT DISTINCT indicador_id FROM indicador_cbo WHERE cbo_codigo LIKE '%_PMMB'"""
+        ).fetchall()
+    } | {1, 2, 13}
+    cbos_existentes_map = {
+        r[0]: (r[1] or r[0]) for r in db.execute("SELECT codigo, nome_categoria FROM cbo").fetchall()
+    }
 
     est_rt_p07_p08 = {
         r[0] for r in db.execute(
@@ -1341,13 +1358,16 @@ def calcular_at02(db, periodo, importacao_id=None):
         razoes_bloqueio = set()
         for indicador_id, subgrupo_id in candidatos:
             cbo_para_teste = cbo_codigo
-            if eh_pmmb and indicador_id in (1, 2) and cbo_codigo in ("225142", "225142_PMMB"):
-                cbo_para_teste = "225142_PMMB"
-            elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB") and (eh_pmmb or estabelecimento_id in est_pmmb_p13):
+            if eh_pmmb and indicador_id in ids_segmenta_pmmb:
+                if indicador_id in (1, 2) and cbo_codigo in ("225142", "225142_PMMB"):
+                    cbo_para_teste = "225142_PMMB"
+                elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB"):
+                    cbo_para_teste = "225170_PMMB"
+                else:
+                    cbo_para_teste = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+            elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB") and estabelecimento_id in est_pmmb_p13:
                 cbo_para_teste = "225170_PMMB"
-            elif eh_pmmb and indicador_id not in (1, 2, 13):
-                cbo_para_teste = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
-            elif eh_rt:
+            elif eh_rt and indicador_id in ids_segmenta_rt:
                 if estabelecimento_id in est_rt_p07_p08 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_esf_odonto):
                     cbo_para_teste = "223293_RT"
                 elif estabelecimento_id in est_rt_p17_p18 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_trad_odonto):
@@ -1427,13 +1447,16 @@ def calcular_at02(db, periodo, importacao_id=None):
         for indicador_id, subgrupo_id in indicadores:
             sg_id_registro = subgrupo_id
             cbo_registro = cbo_codigo
-            if eh_pmmb and indicador_id in (1, 2) and cbo_codigo in ("225142", "225142_PMMB"):
-                cbo_registro = "225142_PMMB"
-            elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB") and (eh_pmmb or estabelecimento_id in est_pmmb_p13):
+            if eh_pmmb and indicador_id in ids_segmenta_pmmb:
+                if indicador_id in (1, 2) and cbo_codigo in ("225142", "225142_PMMB"):
+                    cbo_registro = "225142_PMMB"
+                elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB"):
+                    cbo_registro = "225170_PMMB"
+                else:
+                    cbo_registro = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
+            elif indicador_id == 13 and cbo_codigo in ("225170", "225170_PMMB") and estabelecimento_id in est_pmmb_p13:
                 cbo_registro = "225170_PMMB"
-            elif eh_pmmb and indicador_id not in (1, 2, 13):
-                cbo_registro = f"{cbo_codigo}_PMMB" if not str(cbo_codigo).endswith("_PMMB") else cbo_codigo
-            elif eh_rt:
+            elif eh_rt and indicador_id in ids_segmenta_rt:
                 if estabelecimento_id in est_rt_p07_p08 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_esf_odonto):
                     cbo_registro = "223293_RT"
                 elif estabelecimento_id in est_rt_p17_p18 and (cbo_codigo in ("223293", "223208") or indicador_id in ids_trad_odonto):
@@ -1463,6 +1486,17 @@ def calcular_at02(db, periodo, importacao_id=None):
                         sg_id_registro = sg_row["id"]
                 else:
                     sg_id_registro = None
+
+            if cbo_registro and cbo_registro not in cbos_existentes_map:
+                base_cod = str(cbo_registro).replace("_PMMB", "").replace("_RT", "")
+                base_nome = cbos_existentes_map.get(base_cod, base_cod)
+                sufixo = " PMMB" if str(cbo_registro).endswith("_PMMB") else (" RT" if str(cbo_registro).endswith("_RT") else "")
+                nome_novo_cbo = f"{base_nome}{sufixo}".strip()
+                db.execute(
+                    "INSERT OR IGNORE INTO cbo (codigo, nome_categoria) VALUES (?, ?)",
+                    (cbo_registro, nome_novo_cbo),
+                )
+                cbos_existentes_map[cbo_registro] = nome_novo_cbo
 
             db.execute(
                 """INSERT INTO fato_apuracao (

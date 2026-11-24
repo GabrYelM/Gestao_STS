@@ -40,6 +40,12 @@ def init_app(app):
         aplicou = aplicar_migracoes_pendentes(conn)
         if aplicou:
             print("[contratos] Schema do banco atualizado automaticamente na inicialização.")
+            try:
+                if conn.execute("SELECT 1 FROM staging_at02 LIMIT 1").fetchone():
+                    from .funcoes import sincronizar_apuracao_dinamica
+                    sincronizar_apuracao_dinamica(conn)
+            except Exception as exc_sync:
+                print(f"[contratos] Aviso ao sincronizar apuração pós-migração: {exc_sync}")
         
         # Garantir fontes de dados essenciais
         conn.execute(

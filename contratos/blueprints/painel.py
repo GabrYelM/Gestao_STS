@@ -57,6 +57,45 @@ def _resultados_filtrados(db):
                     _garantir_emulti_at02(db, p_row["ano_mes"])
                 db.commit()
 
+        # Garante que indicadores de Monitoramento (M*) com declarado no WebSaass e dados no AT-02 estejam apurados
+        periodos_m_pendentes = [
+            r[0] for r in db.execute("""
+                SELECT DISTINCT f.periodo
+                FROM fato_apuracao f
+                JOIN indicadores i ON i.id = f.indicador_id
+                WHERE i.tipo = 'MONITORAMENTO'
+                  AND f.tipo_registro = 'declarado'
+                  AND f.quantidade > 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM fato_apuracao fa
+                      WHERE fa.indicador_id = f.indicador_id
+                        AND fa.periodo = f.periodo
+                        AND fa.tipo_registro = 'apurado'
+                        AND fa.quantidade > 0
+                  )
+                  AND EXISTS (
+                      SELECT 1 FROM staging_at02 s
+                      JOIN indicador_procedimento ip ON ip.procedimento_codigo = s.cod_procedimento
+                      WHERE ip.indicador_id = f.indicador_id
+                        AND ip.tipo_vinculo = 'inclusao'
+                        AND s.ano_mes = f.periodo
+                        AND s.quantidade > 0
+                  )
+            """).fetchall() if r[0]
+        ]
+        if periodos_m_pendentes:
+            from ..funcoes import calcular_at02
+            for p_m in periodos_m_pendentes:
+                try:
+                    calcular_at02(db, p_m)
+                except Exception as exc_m:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                    print(f"[painel] Erro ao recalcular AT-02 para período {p_m}: {exc_m}")
+            db.commit()
+
         # Garante linhas 100% dinâmicas no painel para todas as metas e produções ativas
         from ..funcoes import _garantir_linhas_dinamicas
         periodos_presentes = [
@@ -486,10 +525,14 @@ def _procedimentos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
 def _cmes_e_cbos_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, periodo, subgrupo_id):
     """CMES dos cadastros da linha e, numa linha 'Curinga / Geral', os CBOs que
     de fato entraram no apurado."""
+    est_ids_cmes = list(estabelecimento_ids or [])
+    if str(indicador_id) == "48" and 44 in est_ids_cmes and 16 not in est_ids_cmes:
+        est_ids_cmes.append(16)
+    marc_cmes = ",".join("?" * len(est_ids_cmes))
     marcadores = ",".join("?" * len(estabelecimento_ids))
     cmes = [
         r["cod_cmes"] for r in db.execute(
-            f"SELECT cod_cmes FROM estabelecimentos WHERE id IN ({marcadores})", estabelecimento_ids
+            f"SELECT cod_cmes FROM estabelecimentos WHERE id IN ({marc_cmes})", est_ids_cmes
         ).fetchall() if r["cod_cmes"]
     ]
     cbos = None
@@ -1235,12 +1278,28 @@ def _profissionais_da_linha(db, indicador_id, estabelecimento_ids, cbo_codigo, p
     sql += " GROUP BY s.nome_profissional, s.cod_cbo_sus, s.cod_procedimento ORDER BY s.nome_profissional ASC"
     rows = db.execute(sql, params).fetchall()
 
+    # Se procedimento 0211020036 for exclusivo de P44 (subgrupo 22) para um profissional específico,
+    # não exibir esse profissional no drill-down de outros indicadores (ex: M38 sg 52)
+    profs_exclusivos_p44_ecg = set()
+    if str(indicador_id) != "44":
+        for rp44 in db.execute(
+            """SELECT nome_profissional FROM indicador_procedimento
+               WHERE indicador_id = 44 AND procedimento_codigo = '0211020036'
+                 AND tipo_vinculo = 'inclusao' AND nome_profissional IS NOT NULL AND TRIM(nome_profissional) != ''"""
+        ).fetchall():
+            for n_item in rp44["nome_profissional"].replace(";", ",").split(","):
+                if n_item.strip():
+                    profs_exclusivos_p44_ecg.add(_normalizar_nome_prof(n_item))
+
     prof_agrupado = {}
     for r in rows:
         d = dict(r)
         proc_r = d.get("cod_procedimento")
         if proc_r in regras_prof:
             if _normalizar_nome_prof(d["nome_profissional"]) != regras_prof[proc_r]:
+                continue
+        if proc_r == "0211020036" and profs_exclusivos_p44_ecg:
+            if _normalizar_nome_prof(d["nome_profissional"]) in profs_exclusivos_p44_ecg:
                 continue
         chave_p = (d["nome_profissional"], d["cbo_codigo"], d["cbo_nome"])
         prof_agrupado[chave_p] = prof_agrupado.get(chave_p, 0) + int(d["apurado"] or 0)
@@ -2967,11 +3026,15 @@ def websaass_vincular_linhas():
 
     db.commit()
 
-    # Recalcula WebSaass para todos os períodos do staging e garante limpeza de linhas órfãs
+    # Recalcula WebSaass (e AT-02 se existir staging) para todos os períodos e garante limpeza de linhas órfãs
+    from ..funcoes import calcular_at02
     periodos_stg = [r[0] for r in db.execute("SELECT DISTINCT periodo FROM staging_webssas WHERE periodo IS NOT NULL").fetchall()]
     for p in periodos_stg:
         calcular_webssas(db, p)
-        _garantir_linhas_subgrupos(db, _normalizar_periodo(p))
+        p_norm = _normalizar_periodo(p)
+        if db.execute("SELECT 1 FROM staging_at02 WHERE ano_mes = ? LIMIT 1", (p_norm,)).fetchone():
+            calcular_at02(db, p_norm)
+        _garantir_linhas_subgrupos(db, p_norm)
     db.commit()
 
     linhas_res = _resultados_com_status(db)
