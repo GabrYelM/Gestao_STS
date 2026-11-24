@@ -1191,10 +1191,10 @@ function montarHtmlTabelaProfissionais(dados, idPrefixo) {
   const desconsiderados = dados.profissionais.filter(p => p.excluido);
 
   let bannerRegraHtml = '';
-  if (dados.regra_profissional || dados.subgrupo_id == 22) {
-    const profNome = (dados.regra_profissional && dados.regra_profissional.nome_profissional) || 'Ronaldo Della Monica Silva';
-    const procCod = (dados.regra_profissional && dados.regra_profissional.procedimento_codigo) || '0211020036';
-    const procNome = (dados.regra_profissional && dados.regra_profissional.procedimento_nome) || 'Eletrocardiograma';
+  if (dados.regra_profissional && dados.regra_profissional.nome_profissional) {
+    const profNome = dados.regra_profissional.nome_profissional;
+    const procCod = dados.regra_profissional.procedimento_codigo || '';
+    const procNome = dados.regra_profissional.procedimento_nome || '';
     bannerRegraHtml = `
       <div class="regra-prof-banner p-2 mb-2 d-flex justify-content-between align-items-center">
         <div>

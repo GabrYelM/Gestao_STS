@@ -2403,15 +2403,20 @@ def remover_vinculo_cbo(indicador_id, vinculo_id):
     anchor = f"sg{subgrupo_id}" if subgrupo_id else None
     db.execute("DELETE FROM indicador_cbo WHERE id=?", (vinculo_id,))
     if cbo_codigo:
+        cbos_limpar = (cbo_codigo, f"{cbo_codigo}_RT", f"{cbo_codigo}_PMMB")
         if subgrupo_id:
             db.execute(
-                "DELETE FROM fato_apuracao WHERE indicador_id=? AND subgrupo_id=? AND cbo_codigo=? AND tipo_registro='apurado'",
-                (indicador_id, subgrupo_id, cbo_codigo),
+                """DELETE FROM fato_apuracao
+                   WHERE indicador_id=? AND subgrupo_id=?
+                     AND cbo_codigo IN (?, ?, ?) AND tipo_registro='apurado'""",
+                (indicador_id, subgrupo_id, *cbos_limpar),
             )
         else:
             db.execute(
-                "DELETE FROM fato_apuracao WHERE indicador_id=? AND cbo_codigo=? AND tipo_registro='apurado'",
-                (indicador_id, cbo_codigo),
+                """DELETE FROM fato_apuracao
+                   WHERE indicador_id=?
+                     AND cbo_codigo IN (?, ?, ?) AND tipo_registro='apurado'""",
+                (indicador_id, *cbos_limpar),
             )
     db.commit()
     sincronizar_apuracao_dinamica(db)
@@ -2758,11 +2763,29 @@ def renomear_subgrupo(indicador_id, subgrupo_id):
 @bp.route("/indicadores/<int:indicador_id>/subgrupos/<int:subgrupo_id>/excluir", methods=["POST"])
 def excluir_subgrupo(indicador_id, subgrupo_id):
     db = get_db()
-    db.execute("DELETE FROM indicador_subgrupo WHERE id=?", (subgrupo_id,))
-    db.commit()
-    sincronizar_apuracao_dinamica(db)
-    flash("Subgrupo excluído (junto com os vínculos e as metas que só existiam dentro dele).", "sucesso")
-    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id))
+    try:
+        # Limpar referências sem ON DELETE CASCADE antes de excluir o subgrupo (evita FK IntegrityError 500)
+        try:
+            db.execute("UPDATE de_para_websaass_indicador SET subgrupo_id = NULL WHERE subgrupo_id = ?", (subgrupo_id,))
+        except Exception:
+            pass
+        try:
+            db.execute("DELETE FROM painel_observacoes WHERE indicador_id = ? AND subgrupo_id = ?", (indicador_id, subgrupo_id))
+        except Exception:
+            pass
+        try:
+            db.execute("DELETE FROM indicador_profissional_excecao WHERE subgrupo_id = ?", (subgrupo_id,))
+        except Exception:
+            pass
+        db.execute("DELETE FROM fato_apuracao WHERE indicador_id = ? AND subgrupo_id = ?", (indicador_id, subgrupo_id))
+        db.execute("DELETE FROM indicador_subgrupo WHERE id = ?", (subgrupo_id,))
+        db.commit()
+        sincronizar_apuracao_dinamica(db)
+        flash("Subgrupo excluído (junto com os vínculos e as metas que só existiam dentro dele).", "sucesso")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(f"Não foi possível excluir o subgrupo: {exc}", "erro")
+    return redirect(url_for("cadastros.detalhe_indicador", indicador_id=indicador_id, _anchor="tab-subgrupos"))
 
 
 # ---------------------------------------------------------------------------
